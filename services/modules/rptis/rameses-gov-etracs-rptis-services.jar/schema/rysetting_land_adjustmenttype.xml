@@ -1,0 +1,13 @@
+<schema>
+	<element tablename="landadjustmenttype">
+		<field name="objid" primary="true"/>
+		<field name="landrysettingid" required="true"/>
+		<field name="code" caption="Code" required="true" searchable="true" indexed="true" width="100" />
+		<field name="name" caption="Adjustment Type" required="true" searchable="true" indexed="true" width="300" />
+		<field name="expr" caption="Expr" required="true" width="200"/>
+		<field name="appliedto" />
+		<field name="idx"  />
+		<field name="previd" />
+	</element>
+
+</schema>

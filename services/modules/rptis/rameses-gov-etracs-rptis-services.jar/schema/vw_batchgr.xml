@@ -1,0 +1,25 @@
+<schema>
+	<element tablename="vw_batchgr">
+		<field name="objid" primary="true" />
+		<field name="state" caption="State" searchable="true" indexed="true" />
+		<field name="ry" type="integer" caption="Revision Year" searchable="true" indexed="true" />
+		<field name="txntype_objid" caption="" searchable="true" indexed="true" />
+		<field name="txnno" caption="Txn No." searchable="true" indexed="true" />
+		<field name="txndate" />
+		<field name="effectivityyear" type="integer" caption="Effectivity Year" />
+		<field name="effectivityqtr" type="integer" caption="Effectivity Qtr" />
+		<field name="memoranda" />
+		<field name="lguid" />
+		<field name="barangayid" />
+		<field name="rputype" caption="Kind" />
+		<field name="classificationid" />
+		<field name="section" caption="Section" searchable="true" indexed="true" />
+		<field name="lgu_name" caption="LGU" indexed="true" />
+		<field name="barangay_name" caption="Barangay" indexed="true" />
+		<field name="barangay_pin" caption="PIN" searchable="true" indexed="true" />
+		<field name="classification_name" caption="Class" indexed="true" />
+		<field name="taskid" />
+		<field name="taskstate" />
+		<field name="assignee_objid" />
+	</element>
+</schema>

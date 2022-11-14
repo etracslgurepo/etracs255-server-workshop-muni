@@ -1,0 +1,145 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import java.rmi.server.UID
+import java.text.SimpleDateFormat;
+import com.rameses.services.extended.*;
+
+class PersistenceService  {	
+
+	@DataContext(dynamic=true)
+	def db;
+
+	@Service("SchemaService")
+	def schemaService;
+
+	@Service("DateService")
+	def dateSvc;
+
+	@Service 
+	def self; 
+
+	@Env
+	def env;
+
+	@ProxyMethod
+	public def newObject( o ) {
+		throw new Exception("null"); 
+	}
+
+	@ProxyMethod
+	public def create( o ) {
+		if ( !o._schemaname ) throw new Exception('Please provide a _schemaname');
+		
+		o.dtcreated = dateSvc.getServerDate();
+		o.createdby = [objid:env.USERID, name:env.FULLNAME, title:env.JOBTITLE];
+
+		def em = db.lookup(o._schemaname);
+		if ( o.debug ) em.debug = o.debug;
+		return em.create( o ); 
+	}
+
+	@ProxyMethod
+	public def read( o ) {
+		if ( !o._schemaname ) throw new Exception('Please provide a _schemaname');
+
+		def em = db.lookup(o._schemaname);
+		if ( o.debug ) em.debug = o.debug;
+		if ( !o.findBy ) return em.read(o);
+
+		return em.find( o.findBy ).first(1);
+	}
+
+	private def buildFinders( o ) {
+		//check first of there's a findBy property in the map. If there is one, use that instead.
+		def finders = o.remove("findBy");
+		if( finders == null ) {
+			def schema = schemaService.getSchema([name: o._schemaname]);
+			//loop thru the schema for primary keys
+			finders = [:];
+			schema.fields.findAll{it.primary  && it.source == o._schemaname}.each {
+                                if(!it.name.contains(".")) {
+                                    finders.put( it.name, o.get(it.name));
+                                }
+			}
+		}
+		return finders;
+	}
+
+	@ProxyMethod
+	public def update( o ) {
+		if ( !o._schemaname ) throw new Exception('Please provide a _schemaname');
+
+		//standard update info
+		o.dtmodified = dateSvc.getServerDate();
+		o.modifiedby = [objid:env.USERID, name:env.FULLNAME];
+
+		def finders = buildFinders(o);
+		if ( !finders )
+			throw new Exception('update error. Please indicate at least a findBy map or primary keys')
+
+		def em = db.lookup(o._schemaname);
+		if ( o.debug ) em.debug = o.debug; 
+
+		em.find(finders);
+		return em.update(o);
+	}
+
+	@ProxyMethod
+	public void removeEntity( o ) {
+		if ( !o._schemaname ) throw new Exception('Please provide a _schemaname');
+
+		def finders = buildFinders(o);
+		if ( !finders )
+			throw new Exception('removeEntity error. Please indicate at least a findBy map or primary keys')
+
+		def em = db.lookup(o._schemaname);
+                if ( o.debug ) em.debug = o.debug; 
+		em.find(finders);
+		em.delete();
+	}
+
+	@ProxyMethod
+	public def save( o ) {
+		if ( !o._schemaname ) throw new Exception('Please provide a _schemaname');
+
+		def em = db.lookup(o._schemaname);
+		if ( o.debug ) em.debug = o.debug; 
+		
+		def finders = buildFinders( o ); 
+		def exists = em.find( finders ).exists(); 
+		if ( exists ) return self.update( o );
+
+		return self.create( o ); 
+	} 
+
+	@ProxyMethod
+	public def getSchema( o ) {
+		return schemaService.getSchema(o);
+	}
+
+	//******************************************
+	// this is used for migration purposes
+	//******************************************
+	@ProxyMethod
+	public def batchSave( o ) {
+		if( !o._schemaname ) throw new Exception('Please provide a _schemaname');
+		if( !o.data ) throw new Exception("Please provide a data parameter");
+		if( !(o.data instanceof List ) ) throw new Exception("Data must be an instanceof List");
+
+		def em = db.lookup(o._schemaname);
+		if ( o.debug ) em.debug = o.debug; 
+
+		o.data.each {
+			it._schemaname = o._schemaname;
+			def finders = buildFinders( it ); 
+			def exists = em.find( finders ).exists(); 
+			if ( exists ) {
+				em.update( it );
+			}
+			else {
+				em.create( it ); 
+			}	
+		}		
+	}
+
+}

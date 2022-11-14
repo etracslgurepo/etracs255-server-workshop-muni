@@ -1,0 +1,188 @@
+import com.rameses.common.*
+import com.rameses.annotations.*
+import com.rameses.util.*
+import com.rameses.services.extended.*
+
+class FAASRevisionService 
+{
+	@Env 
+	def env 
+
+	@ActiveDB('faas_revision')
+	def em
+
+	@DataContext('faas_affectedrpu')
+	def em_faas_affectedrpu
+
+	@Service('FAASService')
+	def faasSvc 
+
+	@Service('RPUService')
+	def rpuSvc 
+
+	@Service('RPTUtil')
+	def util
+
+
+	def SCHEMA_AFFECTED_RPU = 'affectedrpu'
+
+
+
+	@ProxyMethod
+	public def createFaasRevision( info ) {
+		if (info.rputype == 'land')
+			return createLandRevision(info)
+		return createImprovementRevision(info)
+	}
+
+
+	@ProxyMethod
+	public def getAffectedRpus( objid ) {
+		return em.getAffectedRpus([objid:objid])
+	}
+
+
+	@ProxyMethod
+	public def saveAffectedRpu( arpu ) {
+		em_faas_affectedrpu.save(arpu)
+	}
+
+
+    @ProxyMethod
+    public def deleteAffectedRpuFaas(arpu){
+    	faasSvc.deleteFaasById(arpu.newfaasid)
+        arpu.newfaasid = null
+        arpu.newsuffix = null
+        saveAffectedRpu(arpu)
+        return arpu 
+    }
+
+    @ProxyMethod
+    public def saveAffectedRpuAndFaas(arpu){
+    	def faas = null
+
+    	if (!arpu.newfaasid ) {
+    		faas = faasSvc.openFaas([objid:arpu.faasid])
+
+    		def info = [
+    			faas 		: [objid:arpu.prevfaasid],
+    			txntype 	: [objid:'RV'],
+    			datacapture : false,
+    		]
+
+    		def newfaas = faasSvc.initTransaction(info)
+    		newfaas.rp = faas.rp 
+    		newfaas.realpropertyid = faas.rp.objid 
+    		newfaas.rpu.realpropertyid = faas.rp.objid
+    		newfaas.rpu.suffix = arpu.newsuffix 
+    		newfaas.rpu.landrpuid = faas.rpu.objid 
+    		newfaas.rpu.fullpin = faas.rp.pin + '-' + arpu.newsuffix
+    		newfaas.fullpin = newfaas.rpu.fullpin 
+    		newfaas.state = 'PENDING'
+    		faasSvc.createFaas(newfaas)
+    		arpu.newfaasid = newfaas.objid 
+		}
+    	else {
+            faas = faasSvc.openFaas([objid:arpu.newfaasid])
+            faas.rpu.suffix = arpu.newsuffix 
+            faas.rpu.fullpin = faas.rp.pin + '-' + arpu.newsuffix 
+            faas.fullpin = faas.rpu.fullpin 
+            faasSvc.updateFaas(faas)
+        }
+        em_faas_affectedrpu.save(arpu)  
+        return arpu 
+    }
+
+
+	def createLandRevision( info ) {
+		validateLandRevision(info)
+
+		info.txntype = faasSvc.getTxnType(info.txntype)
+		def faas = faasSvc.initTransaction(info)
+
+		faas.rp.pin = info.fullpin
+		faas.rp.section = info.section
+		faas.rp.parcel = info.parcel
+		faas.rp.barangay = info.barangay
+		faas.rp.barangayid = info.barangay.objid 
+		faas.rp.pintype = info.pintype 
+
+		faas.realpropertyid = faas.rp.objid 
+		faas.rpu.realpropertyid = faas.rp.objid 
+		faas.fullpin = info.fullpin 
+		faas.rpu.fullpin = info.fullpin 
+		faasSvc.createFaas(faas)
+        faasSvc.insertSketch(info, faas)
+        createAffectedRpus(faas, info)
+        return faas 
+	}
+
+	void createAffectedRpus(newfaas, info){
+		def arpus = em.getAffectedRpusByLandFaasId(info.faas)
+		arpus.each{
+			it.objid = 'FARPU' + new java.rmi.server.UID()
+			it.faasid = newfaas.objid
+			saveAffectedRpu(it)
+		}
+	}
+
+	void validateLandRevision(info){
+		faasSvc.checkLandTxnReference(info.rp)
+		
+		if (info.rp.pin == info.fullpin)
+			throw new Exception('PIN must not be equal to current PIN ' + info.rp.pin + '.')
+
+		checkDuplicateLand(info)
+	}
+
+
+	def createImprovementRevision( info ) {
+		validateImprovementRevision(info)
+		info.txntype = faasSvc.getTxnType(info.txntype)
+		def faas = faasSvc.initTransaction(info)
+		faas.rp = info.rp 
+		faas.realpropertyid = info.rp.objid 
+		faas.rpu.realpropertyid = info.rp.objid 
+		faas.fullpin = info.fullpin 
+		faas.rpu.suffix = info.suffix 
+		faas.rpu.fullpin = info.fullpin 
+		faas.rpu.landrpuid = getLandRpuId(info)
+        faasSvc.createFaas(faas)
+        faasSvc.insertSketch(info, faas)
+        return faas 
+	}
+
+	void validateImprovementRevision(info){
+		util.required('Land PIN', info.rp)
+		util.required('Suffix', info.suffix)
+
+		faasSvc.checkLandTxnReference(info.rp)
+		
+		if (info.rp.objid == info.faas.realpropertyid && info.suffix == info.faas.suffix)
+			throw new Exception('Suffix must not be equal to current suffix ' + info.faas.suffix + '.')
+
+		checkDuplicateImprovement(info)
+	}
+
+	def getLandRpuId(info){
+		def landrpus = em.getLandRpusByRealProperty(info.rp)
+		if (!landrpus)
+			throw new Exception('Land FAAS ' + info.rp.pin + ' does not exist or has already been deleted.' )
+		def current = landrpus.find{it.state == 'CURRENT'}
+		if (current)
+			return current.objid 
+		return landrpus[0].objid 
+	}
+
+	void checkDuplicateLand(info){
+		def newrpu = [objid:info.faas.rpuid, ry:info.ry, fullpin:info.fullpin]
+		rpuSvc.checkDuplicateFullPin(newrpu)
+	}
+
+	void checkDuplicateImprovement(info){
+		def orpu = em.findDuplicateRpuPIN([realpropertyid:info.rp.objid, suffix:info.suffix])
+		if (orpu)
+			throw new Exception('PIN is already assigned to TD No. ' + orpu.tdno + '.')
+	}
+
+}

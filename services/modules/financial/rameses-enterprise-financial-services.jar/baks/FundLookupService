@@ -1,0 +1,24 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.common.*
+import com.rameses.services.extended.*;
+
+class FundService extends ActiveCrudListService {
+
+	@ActiveDB("fund")
+	def em;
+
+	String listMethod = "getLookup";
+	
+	@ProxyMethod
+	public def getColumns( def o ) {
+		return[
+			[name:'code', caption:'Code' ],
+			[name:'title', caption:'Title' ],
+			[name:'type', caption:'Type' ]
+		];
+	}
+	
+
+}

@@ -1,0 +1,16 @@
+<schema>
+
+	<element tablename="cashreceipt_share">
+		<field name="objid" primary="true" prefix="RCTSHR"/>
+		<field name="receiptid" required="true"/>
+		<complex name="refitem" ref="itemaccount" jointype="many-to-one" required="true" includefields="code,title">
+			<key field="refitem_objid" target="objid"/> 
+		</complex>
+		<complex name="payableitem" ref="itemaccount" jointype="many-to-one" required="false" includefields="code,title">
+			<key field="payableitem_objid" target="objid"/> 
+		</complex>
+		<field name="amount" required="true" type="decimal"/>
+		<field name="receiptitemid" />		
+	</element>
+
+</schema>

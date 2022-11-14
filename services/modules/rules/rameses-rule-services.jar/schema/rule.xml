@@ -1,0 +1,185 @@
+<schema>
+
+	<element tablename="sys_rule">
+		<field name="objid" primary="true"/>
+		<field name="state" required="true"/>
+		<field name="name" required="true"/>
+		<field name="ruleset" required="true"/>
+		<field name="rulegroup" required="true"/>
+		<field name="title" required="true"/>
+		<field name="description" />
+		<field name="salience" required="true"/>
+		<field name="effectivefrom" />
+		<field name="effectiveto" />
+		<field name="dtfiled" required="true"/>
+		<field name="user_objid" required="true"/>
+		<field name="user_name" required="true"/>
+		<field name="noloop" defaultValue="1"/>
+	</element>	
+
+
+
+	<element name="condition" tablename="sys_rule_condition">
+		<field name="objid" primary="true"/>
+		<field name="parentid" required="true"/>
+		<field name="fact_name" required="true"/>
+		<field name="fact_objid" required="true"/>
+		<field name="varname" />
+		<field name="notexist" />
+		<field name="pos" required="true"/>
+		<field name="dynamic_datatype" />
+		<field name="dynamic_key" />
+		<field name="dynamic_value" />
+	</element>	
+
+	<element name="constraint" tablename="sys_rule_condition_constraint">
+		<field name="objid" primary="true"/>
+		<field name="parentid" required="true"/>
+		<field name="field_objid" required="true"/>
+
+		<field name="fieldname" required="true"/>
+		<field name="varname" />
+
+		<field name="operator_caption" />
+		<field name="operator_symbol" />
+		<field name="usevar" />
+		<field name="var_objid" />
+		<field name="var_name" />
+		<field name="decimalvalue" />
+		<field name="intvalue" />
+		<field name="stringvalue" />
+		<field name="datevalue" />
+
+		<complex name="listvalue" type="list" serializer="default" required="false"/>
+		<field name="pos" required="true"/>
+	</element>	
+
+	<element name="var" tablename="sys_rule_condition_var">
+		<field name="objid" primary="true"/>
+		<field name="parentid" required="true"/>
+		<field name="ruleid" required="true"/>
+		<field name="varname" required="true"/>
+		<field name="datatype" required="true"/>
+		<field name="pos" required="true"/>
+	</element> 
+		
+	<element name="action" tablename="sys_rule_action">
+		<field name="objid" primary="true"/>
+		<field name="parentid" required="true"/>
+		<field name="actiondef_objid" required="true"/>
+		<field name="actiondef_name" required="true"/>
+		<field name="pos" required="true"/>
+	</element>
+
+	<element name="actionparam" tablename="sys_rule_action_param">
+		<field name="objid" primary="true"/>
+		<field name="parentid" required="true"/>
+		<field name="actiondefparam_objid" required="true"/>
+		<field name="stringvalue" />
+		<field name="booleanvalue" />
+		<field name="var_objid"/>
+		<field name="var_name" />
+		<field name="expr" />
+		<field name="exprtype" />
+		<field name="obj_key" />
+		<field name="obj_value" />
+		<complex name="listvalue" type="list" required="false" serializer="default" />
+		<field name="lov" />
+		<field name="rangeoption" defaultValue="0" type="integer"/>
+	</element>	
+
+	<element name="ruleset" tablename="sys_ruleset">
+		<field name="name" primary="true"/>
+		<field name="title" />
+		<field name="packagename" />
+		<field name="domain" />
+		<field name="role" />
+		<field name="permission" />
+	</element>	
+
+	<element name="rulegroup" tablename="sys_rulegroup">
+		<field name="name" primary="true"/>
+		<field name="ruleset" primary="true"/>
+		<field name="title" />
+		<field name="sortorder" />
+	</element>
+
+	<element name="ruleset_fact" tablename="sys_ruleset_fact">
+		<field name="ruleset" primary="true"/>
+		<field name="rulefact" primary="true"/>
+	</element>
+
+	<element name="fact" tablename="sys_rule_fact">
+		<field name="objid" primary="true"/>
+		<field name="name" required="true"/>
+		<field name="title" required="true"/>
+		<field name="factclass" required="true"/>
+		<field name="factsuperclass" />
+		<field name="sortorder" required="true"/>
+		<field name="handler" />
+		<field name="defaultvarname" />
+		<field name="dynamic" />
+		<field name="lookuphandler" />
+		<field name="lookupkey" />
+		<field name="lookupvalue" />
+		<field name="lookupdatatype" />
+		<field name="dynamicfieldname" />
+		<field name="builtinconstraints" />
+		<field name="domain" />
+	</element>	
+
+	<element name="fact_field" tablename="sys_rule_fact_field">
+		<field name="objid" primary="true"/>
+		<field name="parentid" required="true"/>
+		<field name="name" required="true"/>
+		<field name="title" required="true"/>
+		<field name="datatype" />
+		<field name="sortorder" />
+		<field name="handler" />
+		<field name="lookuphandler" />
+		<field name="lookupkey" />
+		<field name="lookupvalue" />
+		<field name="lookupdatatype" />
+		<field name="lovname" />
+		<field name="required" />
+		<field name="vardatatype" />
+		<field name="multivalued" />
+	</element>	
+
+	<element name="ruleset_actiondef" tablename="sys_ruleset_actiondef">
+		<field name="ruleset" primary="true"/>
+		<field name="actiondef" primary="true"/>
+	</element>
+
+	<element name="actiondef" tablename="sys_rule_actiondef">
+		<field name="objid" primary="true"/>
+		<field name="name" required="true"/>
+		<field name="actionname" required="true"/>
+		<field name="actionclass" required="false"/>
+		<field name="sortorder" required="true"/>
+		<field name="title" required="true"/>
+		<field name="domain"/>
+	</element>	
+
+	<element name="actiondef_param" tablename="sys_rule_actiondef_param">
+		<field name="objid" primary="true"/>
+		<field name="parentid" required="true"/>
+		<field name="name" required="true"/>
+		<field name="sortorder" required="true"/>
+		<field name="title" required="true"/>
+		<field name="datatype" />
+		<field name="handler" required="true"/>
+		<field name="lookuphandler" />
+		<field name="lookupkey" />
+		<field name="lookupvalue" />
+		<field name="vardatatype" />
+		<field name="lovname" />
+	</element>	
+
+	<element name="deployed" tablename="sys_rule_deployed">
+		<field name="objid" primary="true"/>
+		<field name="ruletext" />
+	</element>	
+
+</schema>	
+

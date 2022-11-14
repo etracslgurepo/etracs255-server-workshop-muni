@@ -1,0 +1,12 @@
+<schema>
+	<element name="fortransmittal" tablename="fortransmittal">
+		<field name="objid" primary="true"/>
+		<field name="module" required="true" />
+		<field name="doctype" required="true"/>
+		<field name="docno" required="true"/>
+		<field name="dtposted" required="true"/>
+		<field name="postedbyid" required="true"/>
+		<field name="postedby" required="true"/>
+		<field name="postedbytitle" />
+	</element>
+</schema>

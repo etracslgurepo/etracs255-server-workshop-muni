@@ -1,0 +1,127 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+import com.rameses.services.extended.*
+
+class MunicipalitySubdivisionRemoteCallHandler
+{   
+	@ActiveDB('subdivision')
+	def em 
+
+	@Service('SubdivisionService')
+	def svc
+
+	@Service('SubdivisionSupportService')
+	def supportSvc 
+
+	@Service('SubdivisionSupport2Service')
+	def support2Svc 
+
+
+	@Service('FAASService')
+	def faasSvc
+
+	@DataContext('subdivision_task')
+	def em_subdivision_task;
+
+	@DataContext('faas')
+	def em_faas 
+
+	@Service('NotificationService')
+	def notifySvc		
+
+
+	@ProxyMethod
+	public void postApprovedSubdivisionFromProvince(subdivision){
+		def state = svc.getState( subdivision )
+		if (state == null || state != 'APPROVED'){
+			state = 'FORAPPROVAL'
+			subdivision.state = state
+			subdivision.faases.each{
+				if (!subdivision._transmittal) {
+					def fstate = em_faas.select('state').find([objid:it.objid]).first()?.state
+					it.state = (fstate == null ? 'PENDING' : fstate)
+				}
+			}
+			if (subdivision._transmittal) {
+				supportSvc.postSubdivisionData(subdivision)
+				cancelPreviousAffectedRpus(subdivision)
+			} else {
+				support2Svc.postSubdivisionData(subdivision)
+			}
+			subdivision.tasks = em_subdivision_task.where('refid = :objid and enddate is not null', subdivision).list()
+			doApproveSubdivision(subdivision)
+			println 'Subdivision ' + subdivision.txnno + ' created from Province has been successfully posted and approved.'
+		} else {
+			cancelPreviousAffectedRpus(subdivision)
+		}
+	}
+
+	@ProxyMethod
+	public void approveSubdivisionByProvince(subdivision){
+		def state = svc.getState( subdivision )
+		if (state  && ! state.equalsIgnoreCase('APPROVED')){
+			if (subdivision._transmittal) {
+				supportSvc.updateFaasesData(subdivision)
+			}
+			doApproveSubdivision(subdivision)
+			notifyRecommender(subdivision)
+			println 'Subdivision ' + subdivision.txnno + ' has been successfully approved.'
+		}
+	}
+
+
+	@ProxyMethod
+	public void approveSubdivisionFaas(faas){
+		def currfaas = em_faas.select('state').find([objid:faas.objid]).first()
+		if (currfaas && currfaas.state == 'CURRENT') return
+		faas.state = 'PENDING';
+		support2Svc.postFaasData(faas)
+		faasSvc.approveFaas(faas)
+		println 'Subdivision FAAS ' + faas.tdno + ' has been successfully approved.'
+	}
+
+
+
+	private void doApproveSubdivision(subdivision){
+		subdivision.tasks.each{
+			em_subdivision_task.save(it)
+		}
+		em_subdivision_task.where('refid = :objid and enddate is null', subdivision).delete()
+		svc.insertFaasSignatories(subdivision)
+		svc.approve(subdivision)
+		svc.getCancelledImprovements(subdivision.objid).each{ci ->
+			svc.approveCancelledImprovement(subdivision, ci)
+		}
+	}
+
+
+	void notifyRecommender(subdivision){
+		def recommendertask = em_subdivision_task.where('refid = :objid and state = :state', [objid:subdivision.objid, state:'recommender'])
+										.orderBy('enddate desc')
+										.first()
+
+		def approvertask = subdivision.tasks.find{it.state.matches('approver|provapprover')}
+		if (recommendertask && approvertask){
+			def sendername = (approvertask.actor.name ? approvertask.actor.name : 'Province')
+			def msg = [
+	            objid     : recommendertask.refid,
+	            recipientid : (recommendertask.assignee.objid ? recommendertask.assignee.objid : '-'),
+	            recipienttype : 'user',
+	            senderid  : '-',
+	            sender    : sendername,
+	            message   : 'Subdivision ' + subdivision.txnno + ' has already been approved by ' + sendername + '.',
+	            filetype  : 'subdivision',
+	            data 	  : [:],
+	        ]
+	        notifySvc.addMessage(msg)
+		}		
+	}
+
+	void cancelPreviousAffectedRpus(subdivision) {
+		svc.getAffectedRpus(subdivision.objid).each {arpu ->
+			def faas = faasSvc.openFaas([objid: arpu.newfaasid])
+			faasSvc.cancelPreviousFaases(faas)
+		}
+	}
+
+}

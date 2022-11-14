@@ -1,0 +1,209 @@
+import com.rameses.annotations.*;
+import groovy.text.*;
+import java.util.regex.*;
+import com.rameses.osiris2.reports.*;
+import com.rameses.io.*;
+import jasper.*;
+
+class SysReportTemplateService {
+	
+	@DataContext("sys_report_template")
+	def templateEm;
+
+	@DataContext("sys_report_header")
+	def headerEm;
+
+	def rootPath = "/report-files";
+
+
+	@ProxyMethod
+	public def getMasterTemplateList() {
+		return templateEm.where( "master = 1").orderBy("name").list();
+	}
+
+	@ProxyMethod
+	public def create( def o ) {
+		if(!o.name ) throw new Exception("name is required in SysReportTemplateService.create");
+		if(!o.masterfile ) throw new Exception("masterfile is required in SysReportTemplateService.create");
+		if(!o.filepath ) throw new Exception("filepath is required in SysReportTemplateService.create");
+
+		if( !o.filepath.endsWith(".jrxml") ) o.filepath = o.filepath.replace(".jrxml", ".jasper");
+		if( !o.filepath.endsWith(".jasper") ) o.filepath = o.filepath + ".jasper";
+
+		// this will create a new entry and also copies a template from the master
+		//def src = new SysReportTemplate( rootPath, o.masterfile );
+
+		def mt = new MasterTemplateProvider();
+		def test_file = new java.io.File( mt.getUrl().getFile() );
+		
+		// test the master template if available 
+		// 
+		/*
+		def test_file = new java.io.File( src.getRootPath(), src.getContextPath());
+		test_file = new java.io.File( test_file, src.getFilename()); 
+		if ( !test_file.exists()) 
+			throw new IllegalStateException("Master template does not exist ("+ o.masterfile +")");
+		if ( test_file.isDirectory()) 
+			throw new IllegalStateException("Master template must not be a directory ("+ o.masterfile +")");
+		*/
+
+		o.master = 0;
+		templateEm.create( o );
+
+		def st = new SysReportTemplate( rootPath, o.filepath );
+		st.saveResource( o.filepath.replace(".jasper", ".jrxml"), mt.getBytes() );
+		/*
+		def handler = [
+        	getResources: { reportId ->
+            	return src.getResources();
+        	},
+			getContent : { reportId->
+				return src.getContent( reportId );	
+        	}
+		] as SysReportTemplateSource;
+
+		def st = new SysReportTemplate( rootPath, o.filepath );
+		st.sync( handler, o.masterfile, true );
+		*/
+		return o;
+	}
+
+	@ProxyMethod
+	public def update( Map param ) {
+		if ( !param.name ) throw new Exception("'param.name' argument is required");
+		if ( !param.filepath ) throw new Exception("'param.filepath' argument is required");
+
+		def template = templateEm.find([ name: param.name ]).first(); 
+		if ( !template ) throw new Exception("'"+ param.name +"' template record not found");
+
+		if ( template.filepath.toString() != param.filepath ) { 
+
+			def source_st = new SysReportTemplate( rootPath, template.filepath );
+			def handler = [
+	        	getResources: { reportId ->
+	            	return source_st.getResources();
+	        	},
+				getContent : { reportId->
+	            	return source_st.getContent( reportId );
+	        	}
+			] as SysReportTemplateSource;
+
+			def target_st = new SysReportTemplate( rootPath, param.filepath );
+			target_st.sync( handler, template.filepath, true ); 
+		}
+
+		param.master = 0; 
+		templateEm.find([ name: param.name ]).update( param ); 
+		return templateEm.find([ name: param.name ]).first(); 
+	}
+
+	@ProxyMethod
+	public def getInfo(def o ) {
+		if(!o.name) throw new Exception("name is required in SysReportTemplateService.findTemplate");
+		def tmp =  templateEm.find( [name:o.name] ).first();
+		if( tmp ) {
+			tmp.resources = getResources( [name: tmp.filepath ] );
+		}
+		return tmp;
+	}
+
+	@ProxyMethod
+	public def getResources( def o ) {
+		def list = [];
+		def st = new SysReportTemplate( rootPath, o.name );
+		st.getResources().each {
+			list << it;
+		}
+		return list;
+	}
+
+	@ProxyMethod
+	public def getContent( def o ) { 
+		def st = new SysReportTemplate( rootPath );
+		return st.getContent( o.name );
+	}
+
+	@ProxyMethod
+	public void saveContent( def o ) { 
+		def st = new SysReportTemplate( rootPath );
+		st.saveContent( o.name, o.content, o.lastmodified );
+	}
+
+	@ProxyMethod
+	public def getHeader( def o ) {
+		if(!o.name) throw new Exception("name is required in SysReportTemplateService.getHeader");
+		def h = headerEm.find( [name: o.name] ).first();
+		if(h) {
+			def bis = null;
+			try {
+				def props = new Properties();
+				bis = new ByteArrayInputStream( h.value.replaceAll(";", "\n").getBytes() );
+				props.load( bis );
+				return props;
+			}
+			catch(e) {
+				//
+			}
+			finally {
+				try { bis.close(); }catch(Throwable t){;} 
+			}
+		}
+		return null;
+	}
+
+
+	@ProxyMethod
+	public def getImages() {
+		def handler = { file-> 
+			String name = file.name.toString(); 
+	        return ( 
+	        	name.toLowerCase().endsWith(".png") || 
+	        	name.toLowerCase().endsWith(".jpg") || 
+	        	name.toLowerCase().endsWith(".gif")
+	        );
+		}
+
+		def st = new SysReportTemplate( rootPath );
+		return st.getResources( handler ); 
+	}
+
+	@ProxyMethod
+	public void uploadImage( Map param ) {
+        if ( !param?.name ) 
+            throw new IllegalArgumentException("'param.name' argument is required");
+        if ( param?.bytes == null ) 
+            throw new IllegalArgumentException("'param.bytes' argument is required for resource '"+ param.name +"'");
+
+        String name = param.name.toString(); 
+        boolean pass = ( 
+        	name.toLowerCase().endsWith(".png") || 
+        	name.toLowerCase().endsWith(".jpg") || 
+        	name.toLowerCase().endsWith(".gif")
+        ); 
+
+        if ( !pass ) 
+        	throw new IllegalArgumentException("uploadImage requires the following format: png, jpg, gif");
+
+		def st = new SysReportTemplate( rootPath );
+		st.saveResource( name, param.bytes ); 
+	}
+
+	@ProxyMethod
+	public Map removeImage( Map param ) {
+        if ( !param?.name ) 
+            throw new IllegalArgumentException("'param.name' argument is required");
+
+        String name = param.name.toString(); 
+        boolean pass = ( 
+        	name.toLowerCase().endsWith(".png") || 
+        	name.toLowerCase().endsWith(".jpg") || 
+        	name.toLowerCase().endsWith(".gif")
+        ); 
+        if ( !pass ) 
+        	throw new IllegalArgumentException("removeImage requires the following format: png, jpg, gif");
+
+		def st = new SysReportTemplate( rootPath );
+		return [ result: st.removeResource( name )];
+	}
+}
+

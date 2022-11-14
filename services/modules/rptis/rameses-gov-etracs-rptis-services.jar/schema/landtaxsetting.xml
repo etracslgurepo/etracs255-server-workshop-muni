@@ -1,0 +1,6 @@
+<schema>
+	<element name="landtaxsetting" tablename="landtaxsetting">
+		<field name="objid" primary="true"/>
+		<complex name="duedates" serializer="default" /> 
+	</element>
+</schema>

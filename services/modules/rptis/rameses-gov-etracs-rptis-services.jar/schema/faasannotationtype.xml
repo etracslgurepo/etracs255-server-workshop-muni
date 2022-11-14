@@ -1,0 +1,9 @@
+<schema>
+	<element tablename="faasannotationtype">
+		<field name="objid" primary="true"/>
+        <field name="type" required="true"/>
+	</element>
+</schema>
+
+
+

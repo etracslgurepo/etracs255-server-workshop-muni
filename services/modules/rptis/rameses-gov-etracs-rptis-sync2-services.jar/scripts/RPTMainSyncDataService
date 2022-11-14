@@ -1,0 +1,173 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+import com.rameses.fileupload.*;
+
+class RPTMainSyncDataService {
+	@Env 
+	def env 
+
+	@Service()
+	def self 
+
+	@Service('DateService')
+    def dtSvc 
+
+    @Service('Var')
+    def var
+
+    @Service('RPTUtil')
+    def util
+
+	@DataContext('rpt_syncdata')
+	def em_sync
+
+	@DataContext('rpt_syncdata_forsync')
+	def em_forsync
+
+	@DataContext('rpt_syncdata_item')
+	def em_sync_item
+
+	@DataContext('sys_org')
+	def em_org
+
+	@XConnection('fileupload')
+	def xconn;
+
+	@Service(value='SyncCoordinatorService', connection='coordinator-script-service')
+    def coordinator 
+
+	@ProxyMethod
+	public def createDataForSync(data) {
+		data.createdby = [objid: env.USERID, name: env.USER, title: env.JOBTITLE]
+		data.dtfiled = dtSvc.serverDate
+		em_forsync.save(data)
+		return data
+	}
+
+	@ProxyMethod
+	public def create(data) {
+		def syncdata = [:]
+		syncdata.objid = 'SYNC' + new java.rmi.server.UID()
+        syncdata.state = 'PENDING'
+        syncdata.refid = data.objid
+        syncdata.reftype = data.reftype
+        syncdata.refno = data.refno
+		syncdata.action = data.action
+		syncdata.dtfiled = data.dtfiled
+		syncdata.orgid = data.orgid
+		syncdata.sender = data.createdby
+		syncdata.remote = data.remote
+		syncdata.info = data.info
+        syncdata.idx = 0
+		em_sync.create(syncdata)
+        return syncdata
+	}
+
+	@ProxyMethod
+	public def createItem(syncdata, item) {
+		item.parentid = syncdata.objid
+		item.parent = [objid: syncdata.objid]
+		item.state = 'PENDING'
+		item.idx = (++syncdata.idx)
+		if (!item.info) item.info = [:]
+		em_sync_item.create(item)
+		return item
+	}
+
+
+	
+	/*============================================================= 
+	* Intercepted by action handlers to post the required items
+	* to synchronize and upload to cloud-fileserver
+	=============================================================*/
+	@ProxyMethod
+	public def scheduleSync(data) {
+		return data
+	}
+
+	/*============================================================
+	* Intercepted by action handlers to build the attachment 
+	* and save as file to upload folder
+	============================================================*/
+	@ProxyMethod
+	public void processItemsForSync() {
+		def list = em_sync_item.where(['1=1']).orderBy('parent.dtfiled, parentid, idx').list();
+		if (list) {
+			list.each {
+				def writer = null;
+				try {
+					def fileName = [
+						it.reftype, 
+						it.refno.replaceAll("[^0-9a-zA-Z]", ''), 
+						it.idx.toString().padLeft(5, '0'), 
+						it.action, 
+						safeFileId(it.refid)
+					].join('-')
+					writer = new ObjectWriter(fileName, xconn.conf);
+					writer.write(it);
+					self.asyncSend(it);
+					writer.write(it.data);
+					writer.close();
+					em_sync_item.find([objid: it.objid]).delete();
+				} catch( e ) {
+					if (writer) writer.cancel();
+					e.printStackTrace();
+				}
+			}
+		}
+	}
+
+
+	/*===========================================================
+	* Intercepted by action handlers to append the item data 
+	===========================================================*/
+	@ProxyMethod
+	public def asyncSend(syncdata) {
+		return syncdata
+	}
+
+
+	/*===========================================================
+	* Intercepted by action handlers to post received data 
+	===========================================================*/
+	@ProxyMethod
+	public def receive(syncdata) {
+		return syncdata
+	}
+
+	/*-------------------------------------
+	*
+	* directly send data to coordinator
+	*
+	--------------------------------------*/
+	@ProxyMethod
+	public def send(data){
+		def remoteConfig = [
+			orgcode: data.remote.orgcode,
+			service: "RemoteSyncService",
+			module: "etracs25",
+			connection: "rpt",
+		]
+		return coordinator.send(data, remoteConfig)
+	}
+
+	def safeFileId(id) {
+		return id.replaceAll(":", "");
+	}
+
+	def isNewSycnData(data) {
+		def newsync = true
+		if (!'PROVINCE'.equalsIgnoreCase(data.remote.orgclass)) {
+			def newlgus = var.assesser_new_sync_lgus
+			if (newlgus) {
+				newsync = newlgus.toString().indexOf(data.remote.orgcode) >= 0
+			} else {
+				newsync = false
+			}
+		}
+		return newsync
+	}
+    
+}
+

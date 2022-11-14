@@ -1,0 +1,191 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+
+public class BusinessApplicationRetireInterceptor {
+
+	@Env
+	def env;
+
+	@Service("BusinessApplicationWorkflowService")
+	def workflowSvc;
+
+
+	@Service("DateService")
+	def dateSvc;
+
+	@Service("BusinessMasterService")
+	def bizSvc;
+
+	@Service("BusinessLobService")
+	def lobSvc;
+
+	@Service("BusinessInfoService")
+	def infoSvc;
+
+	@Service("BusinessReceivableService")
+	def receivableSvc;
+
+	@ActiveDB("business_application")
+	def business_application;
+
+	@ActiveDB('business_receivable') 
+	def business_receivable;		
+
+	@DataContext("business_lockid")
+	def business_lockid;
+
+
+	@After(pattern="BusinessApplicationService.initNew", eval="#{args[0].apptype=='RETIRE' && args[0].txnmode == 'ONLINE'}")
+	public void initNew(def evt) { 
+		def app = evt.result;
+		if(!app.business?.objid) throw new Exception("Please specify a business");
+
+		def apps = business_application.getOpenApplications( [businessid: app.business.objid, filter: '' ] );
+		if(apps.size() > 0 ) throw new Exception("An application for this business is currently being processed");
+
+		app.objid = 'BARET'+ new java.rmi.server.UID(); 
+
+		//retrieve business first
+        def b = bizSvc.open(app.business);
+        if( b.state=='PROCESSING' ) 
+        		throw new Exception("An application for this business is currently being processed");
+
+		if( b.state == 'CANCELLED') 
+			throw new Exception("Business already cancelled");	
+
+		if( b.state == 'RETIRED') 
+			throw new Exception("Business already retired");	
+
+		def currentYear = dateSvc.getServerYear();
+		if(b.activeyear<(currentYear-1))
+			throw new Exception("This business has delinquency for previous years. Please go to Assessor's office to process delinquency");
+
+		def balinfo = business_receivable.findUnpaidBalance([applicationid: b.currentapplicationid]); 
+		if ( balinfo?.balance > 0.0) {
+			throw new Exception("There are still unpaid balances in the ledger. Please settle account.");	
+		} 
+
+		app.business =  b;
+		app.appyear = dateSvc.getServerYear();
+        app.lobs = lobSvc.getActiveLobs([businessid:b.objid]);
+        app.appinfos = infoSvc.getActiveAppInfos([businessid:b.objid]);
+        app.assessmentinfos = []; 
+		app.lobs.each { 
+			it.assessmenttype = 'RETIRE'; 
+		} 
+	}
+
+	@Before(pattern="BusinessApplicationService.create", eval="#{args[0].apptype=='RETIRE' && args[0].txnmode == 'ONLINE' }")
+	public void beforeCreate( evt ) { 
+		def app = evt.args[0];
+		if ( !app.business?.objid ) 
+			throw new Exception("'app.business.objid' parameter is required");  
+		if ( !app.appyear ) 
+			throw new Exception("'app.appyear' parameter is required");  
+
+
+		app.requirements?.findAll{( it.step.toString() == 'info' )}.each{ 
+			if ( !it.completed.toString().matches('true|1')) 
+				throw new Exception('Please complete the '+ it.title +' requirement'); 
+			if ( !it.refno ) 
+				throw new Exception(''+ it.title +' requires a reference number'); 
+		} 
+		
+
+		def findby = [ objid: app.business.objid ]; 
+		// initiate record locking
+		business_lockid.find( findby ).update([ lockid: new java.rmi.server.UID().toString() ]); 
+		// validate business record 
+		def bb = business_lockid.findBusiness( findby ); 
+		if ( !bb?.objid ) throw new Exception("'"+ find.objid +"' Business Master account not found"); 
+
+		bb.state = ( bb.state ? bb.state.toString().toUpperCase() : null ); 
+		if ( !bb.state.toString().matches('ACTIVE|PROCESSING') ) 
+			throw new Exception("Business Master account status is not active"); 
+		if ( bb.state.toString() == 'PROCESSING' ) 
+			throw new Exception("An application for this business is currently being processed"); 
+
+		if ( !bb.app?.objid ) 
+			throw new Exception("Cannot locate the current application for this Business Master account"); 
+
+        // validate application record 
+		def test = business_lockid.findApp([ objid: bb.app.objid, appyear: app.appyear, apptype: 'RETIRE' ]); 
+		if ( test?.objid ) {
+			throw new Exception('Business Retire Application has already been created.\n Please refer to the Application No. '+ test.appno); 
+		}
+
+
+		def apps = business_application.getOpenApplications( [businessid: app.business.objid, filter: '' ] ); 
+		def b = bizSvc.open(app.business);
+		b.apptype = 'RETIRE'; 
+		b.state = 'PROCESSING'; 
+		b.appcount = b.appcount + 1; 
+		bizSvc.updateForRetire( b ); 
+
+		app.appno = b.bin +  "-" + b.appcount + "R"; 
+		app.business.apptype = b.apptype; 
+		app.yearstarted = b.yearstarted; 		
+	}
+
+	@After(pattern="BusinessApplicationService.create", eval="#{args[0].apptype=='RETIRE' && args[0].txnmode == 'ONLINE' }")
+	public void afterCreate(def evt) { 
+		def o = evt.result;
+
+		//add the lobs and app infos
+		def b = [businessid: o.business.objid, activeyear: o.appyear, applicationid: o.objid];
+		b.lobs = o.lobs;
+		lobSvc.addAppLobs( b );
+		
+		lobSvc.updateActiveLOBHistory([ businessid: o.business.objid, appyear: o.appyear ]);  
+
+		//start the workflow
+		workflowSvc.start([refid: o.objid, data: o]);	
+	}
+
+	@After(pattern="BusinessApplicationService.cancel", eval="#{args[0].apptype=='RETIRE' && args[0].txnmode == 'ONLINE' }")
+	public void afterCancel(def evt) { 
+		def app = evt.result;
+		def b = bizSvc.open(app.business);
+		b.state = 'ACTIVE';
+		bizSvc.update( b );
+		workflowSvc.deleteTasks([applicationid: app.objid]);
+	}
+
+	@After(pattern="BusinessApplicationService.checkReleaseStatus", eval="#{args[0].apptype=='RETIRE' }")
+	public void checkReleaseStatus(def evt) { 
+		def o = evt.args[0];
+		def result = evt.result;
+
+		def balinfo = business_receivable.findUnpaidBalance([applicationid: o.objid]); 
+		if ( balinfo?.balance > 0.0) {
+			result.canRelease = false; 
+		} else {
+			result.canRelease = true; 
+		} 
+	} 
+
+	@Before(pattern="BusinessApplicationService.release", eval="#{args[0].apptype=='RETIRE' && args[0].state=='RELEASE' && args[0].txnmode == 'ONLINE'}")
+	public void beforeRelease( evt ) { 	
+		def param = evt.args[0]; 
+		def xinfo = business_application.findInfoByAppid([applicationid: param.objid]);
+		if ( !xinfo ) throw new Exception(param.appno + " application does not exist"); 
+		if ( xinfo.state != 'RELEASE' )	
+			throw new Exception('The application status has already changed. Please reload the information.'); 
+
+		def balinfo = business_receivable.findUnpaidBalance([applicationid: param.objid]); 
+		if ( balinfo?.balance > 0.0) {
+			throw new Exception("There are still unpaid balances in the ledger. Please settle account.");	
+		} 
+	} 
+
+	@After(pattern="BusinessApplicationService.release", eval="#{args[0].apptype=='RETIRE' && args[0].txnmode == 'ONLINE' }")
+	public void afterRelease(def evt) { 
+		def app = evt.result;
+		def b = bizSvc.open(app.business);
+		b.state = 'RETIRED';
+		b.activeyear = app.appyear;
+		bizSvc.updateOnRelease( b );
+
+		lobSvc.updateActiveLOBHistory([ businessid: b.objid, appyear: app.appyear ]);  
+	} 
+}

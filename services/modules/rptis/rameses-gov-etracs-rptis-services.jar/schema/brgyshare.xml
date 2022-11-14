@@ -1,0 +1,36 @@
+<schema>
+	<element name="brgyshare" tablename="brgyshare">
+		<field name="objid" primary="true" />
+		<field name="state" required="true" />
+		<field name="txnno" />
+		<field name="txndate" />
+		<field name="year"  type="integer" />
+		<field name="month"  type="integer" />
+		<field name="totalshare" required="true" type="decimal" />
+		<field name="createdbyid" />
+		<field name="createdby" required="true" />
+		<field name="createdbytitle" required="true" />
+		<field name="postedbyid" />
+		<field name="postedby" />
+		<field name="postedbytitle" />
+		<field name="sharetype" />
+	</element>
+
+	<element name="item" tablename="brgyshareitem">
+		<field name="objid" primary="true" />
+		<field name="brgyshareid" required="true" />
+		<field name="barangayid" required="true" />
+		<field name="basiccurrent" required="true" type="decimal" />
+		<field name="basicprevious" required="true" type="decimal" />
+		<field name="basic" required="true" type="decimal" />
+		<field name="basicint" required="true" type="decimal" />
+		<field name="basicdisc" required="true" type="decimal" />
+		<field name="basicshare" required="true" type="decimal" />
+		<field name="basicintshare" required="true" type="decimal" />
+		<field name="commonshare" required="true" type="decimal" />
+	</element>
+
+</schema>
+
+
+

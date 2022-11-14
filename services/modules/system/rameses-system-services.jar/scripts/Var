@@ -1,0 +1,61 @@
+
+import com.rameses.annotations.*;
+
+/**
+* references: sys_var.sql
+*/
+
+class Var {
+
+   @PersistenceContext("system")
+   def em;	
+
+   @Context
+   def AppContext 
+
+	@ProxyMethod(local=true)
+	public def get( String name ) {
+		def val = em.sqlContext.createNamedQuery( "sys_var:get").setParameter('name',name).singleResult;
+		if(!val) return AppContext.getProperty( name );
+		if( val.type == "object" )
+			return em.serializer.read( val.value );
+		else	
+			return com.rameses.util.ExprUtil.substituteValues(val.value, AppContext.getProperties()); 
+	}
+
+	@ProxyMethod(local=true)
+	public def set( String name, def value ) {
+		em.sqlContext.createNamedExecutor( "sys_var:set").setParameters([value:value, name:name]).execute();
+	}
+
+	@ProxyMethod(local=true)
+	public def getProperty( String name, def defValue ) {
+		def o = get( name );
+		if( o )
+			return  o;
+		else {
+			o = AppContext.getProperty( name );
+			if( o ) return o;
+			return defValue;
+		}	
+   }
+
+   @ProxyMethod(local=true)
+   public def getList(def param) {
+		def qry = em.sqlContext.createNamedQuery("sys_var:list");	
+		qry.setPagingKeys("name");
+		
+		if( param?._start ) qry.setFirstResult( param._start );
+		if( param?._limit ) qry.setMaxResults( param._limit );
+		if( param.category ) qry.setParameter( 'category', param.category );
+		def list = qry.resultList;
+
+		return list
+   }
+
+   @ProxyMethod(local=true)
+   public def getCategories() {
+		return em.sqlContext.createNamedQuery("sys_var:category").resultList*.category;	
+   }
+   
+}

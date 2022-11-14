@@ -1,0 +1,76 @@
+import com.rameses.annotations.*
+import com.rameses.eserver.*;
+import com.rameses.common.*;
+
+class BldgRpuInterceptor
+{
+	@Service('BldgRPUService')
+	def svc 
+
+	@Service('BldgRPUGRService')
+	def grSvc 
+
+	@Service('RPTUtil')
+	def util 
+
+
+	@After(pattern="RPUService.initRpu", eval="#{result.rputype == 'bldg'}") 
+	public void initBldgRpu( evt ) {
+		svc.initBldgRpu(evt.result)
+	}
+
+
+	@After(pattern="RPUService.generateNewIds", eval="#{result.rputype == 'bldg'}") 
+	public void generateNewIds( evt ) {
+		svc.generateNewIds(evt.result)
+	}
+
+
+	@After(pattern="RPUService.calculateAssessment", eval="#{result.rputype == 'bldg'}") 
+	public void calculateAssessment( evt ) {
+		svc.calculateAssessment(evt.result)
+	}
+
+	
+	@After(pattern="RPUService.openRpu", eval="#{result.rputype == 'bldg'}") 
+	public void openBldgRpu( evt ) {
+		def rpu = evt.result
+		rpu.putAll( svc.openBldgRpu(rpu.objid) )	
+	}
+	
+
+	@After(pattern="RPUService.createRpu", eval="#{result.rputype == 'bldg'}") 
+	public void createBldgRpu( evt ) {
+		svc.createBldgRpu(evt.result)
+	}
+
+
+	@After(pattern="RPUService.updateRpu", eval="#{result.rputype == 'bldg'}") 
+	public void updateBldgRpu( evt ) {
+		svc.updateBldgRpu(evt.result)
+	}
+
+	@Before(pattern="RPUService.deleteRpu", eval="#{args[0].rputype == 'bldg'}") 
+	public void deleteBldgRpu( evt ) {
+		svc.deleteBldgRpu(evt.args[0])
+	}
+
+
+	@Before(pattern="RPUService.deleteItems", eval="#{args[0].rputype == 'bldg'}") 
+	public void deleteRpuItems( evt ) {
+		def rpu = evt.args[0]
+		svc.deleteItems(rpu)
+	}	
+
+	@After(pattern="RPUService.reviseRpu", eval="#{result.rputype == 'bldg'}") 
+	public void reviseRpu( evt ) {
+		try{
+			grSvc.reviseBldgRpu(evt.result)
+		}
+		catch(e){
+			throw e;
+		}
+	}	
+
+}
+

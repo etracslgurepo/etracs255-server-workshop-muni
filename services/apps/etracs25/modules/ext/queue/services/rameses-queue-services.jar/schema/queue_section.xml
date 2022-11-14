@@ -1,0 +1,14 @@
+<schema adapter="queue">
+	<element tablename="queue_section">
+		<field name="objid" primary="true" visible="true"/>
+		<field name="title" caption="Title" required="true"/>
+		<field name="currentseries" required="true" defaultValue="0" type="integer"/>
+		<field name="prefix" />
+		<field name="sortorder" required="true" defaultValue="0" type="integer"/>
+		<field name="dtexpiry" type="date"/> 
+		<field name="lockid" /> 
+		<complex name="group" ref="queue_group" jointype="many-to-one" required="false" includefields="objid,title">
+			<key field="groupid" target="objid"/> 
+		</complex> 
+	</element>	
+</schema>

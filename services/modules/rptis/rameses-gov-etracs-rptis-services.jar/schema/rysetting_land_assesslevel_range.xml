@@ -1,0 +1,10 @@
+<schema>
+	<element tablename="landassesslevelrange">
+		<field name="objid" primary="true"/>
+		<field name="landassesslevelid" required="true"/>
+		<field name="landrysettingid" required="true"/>
+		<field name="mvfrom" required="true" type="decimal"/>
+		<field name="mvto" required="true" type="decimal"/>
+		<field name="rate" required="true" type="decimal" />
+	</element>
+</schema>

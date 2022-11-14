@@ -1,0 +1,57 @@
+import com.rameses.annotations.*;
+import com.rameses.services.extended.*;
+import java.rmi.server.*;
+
+class BusinessTaxCreditService  {
+
+	@ActiveDB("business_taxcredit")
+	def em;
+
+	@ProxyMethod
+	public def post( def o ) {
+		if(!o.businessid)
+			throw new Exception("Please specify a businessid for tax credit");
+		if(!o.dr && !o.cr)	
+			throw new Exception("Please  provide a dr or cr entry when posting in tax credit")
+		if( (o.dr+o.cr) == 0 ) 
+			throw new Exception("DR and CR must not be zero");
+		
+		def head = em.read( [objid: o.businessid] );
+		if(!head) {
+			head = [:];
+			head.objid = o.businessid
+			head.businessid = o.businessid;
+			head.totaldr = 0;
+			head.totalcr = 0;
+			head.balance = 0;
+			head.currentlineno = 1;
+			head = em.create( head );
+		}
+		def detail = [:];
+		detail.parentid = head.objid;
+		
+		detail.lineno = head.currentlineno;
+		detail.particulars = o.particulars;
+		detail.refid = o.refid;
+		detail.refdate = o.refdate;
+		detail.refno = o.refno;
+		detail.reftype = o.reftype;
+		detail.dr = o.dr;
+		detail.cr = o.cr;
+		detail.objid = 'BTXCITEM'+new UID();
+		em.create( detail, "item" );
+		
+		//update the head with new totals
+		head.totaldr = head.totaldr + detail.dr;
+		head.totalcr = head.totalcr + detail.cr;
+		head.balance = head.totaldr - head.totalcr;
+		head.currentlineno = head.currentlineno + 1;
+		em.update( head );
+	}
+
+	@ProxyMethod
+	public def getList(def o) {
+		return em.getList( o );
+	}
+
+}

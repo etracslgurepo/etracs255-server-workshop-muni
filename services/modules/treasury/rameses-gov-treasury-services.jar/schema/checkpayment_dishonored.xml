@@ -1,0 +1,16 @@
+<schema>
+	<element tablename="checkpayment_dishonored"> 
+		<field name="objid" primary="true" /> 
+		<field name="checkpaymentid" required="true" /> 
+		<field name="dtfiled" required="true" caption="DateFiled" /> 
+		<field name="filedby_objid" required="true" /> 
+		<field name="filedby_name" required="true" caption="FiledBy"  /> 
+		<field name="remarks" required="true" /> 
+
+		<complex name="checkpayment" ref="checkpayment" 
+			jointype="many-to-one" required="true" 
+			includefields="refno,refdate,amount,receivedfrom,bank.*">
+			<key field="checkpaymentid" target="objid" />
+		</complex> 
+	</element> 
+</schema> 

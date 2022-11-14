@@ -1,0 +1,15 @@
+<schema>
+	<element tablename="bldgassesslevel">
+		<field name="objid" primary="true"/>
+		<field name="bldgrysettingid" required="true"/>
+		<field name="classification_objid" />
+		<field name="code" required="true" caption="Code" searchable="true" indexed="true" width="100" />
+		<field name="name" required="true" caption="Name" searchable="true" indexed="true" width="200" />
+		<field name="fixrate" required="true" type="boolean" caption="Fix?" width="50"/>
+		<field name="rate" required="true" type="decimal" caption="Rate" width="100"/>
+		<field name="previd" />
+		<complex name="classification" ref="propertyclassification" jointype="many-to-one" required="true">
+			<key field="classification_objid" target="objid" />
+		</complex>
+	</element>	
+</schema>

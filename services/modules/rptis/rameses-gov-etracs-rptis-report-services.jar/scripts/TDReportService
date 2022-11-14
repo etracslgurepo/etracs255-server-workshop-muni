@@ -1,0 +1,469 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class TDReportService
+{
+    @PersistenceContext('main')
+    def em
+
+    @ActiveDB('tdreport')
+    def adb 
+    
+	@Service('NumberService')
+    def numberSvc
+	
+	@Service('Var')
+	def var 
+	
+	@Service('DateService')
+	def dtSvc
+	
+	@Service('FAASService')
+	def faasSvc 
+
+	@Service('RPTUtil')
+	def util 
+
+	@Service('SignatureService')
+	def sigSvc 
+
+	@DataContext('faas_previous')
+	def em_faas_previous 
+
+	@DataContext('faas_backtax')
+	def em_faas_backtax
+
+
+	@ProxyMethod 
+	public def getFaasIds(params) {
+		if (!params.selectiontype)
+			throw new Exception('Selection Type is required.')
+
+		params.barangayid = params.barangay?.objid
+		if(!params.barangayid) params.barangayid = '%'
+
+		if (!params.state)
+			params.state = '%'
+
+		params.sectionfilter = ''
+		if (params.selectiontype.type == 'bysection')
+			params.sectionfilter = ' and rp.section like $P{section} '
+
+		params.starttdnofilter = ''
+		params.endtdnofilter = ''
+
+		if (params.selectiontype.type == 'bytdrange'){
+			params.starttdnofilter = ' and f.tdno >= $P{starttdno} '
+			params.endtdnofilter = ' and f.tdno <= $P{endtdno} '
+		}
+
+		return adb.getFaasIds(params)
+	}
+
+	@ProxyMethod
+	public def getData(faas) {
+		return buildTaxDec(faas.objid);
+	}
+	
+
+	@ProxyMethod
+	public def buildTaxDec(faasid){
+		def td = em.sqlContext.createNamedQuery('tdreport:getTDInfo')
+						.setParameter('faasid', faasid).singleResult
+		if (!td) throw new Exception('FAAS does not exist or has already been deleted.')
+		buildOrdinanceInfo(td)
+		buildCancelNote(td)
+		//buildMultiClaimInfo(td)
+		td.fullpin = td.displaypin 
+		td.taxable = util.toBoolean(td.taxable, true)
+		td.propertytype = td.rputype
+
+		td.location = td.lguname
+		if (td.parentlguname) {
+			td.location +=  (td.location ? ', ' : '') + td.parentlguname
+		}
+		
+		td.avinwords = numberSvc.convertDouble( td.totalav ).toUpperCase() + ' AND 00/100'
+
+		if (util.isFalse(var.td_report_display_appraisedby)) {
+			td.appraisedby = null
+			td.appraisedbytitle = null 
+		}
+
+		td.display_recommendedby = var.td_report_display_recommendedby ? var.td_report_display_recommendedby : '1'
+
+		td.address = concatHousenoStreetPurok( td ) 
+
+		td.annotations =  em.sqlContext.createNamedQuery('tdreport:getAnnotationMemoranda')
+								.setParameter('faasid', faasid)
+								.resultList
+		td.annotated = (td.annotations.size() > 0)
+
+		clearRealPropertyInfo(td)
+
+		buildPreviousInfo(td)
+
+		buildRpuAssessment(td)
+
+		buildLandReference( td )
+
+		buildContactInfo(td)
+
+		buildSignatories(td)
+
+		buildAdjustmentFactor(td)
+
+		td.backtaxes = em_faas_backtax
+						.find([faasid: faasid])
+						.orderBy('ry,tdno')
+						.list()
+
+		td.show_interim_watermark = util.toBoolean(var.show_interim_watermark, false)
+		td.esigned = adb.findEsigned(td) != null
+		return td 
+	}
+
+
+
+	def getPreviousInfo(list, fieldname){
+		return getPreviousInfo(list, fieldname, null)
+	}
+
+	def getPreviousInfo(list, fieldname, pattern){
+		def info = ''
+		list[fieldname].each{
+			if (it){
+				if (info) info += ' / '
+				if (pattern && it.matches('^[+-]?\\d*.?\\d+$')){
+					//valid number 
+					info += formatNumber(pattern, it)
+				}
+				else{
+					info += it 
+				}
+			}
+		}
+		return info 
+	}
+
+	def formatNumber(pattern, sval){
+		try{
+			return numberSvc.format(pattern, new BigDecimal(sval))
+		}
+		catch(Exception ex){
+			return sval
+		}
+	}
+
+	void buildPreviousInfo(faas){
+		def list = em_faas_previous.find([faasid:faas.faasid]).orderBy('prevtdno').list()
+		faas.prevtdno = getPreviousInfo(list, 'prevtdno')
+		faas.prevpin = getPreviousInfo(list, 'prevpin')
+		faas.prevowner = getPreviousInfo(list, 'prevowner')
+		faas.prevadministrator = getPreviousInfo(list, 'prevadministrator')
+		faas.prevav = getPreviousInfo(list, 'prevav', '#,##0.00')
+		faas.prevmv = getPreviousInfo(list, 'prevmv', '#,##0.00')
+		faas.prevareasqm = getPreviousInfo(list, 'prevareasqm', '#,##0.00')
+		faas.prevareaha = getPreviousInfo(list, 'prevareaha', '#,##0.000000')
+		faas.preveffectivity = getPreviousInfo(list, 'preveffectivity')
+		faas.prevtaxability = getPreviousInfo(list, 'prevtaxability')
+	}
+
+	void buildAdjustmentFactor(td){
+		if (td.rputype.equalsIgnoreCase('land')){
+			td.adjustmentfactor = adb.findAdjustmentFactor(td)?.adjfactor
+		}
+	}
+
+
+	void buildSignatories(td){
+		td.objid = td.faasid 
+		faasSvc.loadSignatories(td)
+
+		if (isRecommenderAuthorized(td)){
+			td.authorized = true
+		}		
+
+		td.signatories = [:]
+		def retval = sigSvc.decodeSignatories(adb.getSignatories(td))
+		td.signatories = retval.signatories 
+		td.signaturetampered = retval.tampered
+		td.tamperedsigmsg = retval.tamperedsigmsg
+	}	
+
+	def isRecommenderAuthorized(td){
+		if (td.recommender && td.recommender.name && 
+			   td.recommender.name.equalsIgnoreCase(td.approver?.name)){
+			td.recommender = [name:null, dtsigned:null]
+			return true 
+		}
+		return false 
+	}
+
+
+	void buildContactInfo(td){
+		def contact = adb.findEntityContactInfo(td.taxpayer)
+		if (contact)
+			td.owner += contact
+	}
+
+	def concatHousenoStreetPurok(td ){
+		def address = ''
+		if (td.houseno) address += td.houseno 
+
+		if (td.purok) {
+			if ( address.length() > 0 ) address += ', '
+			address += td.purok
+		}
+		
+		if (td.street) {
+			if ( address.length() > 0 ) address += ', '
+			address += td.street
+		}
+
+		return address 
+	}
+	
+
+	void buildRpuAssessment(td){
+		buildLandRpuAssessment(td)
+		buildBldgRpuAssessment(td)
+		buildMachRpuAssessment(td)
+		buildPlantTreeRpuAssessment(td)
+		buildMiscRpuAssessment(td)
+	}
+
+	void buildLandRpuAssessment(td){
+		if (td.rputype != 'land') return 
+		td.lands = adb.getStandardLandAssessment(td)
+		td.specificlands = adb.getDetailedLandAssessment(td)
+		//td.plants = adb.getLandPlantTreeAssessment(td)
+
+		//if multiple area, set mixedarea = 1 otherwise = 0
+		//in the report display sqm for the total area in cases of mixedarea = 1
+		def uniqueareatypelist = td.lands.areatype.unique()
+		if (uniqueareatypelist)
+			td.areatype = uniqueareatypelist[0]
+		if( uniqueareatypelist.size() > 1 ) {
+			td.lands.each{ it.mixedarea = 1 }
+			td.specificlands.each{ it.mixedarea = 1 }
+			td.mixedarea =  1 
+		}
+		else {
+			td.lands.each{ it.mixedarea = 0 }
+			td.specificlands.each{ it.mixedarea = 0 }
+			td.mixedarea  = 0
+		}
+
+		padExtraItems(td.lands, 4)
+		td.lands.each{
+			if (!it.areatype) {
+				 it.areatype = 'sqm'
+				 it.taxable = 1
+			}
+		}
+	}
+
+	void buildBldgRpuAssessment(td){
+		if (td.rputype != 'bldg') return 
+
+		def bldginfo  = em.sqlContext.createNamedQuery('tdreport:getBldgInfo')
+							.setParameter('faasid', td.faasid ).singleResult
+
+		def bldgkinds = adb.getBldgKindInfo([faasid:td.faasid])
+		bldginfo.bldgdescription = bldgkinds.bldgdescription.join(',')
+		bldginfo.predominant = bldgkinds[0]?.predominant
+
+		td.putAll(bldginfo)
+		
+		td.buildings = em.sqlContext.createNamedQuery('tdreport:getBldgAssessments')
+								.setParameter('faasid', td.faasid).resultList
+
+		def actualuseareas = adb.getActualUseAdditionalAreas([objid:td.faasid])
+		actualuseareas.each{addlarea -> 
+			def bldg = td.buildings.find{it.actualuseid == addlarea.actualuseid}
+			if (bldg) {
+				bldg.area += addlarea.area
+				bldg.areasqm += addlarea.area
+				bldg.areaha += addlarea.area / 10000.0
+			}
+		}
+
+		//adjust pin based on additional bldg lands
+		def lands = adb.getBldgLands([objid:td.rpuid])
+		if (lands){
+			def landpins = lands.landfaas.fullpin.join(', ')
+			td.fullpin += '\nPartially erected on lands: ' + landpins
+		}
+
+		padExtraItems(td.buildings, 4)
+	}
+
+	void buildMachRpuAssessment(td){
+		if (td.rputype != 'mach') return 
+
+		def machinelist = em.sqlContext.createNamedQuery('tdreport:getMachines')
+							.setParameter('faasid', td.faasid).resultList
+		td.machinenames = machinelist.machinename.join(', ')
+
+		if (util.isTrue(var.td_show_machine_details))
+			td.machines = em.sqlContext.createNamedQuery('tdreport:getMachineDetailedAssessment')
+							.setParameter('faasid', td.faasid).resultList
+		else 
+			td.machines = em.sqlContext.createNamedQuery('tdreport:getMachineAssessment')
+							.setParameter('faasid', td.faasid).resultList
+
+		td.machines.each{it.taxable = util.toBoolean(it.taxable, true)}
+
+		padExtraItems(td.machines, 4)
+	}
+
+	void buildPlantTreeRpuAssessment(td){
+		if (td.rputype != 'planttree') return 
+		td.plants = em.sqlContext.createNamedQuery('tdreport:getPlantTreeAssessment')
+							.setParameter('faasid', td.faasid).resultList
+
+		td.plants.each{it.taxable = util.toBoolean(it.taxable, true)}
+
+		padExtraItems(td.plants, 4)
+	}
+
+	void buildMiscRpuAssessment(td){
+		if (td.rputype != 'misc') return 
+		def misclist = em.sqlContext.createNamedQuery('tdreport:getMiscItems')
+							.setParameter('faasid', td.faasid).resultList 
+		td.miscdescriptions = misclist.name.join(', ')
+
+		td.miscitems = em.sqlContext.createNamedQuery('tdreport:getMiscAssessment')
+							.setParameter('faasid', td.faasid).resultList
+
+		td.miscitems.each{it.taxable = util.toBoolean(it.taxable, true)}
+
+		padExtraItems(td.miscitems, 4)
+	}
+
+	void clearRealPropertyInfo( td ) {
+		if( td.rputype != 'land' &&  util.isFalse(var.td_show_landinfo_on_improvements)) {
+			td.titleno 		= ''
+			td.cct			= ''
+			td.cctdate		= null
+			td.surveyno		= ''
+			td.cadastrallotno = ''
+			td.blockno		= ''
+			td.north		= ''
+			td.south		= ''
+			td.east			= ''
+			td.west			= ''
+		}
+	}
+
+	void buildLandReference( td ){
+		if(td.rputype != 'land' && util.isFalse(var.td_show_landinfo_on_improvements)){
+			def landref = adb.findLandReference(td)
+			if (landref){
+				if (landref.cadastrallotno) {
+					if (td.rputype == 'bldg')
+						td.landref = 'Built on Lot No. ' + landref.cadastrallotno
+					else if (td.rputype == 'planttree')
+						td.landref = 'Planted on Lot No. ' + landref.cadastrallotno
+					else 	
+						td.landref = 'Located on Lot No. ' + landref.cadastrallotno
+				}
+
+				if (landref.blockno) {
+					td.landref += ' Block No. ' + landref.blockno
+				}
+
+				if (td.landref) {
+					td.landref += ' under TD No. '	 + landref.tdno 
+				} else {
+					td.landref = ' Located on TD No. '	 + landref.tdno 
+				}
+
+                if (landref.titleno) {
+                    td.landref += ' Title No. '	 + landref.titleno
+                }
+
+				if (td.rputype == 'planttree')
+					td.landref += ' with an area of ' + numberSvc.format('#,##0.0000', landref.totalareaha) + ' ha.'
+				else 
+					td.landref += ' with an area of ' + numberSvc.format('#,##0.00', landref.totalareasqm) + ' sq.m.'
+
+				td.landref += ' in the name of ' + landref.owner.name + '.'	
+			}
+		}
+	}
+
+	void buildCancelNote(td){
+		if (td.state == 'CANCELLED'){
+			def notes = ''
+			def cfaas = adb.getCancellingFaasInfo(td)
+			if (cfaas){
+				notes  =  'Cancelled By TD/ARP No. ' + cfaas.tdno.join(',') + '.  ' 
+				notes += 'PIN No. ' + cfaas.fullpin.join(',') + '.  ' 
+				notes += 'Effective Year ' + cfaas.first().effectivityyear + '.  ' 
+				notes += 'Date ' + dtSvc.format('MMMMM dd, yyyy' ,td.canceldate) + '.  ' 
+			}
+			else{
+				//cancel faas transaction
+				def reason = adb.findCancelFaasReason(td)
+				if (reason){
+					notes = '';
+					if (reason.cancelledbytdnos) {
+						notes  +=  'Cancelled By TD/ARP No. ' + td.cancelledbytdnos + '.\n' 
+					}
+					notes  += 'Cancelled due to ' + reason.reason + '.\n'
+					notes += 'Date Cancelled: ' + dtSvc.format('MMMMM dd, yyyy' ,reason.txndate) + '.  ' 
+				}
+				else{
+					notes  =  'Cancelled By TD/ARP No. ' + td.cancelledbytdnos + '.\n' 
+					notes += 'Cancellation Reason: '  + td.cancelreason + '.\n'
+					notes += 'Date Cancelled: ' + dtSvc.format('MMMMM dd, yyyy' ,td.canceldate) + '.' 
+				}
+			}
+			td.cancelnote = notes + (td.cancelnote ? td.cancelnote : '')
+		}
+	}
+
+	void buildOrdinanceInfo(td){
+		def ordinance = adb.findOrdinanceInfo(td)
+		if (!ordinance  || !ordinance.ordinanceno){
+			def type = 'Land'
+			if (td.rputype == 'bldg')  type = 'Building'
+			if (td.rputype == 'mach')  type = 'Machinery'
+			if (td.rputype == 'planttree')  type = 'Plant/Tree'
+			if (td.rputype == 'misc')  type = 'Miscellaneous'
+			throw new Exception('Ordinance No. and date in ' + type + ' Revision setting is not set.')
+		}
+		td.putAll(ordinance)
+	}
+
+	void buildMultiClaimInfo(td){
+		if (td.rputype != 'land') return
+
+		def claims = adb.getActiveClaims(td)
+		if (claims){
+			claims.each{
+				it.info = it.owner.name + ' under TD No. ' + it.tdno 
+			}
+			def claim = claims.info.join(' and ')
+			def msg = 'Property is also declared in the name of ' + claim + '.'
+			td.claiminfo = msg 
+
+			td.memoranda += '\n\n' + td.claiminfo 
+		}
+
+	}
+
+	void padExtraItems(list, size) {
+		def pad = util.toBoolean(var.getProperty('td_report_pad_items', 0), false)
+		if (pad) {
+			for (int i = list.size(); i < size; i++) {
+				list << [:]
+			}
+		}
+	}
+
+	
+}

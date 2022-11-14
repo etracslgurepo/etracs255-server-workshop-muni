@@ -1,0 +1,52 @@
+import com.rameses.annotations.*;
+
+class AccountListInterceptor {
+	
+	@DataContext('account')
+	def acct_db;
+
+	@Before(pattern="QueryService.getList", eval="#{ args[0]._schemaname == 'account' }")
+	public void beforeGetList( evt ) {
+		def o = evt.args[0]; 
+
+		if ( o.vars == null ) o.vars = [:]; 
+
+		if ( o._actionid == 'account_incometarget:lookup-account' ) {
+			def subquery = "SELECT itemid FROM vw_account_incometarget WHERE maingroupid='"+ o.maingroupid +"' AND year="+ o.year; 
+			o.vars.subquery = subquery;
+
+			def str = '''objid NOT IN (${subquery})''';
+			if ( o.where ) {
+				o.where[0] = str + " AND " + o.where[0];	
+			} 
+			else { 
+				o.where = [str, [:]];
+			} 
+		} 
+	} 
+
+	@After(pattern="QueryService.getList", eval="#{ args[0]._schemaname == 'account' }")
+	public void afterGetList( evt ) {
+		def result = evt.result; 
+		def arrs = []; 
+		result.each{ o-> 
+			if ( o.groupid == null ) {
+				o.groupid = o.group?.objid; 
+			}
+
+			buildParentPath( o , arrs ); 
+			if ( arrs ) {
+				o.grouppath = arrs.join(' / '); 
+			}
+			arrs.clear(); 
+		}
+	} 
+
+	private void buildParentPath( o, arrs ) {
+		def acct = acct_db.find([ objid: o.groupid ]).select('objid,title,groupid').first(); 
+		if ( acct ) {
+			arrs << acct.title.toString(); 
+			buildParentPath( acct, arrs ); 
+		}
+	}
+} 

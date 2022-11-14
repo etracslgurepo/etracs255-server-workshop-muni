@@ -1,0 +1,135 @@
+import com.rameses.annotations.*;
+
+import treasury.utils.*;
+import treasury.facts.*;
+import enterprise.utils.*;
+import enterprise.facts.*;
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import java.util.*;
+import com.rameses.rules.common.RuleExecutionContext;
+
+public class AssessmentBillingService {
+	
+	@Service("DateService")
+	def dateSvc;
+
+	@Service("RuleExecutorService")
+	def ruleSvc;
+
+	@Service("FactBuilderService")
+	def factSvc;
+
+	@Service(value="HolidayService", connection="enterprise")
+	def holidaySvc;
+
+	/*********************************************************
+	* first parameter is the ruleName
+	* second parameter is the raw data sent 
+	* third parameter are factBuilder
+	* fourth parameter is the resultBuilder
+	**********************************************************/
+	@ProxyMethod
+	public def execute( def params ) {
+		if( !params.rulename ) throw new Exception("AssessmentBillingService error. rulename is required");
+		if( !params.params ) throw new Exception("AssessmentBillingService error. params is required");
+
+		def rulename = params.rulename;
+		def data = params.params;
+
+		def factBuilder = factSvc.getFacts([ rulename: rulename, params: data ]);
+
+		def facts = factBuilder.facts;
+		if(!facts) throw new Exception("There should be at least one fact in RuleProcessorService" );
+
+		def ctx = RuleExecutionContext.currentContext;
+		if( ctx == null ) {
+			ctx = new RuleExecutionContext(facts);
+		};
+
+		//set the variable info provider
+		if(!ctx.env.infoUtil) {
+			ctx.env.infoUtil = new VariableInfoUtil();
+			if( factBuilder.variableInfoProvider  ) ctx.env.infoUtil.provider = factBuilder.variableInfoProvider;
+		}	
+
+		def svrDate = dateSvc.getServerDate();
+		if( !facts.find{ it.class == treasury.facts.SystemDate.class } ) {
+			facts << new treasury.facts.SystemDate(svrDate);
+		};
+		if( !facts.find{ it.class == treasury.facts.BillDate.class } ) {
+			if( data.billdate ) {
+				facts << new BillDate( data.billdate );
+			}
+			else {
+				facts << new BillDate(svrDate);
+			}
+		};
+
+		//include holidays
+		facts << new HolidayFact(  
+			handler: { dt->
+				def h = holidaySvc.lookup(dt);
+				return (h!=null);
+			}
+		);
+
+
+		if( data.amtpaid ) {
+			def amt = new BigDecimal( data.amtpaid + "" );
+			facts << new treasury.facts.Payment( amount: amt );
+		}
+
+		def startgroup = params.startgroup;
+		boolean started = true;
+		if(startgroup) started = false;
+		def hdlr = { grpname ->
+			if(!started && startgroup == grpname ) started = true;
+			if(!started) return false;
+			if( ctx.result.askinfos ) return false;
+			return true;
+		};
+
+
+		def res = ruleSvc.execute( rulename, facts, null, hdlr );
+		if(!started) throw new Exception("No rules fired. Ruelgroup " +  params.startgroup + " does not exist" ); 
+
+		if( res.askinfos ) {
+			return [askinfos : res.askinfos.collect{ it.toMap() } ];
+		}
+		
+		//-------  PRINT THE RESULT  --------//
+		def m = [ billitems:[], infos:[], requirements:[] ];
+		facts.each { o->
+			if( o instanceof BillItem ) {
+				m.billitems << o.toMap();
+			}
+			else if(o instanceof CreditBillItem ) {
+				m.billitems << o.toMap();
+			}
+			else if(o instanceof BillSubItem ) {
+				m.billitems << o.toMap();	
+			}
+			else if( o instanceof SummaryBillItem ) {
+				m.billitems << o.toMap();
+			}
+			else if( o instanceof VariableInfo ) {
+				if(o.system == 0) m.infos << o.toMap();
+			}
+			else if( o instanceof DueDate ) {
+				if(o.tag) m[(o.tag)] = o.date;
+			}
+			else if( o instanceof BillDate ) {
+				m.billdate = o.date;
+			}
+		}
+		//calc totals
+		if(m.billitems) {
+			m.amount = m.billitems.sum{ it.amount };	
+		}
+		return m;
+	}
+
+
+}

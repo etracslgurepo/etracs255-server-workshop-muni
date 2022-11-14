@@ -1,0 +1,18 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+
+class MobileCommonService 
+{
+    @Service('DateService')
+    def dateSvc; 
+
+	@ProxyMethod 
+	public long getServerTime() { 
+		return dateSvc.serverDate.time; 
+	} 
+
+	@ProxyMethod 
+	public String getServerDateAsString() { 
+		return dateSvc.serverDate.toString(); 
+	} 
+}

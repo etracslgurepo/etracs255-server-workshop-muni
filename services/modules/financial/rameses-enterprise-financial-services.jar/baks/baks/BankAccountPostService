@@ -1,0 +1,94 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.common.*
+import com.rameses.services.extended.*
+
+class BankAccountPostService  {
+
+	@ActiveDB("bankaccount")
+	def em;
+
+	@ActiveDB("bankaccount_entry")
+	def entry;
+
+	@Service("DateService")
+	def dateSvc;
+
+	@ProxyMethod
+	public def postDR( def o ) {
+		if(!o.objid) throw new Exception("Objid is required");
+		if(!o.amount)  throw new Exception("Amount is required");
+		if(!o.refid) throw new Exception("Refid is required");
+		if(!o.reftype) throw new Exception("Reftype is required");
+
+		def cb = em.read(  o );
+		if(cb.forwardbalance==null) cb.forwardbalance = 0;
+		if(cb.beginbalance==null) cb.beginbalance = 0;
+		if(cb.totaldr==null) cb.totaldr = 0;
+		if(cb.totalcr==null) cb.totalce = 0;
+		if(cb.endbalance==null) cb.endbalance = 0;
+
+		def balance = cb.endbalance;
+		cb.totaldr += o.amount;
+		cb.endbalance = (cb.beginbalance + cb.forwardbalance + cb.totaldr) - cb.totalcr;
+		
+		def detail = [:];
+		detail.objid = "BNKACCTE"+new UID();
+		detail.parentid = cb.objid;
+		detail.lineno = cb.currentlineno;
+		detail.txndate = dateSvc.serverDate;
+		detail.refid = o.refid;
+		detail.refno = o.refno;
+		detail.refdate = o.refdate;
+		detail.reftype = o.reftype;
+		detail.particulars = o.particulars;
+		detail.dr = o.amount;	
+		detail.cr = 0;
+		detail.runbalance = cb.endbalance;
+		entry.create(detail);
+		
+		cb.currentlineno += 1;
+		em.update( cb );
+		return true;
+	}
+
+	@ProxyMethod
+	public def postCR( def o ) {
+		if(!o.objid) throw new Exception("Objid is required");
+		if(!o.amount)  throw new Exception("Amount is required");
+		if(!o.refid) throw new Exception("Refid is required");
+		if(!o.reftype) throw new Exception("Reftype is required");
+
+		def cb = em.read( o );
+		if(cb.forwardbalance==null) cb.forwardbalance = 0;
+		if(cb.beginbalance==null) cb.beginbalance = 0;
+		if(cb.totaldr==null) cb.totaldr = 0;
+		if(cb.totalcr==null) cb.totalce = 0;
+		if(cb.endbalance==null) cb.endbalance = 0;
+		
+		def balance = cb.endbalance;
+		cb.totalcr += o.amount;
+		cb.endbalance = (cb.beginbalance + cb.forwardbalance + cb.totaldr) - cb.totalcr;
+		
+		def detail = [:];
+		detail.objid = "BNKACCTE"+new UID();
+		detail.parentid = cb.objid;
+		detail.lineno = cb.currentlineno;
+		detail.txndate = dateSvc.serverDate;
+		detail.refid = o.refid;
+		detail.refno = o.refno;
+		detail.refdate = o.refdate;
+		detail.reftype = o.reftype;
+		detail.particulars = o.particulars;
+		detail.dr = 0;
+		detail.cr = o.amount;	
+		detail.runbalance = cb.endbalance;
+		entry.create(detail);
+		
+		cb.currentlineno += 1;
+		em.update( cb );
+		return true;
+	}
+	
+}

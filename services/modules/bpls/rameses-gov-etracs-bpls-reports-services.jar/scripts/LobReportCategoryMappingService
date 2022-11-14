@@ -1,0 +1,41 @@
+import com.rameses.annotations.*;
+
+class LobReportCategoryMappingService {
+	
+	@DataContext("lob")
+	def lob;
+
+	@DataContext("lob_report_group")
+	def lobgrp;
+
+	@DataContext("lob_report_category")
+	def lobcategory;
+
+	@DataContext("lob_report_category_mapping")
+	def mapping;
+
+	@ProxyMethod
+	public def getGroups() {
+		return lobgrp.list();
+	}
+
+	@ProxyMethod
+	public def getList(def o) {
+		return lobcategory.getList( [groupid: o.groupid]);
+	}
+
+	@ProxyMethod
+	public def addMapping(def o ) {
+		if( !o.groupid ) throw new Exception("groupid is required");
+		if( !o.lobid ) throw new Exception("lobid is required");
+		o.objid = o.groupid + '-' + o.lobid;
+		mapping.create(o);
+	}
+	
+	@ProxyMethod
+	public def removeMapping(def o ) {
+		mapping.delete(o);
+	}	
+
+
+}

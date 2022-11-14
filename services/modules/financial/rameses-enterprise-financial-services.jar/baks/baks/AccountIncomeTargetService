@@ -1,0 +1,43 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.common.*
+import com.rameses.services.extended.*;
+
+
+class AccountIncomeTargetService extends ActiveListService {
+
+	@ActiveDB("account_incometarget")
+	def em;
+
+	@Service("DateService")
+	def dateSvc;
+
+	@ProxyMethod
+	public def getColumns(def p) {
+		def list = [
+			[name:'account.code', caption:'Item Code', width:100, resizable:false ],
+			[name:'account.title', caption:'Item Title' ],
+			[name:'target', caption:'Target', width:150,resizable:false, type:'decimal', editable: true ],
+			[name:'', caption:'' ],
+		];
+	}
+	
+
+	
+	@ProxyMethod
+	public def getCurrentYear() {
+		return dateSvc.serverYear;
+	}
+
+	public void beforeList(o) {
+		o.code = (!o.code)? "%": o.code +"%";
+	}
+
+	@ProxyMethod
+	public void saveTarget(p) {
+		if(!p.year) p.year = dateSvc.serverYear;
+		em.save(p);
+	}
+
+}

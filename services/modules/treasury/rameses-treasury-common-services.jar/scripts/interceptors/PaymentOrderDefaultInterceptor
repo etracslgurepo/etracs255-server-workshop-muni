@@ -1,0 +1,123 @@
+import com.rameses.annotations.*;
+
+class PaymentOrderDefaultInterceptor {
+
+	@Service( dynamic=true )
+	def dynaSvc;
+
+	@Service("PaymentOrderService")
+	def poSvc;
+
+	@DataContext( dynamic=true )
+	def dynaEm;
+
+	@Env 
+	def env; 
+
+
+	@Before(pattern="PersistenceService.create", eval="#{args[0]._schemaname == 'paymentorder'}")
+	public void beforeCreate( evt ) { 
+		def r = evt.args[0];
+		poSvc.initData( r );
+	} 
+
+	@After(pattern="PersistenceService.create", eval="#{args[0]._schemaname == 'paymentorder'}")
+	public void afterCreate( evt ) { 
+		def param = evt.args[0];
+		def result = evt.result;
+		resolveData( param, result );
+	}	
+
+	@Before(pattern="PersistenceService.read", eval="#{args[0]._schemaname == 'paymentorder'}")
+	public void beforeRead( evt ) {
+		def param = evt.args[0];
+		if ( param.state.toString() == 'CANCELLED' ) { 
+			param._schemaname = param._schemaname +'_cancelled'; 
+		}
+		else if ( param.state.toString().matches('PAID|CLOSED')) { 
+			param._schemaname = param._schemaname +'_paid'; 
+		}
+	}
+
+	@After(pattern="PersistenceService.read", eval="#{args[0]._schemaname == 'paymentorder'}")
+	public void afterRead( evt ) {
+		def param = evt.args[0];
+		def result = evt.result;
+		resolveData( param, result );
+	}
+
+	@Before(pattern="PersistenceService.update", eval="#{args[0]._schemaname == 'paymentorder'}")
+	public void beforeUpdate( evt ) { 
+		def param = evt.args[0];
+		if ( param._action == 'delete' ) {
+			def em = dynaEm.lookup('paymentorder_cancelled');
+			def po = em.find([ objid: param.objid.toString() ]).select('objid').first(); 
+			if ( po ) {
+				param._schemaname = 'paymentorder_cancelled'; 
+			}
+			else {
+				em = dynaEm.lookup('paymentorder_paid');
+				po = em.find([ objid: param.objid.toString() ]).select('objid').first(); 
+				if ( po ) param._schemaname = 'paymentorder_paid'; 
+			}
+		}
+		else if ( param._action == 'close' ) {
+			def em = dynaEm.lookup('paymentorder_paid');
+			def po = em.find([ objid: param.objid.toString() ]).select('objid').first(); 
+			if ( po ) param._schemaname = 'paymentorder_paid'; 
+		}
+	}
+
+	@After(pattern="PersistenceService.update", eval="#{args[0]._schemaname == 'paymentorder'}")
+	public void afterUpdate( evt ) { 
+		def param = evt.args[0];
+		logAction( param, evt.result ); 
+
+		if ( param._action == 'delete' ) {
+			def em = dynaEm.lookup('paymentorder'); 
+			em.find([objid: param.objid.toString()]).delete(); 
+		}
+		else if ( param._action == 'cancel' ) {
+			def em = dynaEm.lookup('paymentorder'); 
+			def po = em.find([ objid: param.objid.toString() ]).first();
+
+			po.state = 'CANCELLED';
+			po.dtcancelled = dynaSvc.lookup('DateService').getServerDate();
+			po.cancelledby = [objid: env.USERID, name: env.FULLNAME]; 
+			po.remarks = 'Mark as cancelled';
+
+			em = dynaEm.lookup('paymentorder_cancelled'); 
+			em.create( po ); 
+		} 
+	} 
+
+
+	void resolveData( req, res ) {
+		if ( !res ) return; 
+
+		def bc = poSvc.getBarcodePrefix( req?._connection ); 
+		res.txncode = bc?.barcodeid +":"+ res.objid; 
+		res.checksum = poSvc.buildCheckSum( res.objid ); 
+	}
+
+
+	void logAction( param, result ) {
+		if ( !param._action ) return;
+
+		if ( !param.objid ) throw new Exception('objid  parameter is required in logging actions');
+
+		def logSvc = dynaSvc.lookup('LogService'); 
+		def _schemaname = ( param._schemaname ? param._schemaname : 'paymentorder' ); 
+		def _refid = param.objid; 
+
+		if ( param._action == 'approve' ) {
+			logSvc.logA( param._action, _schemaname, _refid, 'Approve for payment');
+		}
+		else if ( param._action == 'cancel' ) {
+			logSvc.logA( param._action, _schemaname, _refid, 'Mark as cancelled');
+		}
+		else if ( param._action == 'delete' ) {
+			logSvc.logA( param._action, _schemaname, _refid, 'Delete record');
+		}
+	}	
+}

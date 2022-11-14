@@ -1,0 +1,37 @@
+import com.rameses.annotations.*; 
+
+class OnlineBusinessPermitInterceptor { 
+
+	@DataContext( dynamic=true )
+	def dynaEm;
+
+
+	@After(pattern="BusinessPermitService.getReport")
+	public void afterGetReport( evt ) { 
+		def res = evt.result; 
+		if ( !res?.applicationid ) return; 
+
+		def em = dynaEm.lookup('online_business_application');
+
+		if ( res.parentapplicationid ) {
+			def oapp = em.find([ objid: res.parentapplicationid ]).select('objid,dtcreated,controlno,contact.*').first(); 
+			res.onlineapplication = oapp; 
+		}
+		else if ( res.applicationid ) {
+			def oapp = em.find([ objid: res.applicationid ]).select('objid,dtcreated,controlno,contact.*').first(); 
+			res.onlineapplication = oapp; 	
+		} 		
+	} 
+
+    @Before(pattern="JasperEmailQueueService.send", eval="#{args[0].reportid == 'business_permit'}", index=100)
+    public void beforeSendEmailQueue( evt ) {
+        def param = evt.args[0];
+        def appid = param.info?.applicationid; 
+        if ( !appid ) return; 
+
+        if ( !param.to ) { 
+	        def oapp = dynaEm.lookup('online_business_application').find([ objid: appid ]).first(); 
+        	param.to = oapp?.contact?.email; 
+        } 
+    } 
+}

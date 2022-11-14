@@ -1,0 +1,192 @@
+import com.rameses.annotations.*
+import com.rameses.services.extended.*
+
+class RPTUtilityService
+{
+	@Env 
+	def env 
+
+	@ActiveDB('rptutility')
+	def em
+
+	@ActiveDB('rpu')
+	def rpudb
+
+	@Service('RPUService')
+	def rpuSvc 
+	
+	@Service('RealPropertyService')
+	def rpSvc 
+
+	@ActiveDB('faas_list')
+	def faasListEm
+
+	@Service('LogService')
+	def logSvc 
+
+	@Service('FAASService')
+	def faasSvc 
+
+	@DataContext('realproperty')
+	def em_realproperty
+
+	@DataContext('rptledger')
+	def em_ledger
+
+
+	
+	 //info: faasid, oldpin, tdno, pintype, municipality, barangay, 
+	//section, parcel, suffix, newpin, ssection, sparcel 
+	@ProxyMethod
+	public void updatePin( info ) { 
+		rpuSvc.validateSuffix(info.rputype, info.suffix) 
+		rpuSvc.checkDuplicateFullPin([objid:info.rpuid, ry: info.ry, fullpin:info.newpin, rputype: info.rputype])
+		def tokens = info.newpin.tokenize('-')
+		info.ssection = tokens[3]
+		info.sparcel = tokens[4]
+		info.oldfaas = em.findFaasInfo(info)
+		info.oldfullpin = info.oldfaas.fullpin
+		info.taxpayer = info.oldfaas.taxpayer 
+
+		if( info.rputype == 'land') 
+			updatePinLand(info)
+		else 
+			updatePinImprovement(info)
+	}
+
+	void updateCommonInfo(info){
+		info.rpu = [objid:info.rpuid, fullpin:info.newpin, rputype:info.rputype, suffix: info.suffix, subsuffix: info.subsuffix]
+		info.rp = [pin: info.newpin]
+		
+		if (info.suffix > 0) {
+			if (info.landfaas) {
+				info.rp = [pin: info.landfaas.fullpin]
+			} else {
+				info.rp = em_realproperty.select('pin').find([objid: info.realpropertyid]).first();
+			}
+		}
+		
+		if (info.rputype != 'land' || (info.rputype == 'land' && !info.claimno)){
+			faasSvc.updateFullPinInfo(info)
+			info.newpin = info.fullpin 
+			info.pin = info.fullpin.replace('(', '')
+			info.pin = info.pin.replace(')', '')
+		}
+
+		em.modifyRpuPin(info)
+		em.modifyFaasPin(info)
+		em.modifySubLedgerPin(info)
+		em.modifyLedgerPin(info)
+		em.modifyFaasListPin(info)
+		em.modifySubdividedLandPin(info)
+		em.modifySubdivisionAffectedRpu(info)
+		log(info.faasid, info.oldfullpin, info.newpin)
+	}
+
+	void updatePinImprovement(info){
+		info.landfaasid = info.landfaas.objid
+		def landfaas = em.findLandFaas(info)
+		if (!landfaas)
+			throw new Exception('Current Land FAAS with PIN No. ' + info.landfaas.fullpin +' does not exist.')
+		
+
+		info.realpropertyid = landfaas.realpropertyid
+		info.barangay = landfaas.barangay 
+		info.barangayid = info.barangay.objid
+		info.barangayname = info.barangay.name 
+		info.landrpuid =landfaas.rpuid 
+		info.rp = landfaas.rp 
+
+
+		if('bldg' == info.rputype)
+			em.modifyBldgLandRpu(info)
+		else if('mach' == info.rputype)
+			em.modifyMachLandRpu(info)
+		else if('planttree' == info.rputype)
+			em.modifyPlantTreeLandRpu(info)
+		else if('misc' == info.rputype)
+			em.modifyMiscLandRpu(info)
+
+		updateCommonInfo(info)
+	}
+
+	void updatePinLand(info){
+		def rpu = rpuSvc.openRpu( [objid:info.rpuid] )
+		def rp = rpSvc.open([objid:info.oldfaas.realpropertyid])
+		def oldpin = rp.pin 
+
+		//update with new info 
+		rp.pintype = info.pintype 
+		rp.pin = info.newpin 
+		rp.section = info.ssection
+		rp.barangay = info.barangay
+		rp.barangayid = info.barangay.objid 
+		rp.parcel = info.sparcel 
+		rp.claimno = info.claimno
+		rpSvc.update( rp )
+		info.realpropertyid = rp.objid 
+		info.barangayid = info.barangay.objid
+		info.barangayname = info.barangay.name 
+		updateCommonInfo(info)
+
+		//update improvements pin 
+		info.landrpuid = info.oldfaas.rpuid 
+		def items = em.getImprovements(info)
+		items.each{
+			def improvfaas = em.findFaasInfo(it)
+			def param = [
+				faasid  : it.faasid,
+				oldpin  : it.fullpin, 
+				newpin  : buildNewPin(info.newpin, it.suffix),
+				suffix  :it.suffix, 
+				rpuid   : it.objid,
+				realpropertyid : rp.objid,
+				rputype : it.rputype, 
+				landrpuid : rpu.objid,
+				taxpayer  : improvfaas.taxpayer, 
+				barangayid   : info.barangayid, 
+				barangayname : info.barangayname, 
+			]
+			updateCommonInfo(param)
+		}
+	}
+
+
+	void log(refid, oldpin, newpin){
+		logSvc.logA('modifypin', 'FAAS', refid, 'Modify PIN ' + oldpin + ' to ' + newpin + '.')
+	}
+
+	def buildNewPin(newpin, suffix){
+	        return newpin + '-' + suffix
+	}
+
+
+
+	@ProxyMethod
+	public void deleteTableData(params){
+		em.deleteTableData(params)
+	}
+
+	@ProxyMethod
+	public def getLedgerByFaas(faas) {
+		def hasledger = true;
+		def ledger = em_ledger.find([faasid: faas.objid]).first()
+		if (!ledger) {
+			hasledger = false;
+			ledger = em_ledger.find([tdno: faas.tdno]).first()
+		}
+		return [hasledger: hasledger, ledger: ledger]
+	}
+
+	@ProxyMethod
+	public def changeFAASLedgerMapping(params) {
+		if (!params.faasid) throw new Exception('faasid must be specified')
+		if (!params.rptledgerid) throw new Exception('rptledgerid must be specified')
+		def ledger = em_ledger.select('faasid').find([objid: params.rptledgerid]).first()
+		if (!ledger) throw new Exception('Ledger does not exist or has been deleted.')
+		def oldfaasid = (ledger.faasid ? ledger.faasid : '<none>')
+		em_ledger.find([objid: params.rptledgerid]).update([faasid: params.faasid])
+		logSvc.logA('change_ledger_mapping', 'FAAS', params.faasid, 'Change ledger mapping from ' + oldfaasid + ' to ' +  params.faasid);
+		return getLedgerByFaas([objid: params.faasid])
+	}
+}

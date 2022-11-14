@@ -1,0 +1,22 @@
+def db = new TestProxy( [
+    'app.context': 'etracs25',
+    'app.cluster': 'osiris3',
+    'app.host': 'localhost:8070',
+]);
+
+def pmtSvc = db.create("PaymentOrderService")
+
+def m = [:];
+m.payer = [ objid:'IND-10021e02:14966f409d6:-7d35' , name:'WELMARK FERNANDEZ'];
+m.paidby = 'WELMARK FERNANDEZ';
+m.paidbyaddress = 'CEBU CITY';
+m.txntype = "WATER_APPLICATION";
+m.items = [
+   [item: [objid: 'REVITEM3e3f6927:1088660e36d:-7e81'], remarks:'ONE TIME PAYMENT', amount:50],
+   [item: [objid: 'REVITEM3e3f6927:1088660e36d:-7e13'], remarks:'FOR ABROAD', amount:100]
+];
+m.amount = 150;
+def z = pmtSvc.create( m );
+
+println z.txnid;
+

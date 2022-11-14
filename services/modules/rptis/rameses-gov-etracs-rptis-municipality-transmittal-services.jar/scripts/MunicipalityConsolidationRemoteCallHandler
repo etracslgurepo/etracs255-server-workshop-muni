@@ -1,0 +1,69 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+import com.rameses.services.extended.*
+
+class MunicipalityConsolidationRemoteCallHandler
+{   
+	@Service('ConsolidationService')
+	def svc
+
+	@ActiveDB('consolidation_task')
+	def taskEm;
+
+	@Service('ConsolidationSupportService')
+	def supportSvc 
+
+	@ActiveDB('faas')
+	def faasEm
+
+
+	@ProxyMethod
+	public void postApprovedConsolidationFromProvince(consolidation){
+		def state = svc.getState( consolidation )
+		if (state == null || state != 'APPROVED'){
+			println 'Posting consolidation....'
+			state = 'FORAPPROVAL'
+			consolidation.state = state
+			consolidation.faases.each{
+				def fstate = faasEm.findState(it)
+				it.state = (fstate == null ? 'PENDING' : fstate.state)
+			}
+			supportSvc.postConsolidationData(consolidation)
+			consolidation.tasks = taskEm.getTasks(consolidation)
+			doApproveConsolidation(consolidation)
+			println 'Consolidation ' + consolidation.txnno + ' created from Province has been successfully posted and approved.'
+		}
+	}
+
+
+	@ProxyMethod
+	public void approveConsolidationByProvince(consolidation){
+		def state = svc.getState( consolidation.objid )
+		if (state  && ! state.equalsIgnoreCase('APPROVED')){
+			supportSvc.updateFaasesData(consolidation)
+			doApproveConsolidation(consolidation)
+			println 'Consoidation has been successfully approved.'
+		}
+		
+	}
+
+	private void doApproveConsolidation(consolidation){
+		svc.approveConsolidatedLandFaas(consolidation)
+		
+		svc.getAffectedRpus(consolidation.objid).each{
+			svc.approveAffectedRpuFaasRecord(consolidation, it)
+		}
+
+		svc.approve(consolidation)
+
+		consolidation.tasks.each{
+			it.data = consolidation
+			taskEm.save(it)
+			svc.updateSignatories(it)
+		}
+		
+		taskEm.removeOpenTask(consolidation)
+
+		svc.insertFaasSignatories(consolidation)
+	}
+}

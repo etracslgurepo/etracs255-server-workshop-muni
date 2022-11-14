@@ -1,0 +1,30 @@
+import com.rameses.annotations.*;
+import com.rameses.services.extended.*;
+
+public class SyncCoordinatorService {
+
+    @Service(dynamic=true)
+    def dynSvc
+
+	@ProxyMethod
+	public def send(syncdata) {
+		require(syncdata, 'reftype', 'reftype')
+		require(syncdata, 'action', 'action')
+		require(syncdata, 'remote', 'remote')
+		require(syncdata.remote, 'orgcode', 'remote.orgcode')
+		
+		if (syncdata.idx == null) {
+			syncdata.idx = 0
+		}
+
+		def svc = dynSvc.lookup(syncdata.remote.orgcode + ':RemoteSyncService', 'gdx-service')
+		return svc.receive(syncdata)
+	}
+
+	void require(data, field, caption){
+		if (!data[field]) {
+			throw new Exception(caption + ' must be specified')
+		}
+	}
+
+}

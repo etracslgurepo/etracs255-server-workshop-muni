@@ -1,0 +1,19 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import java.util.concurrent.*;
+
+class MunicipalityBatchGrSupportService
+{
+    /* intercepted by Sync Facility */
+    @ProxyMethod
+    public def resendToProvince( batchgr ) {
+        return batchgr;
+    }
+
+    @ProxyMethod
+    public def resendRequirements( batchgr ){
+        return batchgr
+    }
+
+}
+

@@ -1,0 +1,19 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class FAASTxnTypeService 
+{
+	@ActiveDB('faastxntype')
+	def em
+
+	@ProxyMethod
+	public void createAttributeType(attribute) {
+		def attr = [attribute:attribute.toUpperCase()]
+		def attrtype = em.findAttributeType(attr)
+		if (attrtype)
+			throw new Exception('Attribute ' + attribute + ' is already defined.')
+		em.insertAttributeType(attr)
+	}
+
+}

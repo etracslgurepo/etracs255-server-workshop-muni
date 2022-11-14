@@ -1,0 +1,42 @@
+<schema>
+	<element tablename="creditpayment" >
+		<field name="objid" primary="true" prefix="CP"/>
+		<field name="state" required="true" defaultvalue="OPEN"/>
+		<field name="txndate" required="true"  type="timestamp"/>
+		<field name="controlno" required="true" searchable="true" indexed="true" caption="Receipt No"/>
+		<field name="controldate" required="true" caption="Receipt Date" indexed="true" type="date"/>
+		<field name="txntype" required="true" indexed="true" caption="Txn Mode"/>
+		<field name="payer_objid"  />
+		<field name="payer_name"  caption="Payer" searchable="true"  indexed="true"/>
+		<field name="paidby" required="true" caption="Paid By"/>
+		<field name="paidbyaddress" required="true" />
+		
+		<field name="amount" required="true" type="decimal" caption="Amount"/>
+		
+		<field name="reftype" />
+		<field name="refid" />
+		<field name="refno" />
+
+		<field name="org_objid" required="true" />
+		<field name="org_name" required="true" indexed="true" caption="Org Name"/>
+		
+		<field name="user_objid" />
+		<field name="user_name" indexed="true" caption="User Name"/>
+		<field name="remarks" />
+
+		<field name="collectionvoucherid"/>
+
+		<complex name="items" ref="creditpaymentitem" jointype="one-to-many">
+			<key field="objid" target="receiptid" />
+		</complex>	
+
+		<complex name="sharing" ref="creditpayment_share" jointype="one-to-many" required="false">
+			<key field="objid" target="receiptid" />
+		</complex>	
+
+
+	</element>
+	
+	
+</schema>
+

@@ -1,0 +1,26 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import java.rmi.server.UID;
+import com.rameses.util.*;
+
+class ProfessionListServiceInterceptor  {
+
+	@DataContext("profession")
+	def profession;
+
+	@After( pattern="ListService.getList", eval="#{args[0].name == 'profession'}" )
+	public void getProfessionList(def evt) {
+		def o = evt.args[0];
+		def list = evt.result;
+		def xlist = profession.where( "objid LIKE :p", [p:o.searchtext+"%"] ).list();
+		if(xlist) list.addAll( xlist*.objid );
+	}
+
+	@After( pattern="ListService.add", eval="#{args[0].name == 'profession'}" )
+	public void addProfession(def evt) {
+		def o = evt.args[0];
+		profession.save( [objid: o.value] );
+	}
+
+
+}

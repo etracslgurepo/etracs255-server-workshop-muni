@@ -1,0 +1,95 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.common.*
+import com.rameses.services.extended.*;
+import java.util.*;
+import com.rameses.rules.common.*;
+
+class RuleExecutorService {
+
+	@Resource("RuleService")
+	def ruleSvc;
+
+	@ActiveDB("rule")
+	def ruleDB;
+		
+	@Service("DateService")
+	def dateSvc;
+
+	private static Map metaClasses = Collections.synchronizedMap(new HashMap());
+
+
+	private def getClassInstance( String ruleset, String actionName, String actionClassname) {
+		if( !metaClasses.containsKey(ruleset)  ) metaClasses.put(ruleset, [:] );
+		def rsMap = metaClasses.get(ruleset);
+		if( !rsMap.containsKey(actionName) ) {
+			try {
+				rsMap.put( actionName, getClass().getClassLoader().loadClass(actionClassname).newInstance() );
+			}
+			catch(Exception ex) {
+				throw new Exception("Error loading action class " + actionName + " ->" + ex.message);
+			}
+		}
+		return rsMap.get(actionName);
+	}
+
+	@ProxyMethod	
+	public def execute( String ruleset, def facts, def actions, def handler )	{
+		//just in case you want to pass it beforehand, you can do so.
+		def ctx = RuleExecutionContext.getCurrentContext();
+		if(ctx == null) {
+			ctx = new RuleExecutionContext(facts);
+		}	
+
+		//add the system facts if not yet added.
+		
+		def svrDate = dateSvc.getServerDate();
+
+		if(!facts.find{ it instanceof com.rameses.rules.common.EffectiveDate }) {
+			facts << new com.rameses.rules.common.EffectiveDate(svrDate);
+		}
+		if(!facts.find{ it instanceof com.rameses.rules.common.CurrentDate }) {
+			facts << new com.rameses.rules.common.CurrentDate(svrDate);
+		}
+		
+
+		try {
+			def ruleAction = actions;
+
+			if(ruleAction==null) {
+				ruleAction = new RuleAction();
+				def actionList = ruleDB.getRuleActionsForLoading([ruleset: ruleset]);
+				if(!actionList)
+					throw new Exception("There are no actions registered in ruleset " + ruleset);
+				actionList.each {
+						if( !it.actionname ) throw new Exception("Error loading action. actionname is required for " + it.name);
+						if( !it.actionclass ) throw new Exception("Error loading action. actionclass is required for " + it.name);
+						def obj = getClassInstance(ruleset, it.actionname, it.actionclass );
+						ruleAction.addCommand( it.actionname, obj ); 
+				}
+			}
+
+			def grps = ruleDB.getRulegroups( [ruleset: ruleset] );
+			for( g in grps ) {
+				if(handler) {
+					boolean b = handler( g.name );
+					if(!b) continue;
+				}	
+				ruleSvc.execute( ruleset, facts, ruleAction, g.name );
+			}
+			return ctx.result;
+		}
+		catch(BreakException be) {
+			return ctx.result;
+		}
+		catch(e) {
+			throw e;
+		}
+		finally {
+			ctx.close();
+		}
+	}
+
+
+}

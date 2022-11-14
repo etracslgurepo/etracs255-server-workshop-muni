@@ -1,0 +1,217 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import com.rameses.util.*
+import com.rameses.services.extended.*
+
+
+class FAASWorkflowService extends ActiveWorkflowService
+{
+	@ActiveDB('faas_task')
+	def taskDB
+
+	@DataContext('faas_task')
+	def em_task
+
+	@Service('NotificationService')
+	def notificationService
+
+	@Service('FAASService')
+	def faasSvc 
+
+	@ActiveDB('faas_list')
+	def faaslistEm
+
+	String processname = 'faas'
+
+
+	@ProxyMethod
+	public def findReturnToInfo( param ) {
+		return taskDB.findReturnToInfo(param)	
+	}
+
+	public void beforeSignal(param) {
+		if (param.action?.matches('send.*')) {
+			def task = em_task.select('returnedby').find([objid: param.taskid]).first()
+			if (!task) throw new Exception('Task ' + param.taskid + ' does not exist or has been deleted.')
+			env.task = [returnedby: task.returnedby]
+		}
+	}
+
+	public void beforeCreateTask(task) {
+		def assignee = [objid:env.USERID, name:env.FULLNAME, title:env.JOBTITLE]
+		if (task.assignee) {
+			assignee = task.assignee
+			env.target = [
+				assignee: assignee,
+				refid: task.refid,
+				sender: task.assignee
+			] 
+		}
+
+		if ( env.action?.matches('return.*')){
+			def returnto = findReturnToInfo(task)
+			if (!returnto) 
+				throw new Exception('This document did not pass from ' + task.state + '.\nReturn task to another personnel.')
+
+			env.returnto = returnto.assignee
+			task.assignee = assignee
+			task.returnedby = env.prevtask.state
+		}
+		else if ( ! task.state.toLowerCase().matches('assign.*')){
+			task.assignee = assignee
+		}
+	}
+
+	public void afterCreateTask(task){
+		def msg = '';
+		if (task.state.matches('assign.*'))
+			msg = 'FAAS is already submitted ' + task.title + '.'
+		else
+			msg = 'FAAS is currently for ' + task.title + ' by ' + task.assignee.name + '.'
+		faaslistEm.updateFaasList(env.data)
+
+		if (env.target) {
+			env.target.taskid = task.objid 
+			env.target.tdno = (env.data.tdno ? env.data.tdno  : env.data.utdno)
+		}
+	}
+	
+
+	public void afterOpenTask(task) {
+		if (task.state.matches('assign.*')){
+			task.owner = true 
+		}
+
+		task.data = faasSvc.openFaas([objid:task.refid])
+		removeUserNotification(task)
+		env.task = task 
+	}
+
+	public void afterLoadTask(Object newTask) {
+		newTask.transitions.findAll{ it.action.toString().matches('approve.*|submit.*|send.*')}.each{t ->
+			if (t.properties?.targetrole) {
+				def params = [role: t.properties.targetrole]
+				t.assignees = taskDB.getTargetAssignees(params)
+			}
+		}
+	}
+
+	public void afterSignal(Object result) {
+		if (result && result.task && !result.data)
+			result.data = faasSvc.openFaas([objid:result.task.refid])
+	}
+
+
+	public void afterCloseTask(task){
+		faasSvc.updateSignatoryInfo(task)
+
+		if (env.data.parentfaasid){
+			saveNewTask(task, env.data.parentfaasid )
+		}		
+
+		faasSvc.getAffectedRpus(env.data).each{
+			if( it.newfaasid){
+				saveNewTask(task, it.newfaasid)
+			}
+		}
+		env.data.backtaxes?.each{
+			if(faasSvc.faasExist(it)){
+				saveNewTask(task, it.objid)
+			}
+		}
+	}
+
+	void saveNewTask(task, refid){
+		def t = [:]
+		t.putAll(task)
+		t.objid = 'T' + new java.rmi.server.UID()
+		t.refid = refid
+		if (t.signature && t.signature.trim().length() > 0){
+			Base64Cipher cipher = new Base64Cipher()
+			def map = cipher.decode(t.signature)
+			map.taskid = t.objid 
+			t.signature = cipher.encode(map)
+		}
+		taskDB.save(t)
+		faasSvc.updateSignatoryInfo(t)
+	}
+
+	void removeUserNotification(task){
+		if (task.assignee?.objid == env.USERID )
+			removeNotification(task)
+	}
+
+	def getNotificationMessage(task){
+		if (task?.state?.matches('assign.*')){
+			return notifyGroup(task)
+		}
+		else if (env.action?.matches('return.*')){
+			return notifyAssignee(task)
+		}
+		else if (env.prevtask?.state.matches('assign.*')){
+			removeNotification(task)
+		}
+		else if (env.target) {
+			return notifyTargetAssignee()	
+		}
+	}
+
+
+	void removeNotification(task) {
+		if (task){
+        	notificationService.removeMessage([objid:task.refid])
+		}
+	}
+
+
+	def notifyGroup(task){
+		def faas = env.data 
+		def msg = faas.txntype.name +  ' of FAAS ' + faas.fullpin + ' (' + task.state + ')'
+        return [
+            objid     		: task.refid,
+            senderid  		: env.prevtask?.actor?.objid,
+            sender    		: env.prevtask?.actor?.name,
+            recipientid   	: task.state,
+            recipienttype 	: 'group',
+            message   		: msg,
+            filetype  		: 'faas',
+            data 	  		: [taskid: task.objid],
+        ]
+	}
+
+	def notifyAssignee( task ) {
+		def faas = env.data 
+		taskDB.updateTaskAssignee([
+			objid 			: task.objid, 
+			assigneeid 		: env.returnto.objid,
+			assigneename 	: env.returnto.name,
+			assigneetitle 	: env.returnto.title
+		])
+
+        return [
+            objid     : task.refid,
+            recipientid : (env.returnto ? env.returnto.objid : task.assignee.objid),
+            recipienttype : 'user',
+            senderid  : task.assignee.objid,
+            sender    : task.assignee.name,
+            message   : 'FAAS No. ' + ( faas.tdno ? faas.tdno : faas.utdno ) + '   was resent by ' + env.prevtask?.actor?.name,
+            filetype  : 'faas',
+            data 	  : [taskid: task.objid],
+        ]
+	}
+
+	def notifyTargetAssignee() {
+		def target = env.target 
+        return [
+            objid     : target.refid,
+            recipientid : target.assignee?.objid,
+            recipienttype : 'user',
+            senderid  : env.prevtask?.actor?.objid,
+            sender    : env.prevtask?.actor?.name,
+            message   : 'FAAS No. ' + target.tdno + '   was submitted by ' + env.prevtask?.actor?.name,
+            filetype  : 'faas',
+            data 	  : [taskid: target.taskid],
+        ]
+	}
+}
+

@@ -1,0 +1,169 @@
+import com.rameses.annotations.*;
+
+import treasury.utils.*;
+import treasury.facts.*;
+import enterprise.utils.*;
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import java.util.*;
+import com.rameses.rules.common.RuleExecutionContext;
+
+public class AssessmentRuleService {
+	
+	@Service("DateService")
+	def dateSvc;
+
+	@Service("RuleExecutorService")
+	def ruleSvc;
+
+	@Service(value="HolidayService", connection="enterprise")
+	def holidaySvc;
+
+	/*********************************************************
+	* first parameter is the ruleName
+	* second parameter is the raw data sent 
+	* third parameter are factBuilder
+	* fourth parameter is the resultBuilder
+	**********************************************************/
+	@ProxyMethod
+	public def execute( String ruleName, def data, FactBuilder factBuilder, ResultHandler resultHandler ) {
+
+		if(data==null) {
+			data = [:];	//dummy data just in case it is null
+		}	
+
+		def variableInfoUtil = new VariableInfoUtil();
+		if(factBuilder?.variableInfoProvider) {
+			variableInfoUtil.provider = factBuilder.variableInfoProvider;
+		}		
+
+		def acctUtil = new ItemAccountUtil();
+
+		//********************************************************************
+		// build the facts
+		//********************************************************************
+		def facts = [];
+
+		facts.addAll( factBuilder.facts );
+
+		if( data.infos ) {
+			data.infos.each { info ->
+				facts <<  variableInfoUtil.createFact(info) ;
+			}
+		};
+		
+		if( data.billitems ) {
+			data.billitems.each { bi ->
+				def ac = [:];
+				bi.each { k,v->
+					if(k=="item") {
+						ac.account = acctUtil.createAccountFact(bi.item); 
+					}
+					else {
+						ac.put(k,v);
+					}
+				}
+				if(!ac.refid) ac.refid = bi.objid; 
+
+				if ( factBuilder.metaClass.respondsTo( factBuilder, 'getBillItemFact' )) {
+					def bbi = factBuilder.getBillItemFact( ac );
+					if ( !facts.find{ (it instanceof AbstractBillItem) && (it.hashCode()==bbi.hashCode()) }) {
+						facts << bbi; 
+					} 
+				}
+			}
+		};
+
+		if(data.requirements ) {
+			data.requirements.each { r ->
+				facts << factBuilder.getRequirementFact( r );
+			}
+		};
+
+		if( !facts.find{ it.class == treasury.facts.SystemDate.class } ) {
+			def svrDate = dateSvc.getServerDate();
+			facts << new treasury.facts.SystemDate(svrDate);
+		};
+
+		//add collection group if any
+		if( data.collectiongroup ) {
+			def cg = data.collectiongroup;
+			facts << new treasury.facts.CollectionGroup( objid:cg.objid, name: cg.name );
+		}
+
+		//include holidays
+		facts << new HolidayFact(  
+			handler: { dt->
+				def h = holidaySvc.lookup(dt);
+				return (h!=null);
+			}
+		);
+
+
+		//********************************************************************
+		// build the context
+		//********************************************************************
+		def ctx = RuleExecutionContext.currentContext;
+		if( ctx == null ) {
+			ctx = new RuleExecutionContext(facts);
+		};
+		if(!ctx.env.acctUtil) ctx.env.acctUtil = acctUtil;
+		if(!ctx.env.infoUtil) ctx.env.infoUtil = variableInfoUtil;
+
+		//********************************************************************
+		// handler to break the rule in case there are askinfos
+		//********************************************************************
+		def hdlr = { grpname ->
+			if( ctx.result.askinfos ) return false;
+			return true;
+		};
+
+		def res = ruleSvc.execute( ruleName, facts, null, hdlr );
+
+		def result = [:];
+		if( res.askinfos ) {
+			return [askinfos : res.askinfos.collect{ it.toMap() } ];
+		}
+		def billitems = facts.findAll{ it instanceof AbstractBillItem };
+
+		if( billitems ) {
+			result.billitems = billitems.collect{ it.toMap() };
+		}
+		if( res.infos ) {
+			def infos = res.remove("infos");
+			result.infos = infos;
+		}
+		if( res.requirements ) {
+			def reqs = res.remove("requirements");
+			result.requirements = regs.collect{ it.toMap() };	
+		}
+
+		if( resultHandler ) {
+			res.each { k,v->
+				ResultKeyValue obj = resultHandler.getKeyValue(k,v);
+				if( obj != null ) {
+					result.put( obj.key, obj.value );
+				}
+			};
+
+			//loop also the facts
+			facts.each { f->
+				ResultKeyValue obj = resultHandler.getFactKeyValue( f );
+				if(obj != null ) {
+					result.put( obj.key, obj.value );	
+				}
+			};
+		}
+		else {
+			//return other results not mentioned
+			res.each { k,v->
+				result.put( k,v );
+			}
+		}
+
+		return result;
+	}
+
+
+}

@@ -1,0 +1,69 @@
+import com.rameses.annotations.*;
+
+class RPTReceiptShareService {
+
+	@DataContext('sys_org')
+	def em_org; 
+
+	@DataContext('itemaccount')
+	def em_itemaccount;
+
+	@Service( dynamic=true )
+	def dynaSvc; 
+
+    @ProxyMethod
+	public def generateShares( param ) {
+		if ( !param.receiptid ) 
+			throw new Exception('param.receiptid  parameter is required'); 
+
+		def org = em_org.find([ root: 1 ]).first(); 
+		def orgclass = org?.orgclass?.toString().toLowerCase(); 
+
+		def svc = null; 
+
+		if ( orgclass == 'city') {
+			svc = dynaSvc.lookup('RPTReceiptCityPostShareService'); 
+		} 
+		else if ( orgclass == 'province') {
+			svc = dynaSvc.lookup('RPTReceiptProvincePostShareService'); 
+		} 
+		else if ( orgclass == 'municipality') {
+			svc = dynaSvc.lookup('RPTReceiptMunicipalityPostShareService'); 
+		} 
+
+		def shares = []; 
+		if ( svc ) { 
+			def resp = svc.generateShares( param ); 
+			if ( resp ) { 
+				resp.provshares.each { ps-> 
+					ps = buildShare( ps ); 
+					ps.parentid = param.receiptid; 
+					shares << ps; 
+				}
+				resp.brgyshares.each { bs->
+					bs = buildShare( bs ); 
+					bs.parentid = param.receiptid; 
+					shares << bs; 
+				}
+			} 
+		} 
+		return shares; 
+	} 
+
+	def buildShare( item ) {
+		resolveItemAccount( item.refitem ); 
+		resolveItemAccount( item.item ); 
+		return [ 
+			payableitem: item.item,  
+			refitem: item.refitem, 
+			amount: item.amount 
+		]; 
+	}
+
+	void resolveItemAccount( acct ) {
+		if ( !acct?.objid ) return; 
+
+		def o = em_itemaccount.find([ objid: acct.objid ]).select('code,title,fund.*').first(); 
+		if ( o ) acct.putAll( o ); 
+	}
+}

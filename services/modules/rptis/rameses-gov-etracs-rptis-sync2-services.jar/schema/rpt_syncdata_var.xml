@@ -1,0 +1,12 @@
+<schema>
+	<element tablename="sys_var">
+        <field name="name" primary="true" />
+        <field name="value" />
+        <field name="description" />
+        <field name="datatype" />
+        <field name="category" />
+	</element>
+</schema>
+
+
+

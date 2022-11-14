@@ -1,0 +1,14 @@
+<schema>
+    <element name="txnsignatory" tablename="txnsignatory">
+        <field name="objid" primary="true" />
+        <field name="refid" required="true" />
+        <field name="type" required="true" />
+        <field name="caption" />
+        <field name="personnelid" />
+        <field name="name" />
+        <field name="title" />
+        <field name="dtsigned" />
+        <field name="seqno" type="integer" required="true" />
+    </element>
+</schema>
+

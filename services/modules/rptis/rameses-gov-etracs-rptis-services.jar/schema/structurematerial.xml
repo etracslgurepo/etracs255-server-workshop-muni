@@ -1,0 +1,13 @@
+<schema>
+	<element tablename="structurematerial">
+		<field name="structure_objid" primary="true" />
+		<field name="material_objid" primary="true" />
+		<field name="display" required="true" type="boolean" />
+		<field name="idx" required="true" type="integer" />
+
+		<complex name="material" ref="material" jointype="many-to-one" required="true">
+			<key field="material_objid" target="objid" />
+		</complex>
+	</element>
+
+</schema>

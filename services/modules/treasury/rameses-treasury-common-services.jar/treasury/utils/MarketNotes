@@ -1,0 +1,96 @@
+Notes:
+
+1. Get the fromdate, todate:
+2. Build month entries
+3. Build the rental fact
+4. Get the recurring fees and build RecurringFee fact( has frequency = daily or monthly )
+5. Get the other fees (like water and electricity) and include in OtherFee fact
+6. Build Payment fact
+
+rule "rule-tobuild-regular-rental"
+   when
+   	   MarketRental( $rate, $partialbalance, type=="DAILY")
+   	   MonthEntry( $month, $year, $numdays, $fromdate, $todate )
+   then
+   	   addMonthBillItem($month, $year, $fromdate, $todate, $account,
+   	       "
+   	       	   def firstAmt = (partialbalance>0? partialbalance: rate)	
+   	       	   return firstAmt + (($numdays-1) * $rate)
+   	       "
+   	   )
+end
+
+rule "rule-to-build-recurring-fee"
+    when
+    	MarketRental( $rate, $partialbalance, type=="DAILY")
+    	mi: MonthBillItem($year, $month, $amount)
+    	MonthEntry( year == $year, month == $month)
+    	RecurringFee( $txntype, $amount )
+    then
+    	addSubBillItem( mi, $account,   
+    		"
+    		   def firstAmt = ((partialbalance>0)? (partialbalance / rate)*amount : $amount);
+    		   return firstAmt + (($numdays-1) * $amount) 
+    		"
+    	)
+end
+
+rule "rule-to-build-other-fee"
+	when
+		MonthEntry( $month, $year, $numdays, $fromdate, $todate )
+		OtherFee($txntype, $amount, month == $month, year==$year)
+	then
+		addMonthBillItem( $month,$year, $account,
+			"
+			   return $amount
+			"
+		)	
+end
+
+rule "rule-to-surcharge"
+
+   when
+   	   DueDate(duedate, monthyearindex )
+       MonthEntry( $amount, monthyearindex <= monthyearindex, fromdate, $month, $year )
+       mi: MonthBillItem(month==$month, year==$year)
+       MarketRental( rate )
+       RecurringFee( txntype =="extension" )
+   then"
+      	   addSubBillItem( mi, "surcharge" 
+      	   	  "
+      	   	  	  int daysdiff = @DAYSDIFF(fromdate,duedate)+1;
+      	   	  	  return daysDff * ($amount+$subamount) * 0.25
+      	   	  "
+      	   ) 
+end
+
+rule "rule-to-interest"
+
+   when
+   	   DueDate(duedate, monthyearindex )
+       MonthEntry( $amount, monthyearindex <= monthyearindex, fromdate, $month, $year )
+       mi: MonthBillItem(month==$month, year==$year)
+       MarketRental( rate )
+       RecurringFee( txntype =="extension" )
+   then"
+      	   addSubBillItem( mi, "surcharge" 
+      	   	  "
+      	   	  	  int daysdiff = @DAYSDIFF(fromdate,duedate)+1;
+      	   	  	  return daysDff * ($amount+$subamount) * 0.25
+      	   	  "
+      	   ) 
+end
+
+rule "calculate-rule-for-excess"
+   when
+   	  ex: Excess(amount > 0, dateapplied)
+   	  dc: DateCursor( date )
+   	  RentalRate( type=="daily" )
+   then
+   	  addBillItem( account:excesspayment );
+   	  incrementExcess( ex, amount+rate );
+   	  incrementNextDate( dc );
+end
+
+
+

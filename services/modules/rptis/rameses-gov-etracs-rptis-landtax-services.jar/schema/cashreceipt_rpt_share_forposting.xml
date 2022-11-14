@@ -1,0 +1,10 @@
+<schema>
+	<element tablename="cashreceipt_rpt_share_forposting">
+		<field name="objid" primary="true" />
+		<field name="receiptid" required="true" />
+		<field name="rptledgerid" required="true" />
+		<field name="txndate" required="true" />
+		<field name="error" type="boolean" required="true" />
+		<field name="msg" />
+	</element>
+</schema>

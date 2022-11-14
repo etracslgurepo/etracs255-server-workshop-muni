@@ -1,0 +1,67 @@
+import com.rameses.annotations.*
+import com.rameses.eserver.*;
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+
+class RPTSyncDataCompletedListInterceptor
+{
+	@Service('DateService')
+	def dtSvc;
+
+    @Service('RPTUtil')
+    def util;
+
+	@DataContext('rpt_syncdata_completed')
+	def em_completed;
+
+	@After(pattern="QueryService.getNodeList", eval="#{args[0]._schemaname=='rpt_syncdata_completed'}") 
+	public void getNodeList( evt ) {
+		def arg = evt.args[0];
+		def result = evt.result;
+        result << [id: "today", title: "Today"];
+        result << [id: "yesterday", title: "Yesterday"];
+        result << [id: "previous", title: "Previous Days"];
+	}
+
+	@Before(pattern="QueryService.getList", eval="#{ args[0]._schemaname == 'rpt_syncdata_completed' }")
+	public void getList(def evt) {
+		def o = evt.args[0];
+		if( !o.node?.id ) return;
+
+        def currdate = dtSvc.parseCurrentDate();
+        def today = getStartEndDate(currdate);
+        
+        def str = " dtcreated >= :startdate AND dtcreated < :enddate";
+
+        def params = [:];
+        if (o.node.id == "today") {
+            params = today;
+        } else if (o.node.id == "yesterday") {
+            def yesterday = dtSvc.parseDate(today.startdate - 1, null);
+            params = getStartEndDate(yesterday);
+        } else {
+            def prevousdate = dtSvc.parseDate(today.startdate - 2, null);
+            params = getStartEndDate(prevousdate);
+            str = " dtcreated < :startdate";
+        }
+
+		if( o.where ) {
+			o.where[0] = str + " AND " + o.where[0];	
+			o.where[1].putAll(params);
+		}
+		else {
+			o.where = [str, params];
+		}
+	}	
+
+    def getStartEndDate(pdate) {
+        def dt = [:];
+		dt.year = pdate.year;
+        dt.month = [index: pdate.month];
+        dt.day = pdate.day;
+        util.buildStartEndDateFilter(dt);
+        return dt;
+    }
+}
+

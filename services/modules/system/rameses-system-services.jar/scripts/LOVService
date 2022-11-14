@@ -1,0 +1,44 @@
+
+import com.rameses.annotations.*;
+
+/**
+* List of value service
+*/
+
+class LOVService {
+
+	@Cache
+	def cacheSvc;	
+
+	@Context
+	def appContext;
+   
+	@ProxyMethod(local=true)
+	public def get( String name ) {
+		def props = cacheSvc.get( name );
+		if(props==null) {
+			props = appContext.findProperties("lov/"+name);
+			cacheSvc.put( name, props );
+		}
+		return props;
+	}
+
+	@ProxyMethod(local=true)
+	public List getKeyValues(def name) {
+		def list = [];
+		get( name ).each { k,v->
+			list << [key: k, value: v]	
+		};
+		return list;
+	}
+   
+	@ProxyMethod(local=true)
+	public List getKeyList(def name) {
+		def list = [];
+		get( name ).each { k,v->
+			list << k;
+		};
+		return list;
+	}
+   
+}

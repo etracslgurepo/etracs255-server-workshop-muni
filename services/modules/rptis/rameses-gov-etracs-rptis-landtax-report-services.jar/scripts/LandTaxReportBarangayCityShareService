@@ -1,0 +1,56 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class LandTaxReportBarangayCityShareService{
+    @ActiveDB('landtaxreport_brgycityshare')
+    def em
+
+    @Service('DateService')
+    def dtsvc
+
+    @Service('NumberService')
+    def numSvc 
+
+    @Async
+    @ProxyMethod
+    public def generateReport(params){
+        String idx = (params.month.index+'').padLeft(2, '0')
+        params.fromdate = dtsvc.parse('yyyy-MM-dd', params.year+"-"+idx+"-01");
+        params.todate = dtsvc.getMonthEndDate(dtsvc.parse("yyyy-MM-dd",params.fromdate));
+        params.todate = dtsvc.add(dtsvc.parse("yyyy-MM-dd",params.todate),"1d");
+
+        def period = 'For the Month of ' + dtsvc.format('MMMMM, yyyy', params.fromdate);
+        params.filter = ' cv.dtposted >= $P{fromdate} AND cv.dtposted < $P{todate} '
+        if (params.postingtype && params.postingtype.code == 'byrem'){
+            params.filter = ' rem.dtposted between $P{fromdate} AND $P{todate} '
+        }
+        
+        def collections = em.getCollectionsByBarangay(params)
+        if (!collections) {
+            throw new Exception('Records not found.')
+        }
+
+        def shares = em.getBarangays()        
+        collections.each{c ->
+            def share = shares.find{it.brgyindex == c.brgyindex}
+            share.putAll(c)
+        }
+
+        em.getBarangayMainShare(params).each{c->
+            def share = shares.find{it.brgyindex == c.brgyindex}
+            share.putAll(c)
+        }
+
+        em.getBarangayCommonShare(params).each{c->
+            def share = shares.find{it.brgyindex == c.brgyindex}
+            share.putAll(c)
+        }
+
+        return [
+            params : [PERIOD : period],  
+            reportdata  : [items: shares]
+        ]
+    }
+  
+}

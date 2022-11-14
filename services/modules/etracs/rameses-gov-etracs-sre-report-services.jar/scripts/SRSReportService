@@ -1,0 +1,314 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+
+class SRSReportService {
+
+	@ActiveDB('sre_report')
+	def em; 
+
+	@Service('DateService')
+	def dateSvc; 
+
+	@Service('NumberService')
+	def numSvc;
+
+
+	@ProxyMethod 
+	public def initReport() {
+		return [
+			funds: em.getFunds(), 
+			months: dateSvc.getMonths(), 
+			accttypes: em.getAcctTypes(),  
+			acctgroups: em.getAcctGroups() 
+		]; 
+	} 
+
+	@ProxyMethod
+	public def getReport( params ) { 
+		buildParams( params ); 
+		params.acctgroupid = params.acctgroup?.objid; 
+		params.maingroupid = params.acctgroupid; 		
+
+		def filters = [' 1=1 '];
+		if ( params.accttype?.objid ) {
+			params.accttypeid = params.accttype.objid; 
+			filters << ''' itemtype = $P{accttypeid} '''; 
+		}
+		if ( params.collector?.objid ) { 
+			params.collectorid = params.collector.objid; 
+			filters << ''' a.collectorid = $P{collectorid} '''; 
+		} 
+
+		if ( params.fundgroupid ) {
+			filters << ''' fundgroupid = $P{fundgroupid} '''; 
+		} 
+		else if ( params.fundid ) { 
+			filters << ''' a.fundid = $P{fundid} '''; 
+		} 
+
+		params.filters = ' AND '+ filters.join(' AND '); 
+		
+		def items = null; 
+		def postingtypeid = params.postingtype?.objid.toString().toUpperCase(); 
+		if ( postingtypeid == 'BY_LIQUIDATION_DATE' ) {
+			items = em.getIncomeSummaryByLiquidationDate( params ); 
+		} else {
+			items = em.getIncomeSummary( params ); 
+		}
+		
+		if ( !items ) 
+			throw new Exception('No available income summary'); 
+		if ( items.find{ it.amount > 0 } == null )  
+			throw new Exception('No available income summary'); 
+
+		def accounts = em.getAccounts([ maingroupid: params.maingroupid ]);
+		if ( !accounts ) throw new Exception('No accounts found for '+ params.maingroupid +' group'); 
+
+		def accttargets = em.getAcctTargets([ maingroupid: params.maingroupid, startdate: params.startdate ]); 
+		accttargets.each{ t-> 
+			if ( !t.target ) return; 
+
+			def a = accounts.find{ it.objid == t.acctid } 
+			if ( a ) a.target = t.target; 
+		}
+
+		items.groupBy{ it.acctid }.each{ k,v-> 
+			def a = accounts.find{ it.objid == k }
+			if ( a ) { 
+				a.amount = v.sum{( it.amount ? it.amount : 0.0 )} 
+				if ( a.amount == null ) a.amount = 0.0; 
+
+				a.itemamount = a.amount; 
+				a.unmapped = 0;
+
+				a.items = v; 
+				a.items.each{
+					it.level = a.level + 1; 
+					it.acctcode = it.itemcode; 
+					it.accttitle = it.itemtitle; 
+					buildItemTitle( it ); 
+				}
+			} 
+		}
+
+		def amtlist = accounts.findAll{( it.target > 0 )} 
+		def mlevel = amtlist.max{( it.level ? it.level : 0 )}?.level; 
+		if ( !mlevel ) mlevel = 0; 
+
+		while (mlevel > 0) {
+			accounts.findAll{( it.level == mlevel )}.each{ n-> 
+				def amount = accounts.findAll{( it.groupid == n.objid )}.sum{( it.target ? it.target : 0.0 )} 
+				n.target = (n.target ? n.target : 0.0) + (amount ? amount : 0.0);
+			} 
+			mlevel--; 
+		} 
+
+		amtlist = accounts.findAll{( it.amount > 0 )} 
+		mlevel = amtlist.max{( it.level ? it.level : 0 )}?.level; 
+		if ( !mlevel ) mlevel = 0; 
+
+		while (mlevel > 0) {
+			accounts.findAll{( it.level == mlevel )}.each{ n-> 
+				def amount = accounts.findAll{( it.groupid == n.objid )}.sum{( it.amount ? it.amount : 0.0 )} 
+				n.amount = (n.amount ? n.amount : 0.0) + (amount ? amount : 0.0);
+			} 
+			mlevel--; 
+		} 
+
+		if ( params.opthidenoactual.toString().matches('true|1')) { 
+			accounts.removeAll( accounts.findAll{( it.amount == 0.0 )} ); 
+		} 
+
+		if ( params.type == 'itemaccount' ) { 
+			def itemaccounts = []; 
+			accounts.each{ aa-> 
+				aa.items.each{ bb-> 
+					if ( !bb.amount ) return;
+
+					bb.groupid = aa.objid; 
+					bb.type = 'itemaccount';
+					itemaccounts << bb; 
+				}
+			}
+			accounts.addAll( itemaccounts );
+			itemaccounts.clear();  
+		}
+		else if ( params.type == 'extended' ) {
+			/* do not remove the account detail types */
+		}
+		else {
+			accounts.removeAll( accounts.findAll{( it.type == 'detail' )} ); 
+		}		
+
+		def totaltarget = 0.0; 
+		def finallist = []; 
+		accounts.findAll{( it.type == 'root' )}.each{
+			buildTree( it, accounts, finallist ); 
+			totaltarget += (it.target ? it.target : 0.0); 
+		}
+
+		finallist.findAll{( it.target == 0 )}.each{ 
+			it.target = null; 
+		} 
+
+		items.clear(); 
+		items = finallist;
+		items.each{ 
+			it.actual = it.amount; 
+			if ( it.target && it.target > 0 ) {
+				it.excess = it.target - it.actual; 
+				if ( it.excess < 0 ) it.excess = Math.abs( it.excess ); 
+				else if ( it.excess > 0 ) it.excess = it.excess * -1.0; 
+
+				if ( it.excess >= 0 ) it.percentage = it.actual / it.target; 
+				else if ( it.excess < 0 ) it.percentage = it.excess / it.target; 
+
+				it.percentagevalue = it.percentage * 100.0; 
+			} 
+		}
+
+		def p = [:]; 
+		p.title = 'STATEMENT OF RECEIPTS SOURCES';
+		p.period = params.strperiod; 
+		p.reportdata = items; 
+		p.totalactual = items.findAll{( it.type == 'root' )}.sum{( it.actual ? it.actual : 0.0 )} 
+		p.totaltarget = totaltarget; 
+
+		def totalexcess = p.totaltarget - p.totalactual; 
+		if ( totalexcess <= 0 ) p.totalexcess = Math.abs( totalexcess ); 
+		else if ( totalexcess > 0 ) p.totalexcess = totalexcess * -1.0; 
+
+		if ( !p.totaltarget ) { /* do nothing */ }
+		else if ( p.totalexcess >= 0 ) p.totalpercentage = p.totalactual / p.totaltarget; 
+		else if ( p.totalexcess < 0 ) p.totalpercentage = p.totalexcess / p.totaltarget; 
+
+		if ( p.totalpercentage ) p.totalpercentagevalue = p.totalpercentage * 100.0;
+
+		return p; 
+	}
+
+
+	private void buildItemTitle( o ) {
+		o.prefix = ''; 
+		if ( o.level > 1 ) {
+			o.prefix = ('    ' * o.level-1); 
+		} 
+
+		o.acctcode = (o.acctcode == null ? '' : o.acctcode); 
+
+		if ( o.type == 'root') {
+			o.title = ''+ o.acctcode +'   '+ o.accttitle +'*'; 
+		} 
+		else if ( o.type == 'group') {
+			o.title = ''+ o.prefix + o.acctcode +'   '+  o.accttitle; 
+		}
+		else {
+			o.title = ''+ o.prefix + (o.type=='itemaccount' ? '* ': '') +'  '+ o.acctcode +'   '+ o.accttitle; 
+		}
+	}
+
+	private void buildTree( node, sourcelist, targetlist ) {
+		targetlist << node; 
+		buildItemTitle( node ); 
+		sourcelist.findAll{( it.groupid == node.objid.toString() )}.each{
+			buildTree( it, sourcelist, targetlist ); 
+		}
+	}
+
+
+	void buildParams( params ) {
+		params.filter = '';
+
+		def period = new StringBuffer();
+		def rundate = dateSvc.getServerDate(); 
+		if ( params.period == 'quarterly' ) {
+			if ( !params.year ) throw new Exception('year is required');
+			if ( !params.qtr ) throw new Exception('qtr is required');
+
+			def months = dateSvc.getMonthsByQtr( params.qtr );
+			def monthindex = months[0].index;
+			def strmonth = (monthindex > 9? monthindex: '0'+monthindex); 
+			params.startdate = params.year +'-'+ strmonth +'-01'; 
+			params.enddate = dateSvc.getQtrEndDate( params.qtr, params.year ); 
+			period.append( months[0].caption +' - '+ months[-1].caption +' '+ params.year ); 
+
+		} else if ( params.period == 'asofqtr' ) {
+			if ( !params.year ) throw new Exception('year is required');
+			if ( !params.qtr ) throw new Exception('qtr is required');
+
+			def months = dateSvc.getMonths(); 
+			period.append( months[0].caption );
+			params.startdate = params.year +'-01-01'; 
+			params.enddate = dateSvc.getQtrEndDate( params.qtr, params.year ); 
+
+			months = dateSvc.getMonthsByQtr( params.qtr );
+			period.append(' - '+ months[-1].caption +' '+ params.year ); 
+
+		} else if ( params.period == 'monthly' ) {
+			if ( !params.year ) throw new Exception('year is required');
+			if ( !params.month ) throw new Exception('month is required');
+
+			def monthindex = params.month.index; 
+			def strmonth = (monthindex > 9? monthindex: '0'+monthindex); 
+			def dtstart = java.sql.Date.valueOf(''+ params.year +'-'+ strmonth +'-01'); 
+			def dtend = dateSvc.getMonthEndDate( dtstart ); 
+			def months = dateSvc.getMonths(); 
+			params.startdate = dtstart;
+			params.enddate = dtend;
+			period.append( months[monthindex-1].caption +' '+ params.year ); 
+		
+		} else if ( params.period == 'asofmonth' ) {
+			if ( !params.year ) throw new Exception('year is required');
+			if ( !params.month ) throw new Exception('month is required');
+
+			def monthindex = params.month.index; 
+			def strmonth = (monthindex > 9? monthindex: '0'+monthindex); 
+			def dtstart = java.sql.Date.valueOf(''+ params.year +'-01-01'); 
+			def dtend = java.sql.Date.valueOf(''+ params.year +'-'+ strmonth +'-01');
+			dtend = dateSvc.getMonthEndDate( dtend ); 
+
+			def months = dateSvc.getMonths(); 
+			params.startdate = dtstart;
+			params.enddate = dtend;
+			if ( months[0].index != months[monthindex-1].index ) { 
+				period.append( months[0].caption ).append(' - '); 
+			} 
+			period.append( months[monthindex-1].caption ).append(' '+ params.year); 
+		
+		} else {
+			if ( !params.date ) throw new Exception('date is required');
+
+			def syear = params.date.toString().split('-')[0]; 
+			if ( params.period == 'asofday' ) {
+				period.append("As of "); 	
+				params.startdate = syear +'-01-01'; 
+			} else {
+				params.startdate = params.date;
+			}
+
+			params.enddate = params.date; 
+			params.year = syear; 
+
+			def formatter = new java.text.SimpleDateFormat('MMMMM dd, yyyy');
+			if ( params.date instanceof java.util.Date ) {
+				period.append(formatter.format( params.date ));
+			} else {
+				period.append(formatter.format( java.sql.Date.valueOf( params.date ) )); 
+			} 
+		}
+		params.strperiod = period.toString(); 
+		params.fundid = params.fund?.objid; 
+		if ( params.fund?.category == 'group' ) {
+			params.fundgroupid = params.fundid; 
+			params.fundid = null; 
+		} 
+		params.compress = false; 
+
+		if (!(params.enddate instanceof Date)) {
+			params.enddate = java.sql.Date.valueOf( params.enddate ); 
+		} 
+		params.enddate = dateSvc.add( params.enddate, '1d' );
+	} 
+} 

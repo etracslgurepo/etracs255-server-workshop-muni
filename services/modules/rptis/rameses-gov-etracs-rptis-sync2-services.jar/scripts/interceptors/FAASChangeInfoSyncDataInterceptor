@@ -1,0 +1,74 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import com.rameses.services.extended.*
+
+
+/*----------------------------------------------------------------
+* FAAS Annotation Synchronization support shared 
+* between province and municipalities 
+-----------------------------------------------------------------*/
+class FAASChangeInfoSyncDataInterceptor
+{
+    @Env
+    def env
+
+    @Service('RPTMainSyncDataService')
+    def mainSyncSvc    
+
+    @Service('RPTSyncDataService')
+    def syncSvc
+
+    @Service('FAASChangeInfoSyncDataService')
+    def changeInfoSync 
+
+
+    /*---------------------------------------------------------
+    *
+    * SCHEDULING SUPPORT
+    *
+    ---------------------------------------------------------*/
+    @After(pattern="FAASChangeInfoService.updateInfo", eval="#{args[0].remote == null}") 
+    public void schedulePostChangeInfo( evt ) {
+        def changeinfo = evt.result
+        mainSyncSvc.createDataForSync(getDataForSync(changeinfo, 'CHANGEINFO-FAAS-POST'))
+    }
+
+    /* scheduler */
+    @After(pattern="RPTMainSyncDataService.scheduleSync", eval="#{result.action.matches('CHANGEINFO-FAAS-.*')}", index=50000) 
+    public void scheduleFAASForSync( evt ) {
+        def data = evt.result 
+        changeInfoSync.schedule(data)
+    }   
+
+
+    /*---------------------------------------------------------
+    *
+    * SEND/RECEIVE HANDLERS
+    *
+    ---------------------------------------------------------*/
+    @After(pattern="RPTMainSyncDataService.asyncSend", eval="#{result.action.matches('CHANGEINFO-FAAS-.*')}") 
+    public void send( evt ) {
+        def syncdata = evt.result 
+        changeInfoSync.send(syncdata)
+    }   
+
+    @After(pattern="RPTMainSyncDataService.receive", eval="#{args[0].action.matches('CHANGEINFO-FAAS-.*')}") 
+    public void receiveData(evt){
+        def syncdata = evt.args[0]
+        changeInfoSync.receive(syncdata)
+    }
+
+
+    def getDataForSync(changeinfo, action) {
+        def data = [:]
+        data.objid = changeinfo.objid
+        data.reftype = 'changeinfo'
+        data.refno = changeinfo.action ? changeinfo.action : '-'
+        data.orgid = env.ORGID
+        data.remote = syncSvc.getRemoteOrg(changeinfo)
+        data.action = action
+        data.info = [:]
+        return data
+    }
+}
+

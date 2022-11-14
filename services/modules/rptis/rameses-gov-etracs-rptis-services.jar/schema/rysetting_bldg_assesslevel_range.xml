@@ -1,0 +1,10 @@
+<schema>
+	<element tablename="bldgassesslevelrange">
+		<field name="objid" primary="true"/>
+		<field name="bldgassesslevelid" required="true"/>
+		<field name="bldgrysettingid" required="true"/>
+		<field name="mvfrom" required="true" type="decimal"/>
+		<field name="mvto" required="true" type="decimal"/>
+		<field name="rate" required="true" type="decimal" />
+	</element>
+</schema>

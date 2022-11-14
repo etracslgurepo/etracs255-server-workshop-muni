@@ -1,0 +1,59 @@
+import com.rameses.annotations.*
+import com.rameses.services.extended.*
+
+class RPTLedgerRedFlagInterceptor {
+
+	@Service('RPTLedgerRedFlagService')
+	def svc 
+
+	@DataContext('rptledger_redflag')
+	def em_redflag
+
+	@Before(pattern="PersistenceService.create", eval="#{ args[0]._schemaname == 'rptledger_redflag' }")
+	public void beforeCreate( evt ) {
+		svc.beforeCreate(evt.args[0])
+	} 
+
+	@Before(pattern="RPTBillingService.generateBill", index=10000)
+	public void beforeBill( evt ) {
+		def bill = evt.args[0]
+		if (bill.ledgers) {
+			bill.ledgers.each{ledger -> 
+				checkBlocking(ledger, 'Billing', 'block_bill')
+			}
+		}
+	} 	
+
+	@After(pattern="RPTReceiptService.getItemsForPayment", index=10000)
+	public void afterGetItems( evt ) {
+		def ledgers = evt.result
+		ledgers.each{ledger -> 
+			checkBlocking(ledger, 'Collection', 'block_collection')
+		}
+	} 	
+
+	@Before(pattern="LandTaxReportTaxClearanceService.createClearance", index=10000)
+	public void beforeCreateClearance( evt ) {
+		def cert = evt.args[0]
+		cert.items.each{item -> 
+			checkBlocking([objid: item.refid], 'Tax Clearance', 'block_clearance')
+		}
+	} 	
+
+	void checkBlocking(ledger, action, blockaction) {
+		def filter = [
+			parent_objid: ledger.objid, 
+			state: 'OPEN', 
+			blockaction: blockaction
+		]
+		def rf = em_redflag.find(filter).first()
+		if (rf) {
+			def msg = action + ' is currently not allowed for this ledger.\n'
+			msg += 'Kindly resolve Red Flag #' + rf.caseno 
+			msg += ' or visit the Land Tax Office for assistance.'
+			throw new Exception(msg)
+		}
+
+	}
+}
+

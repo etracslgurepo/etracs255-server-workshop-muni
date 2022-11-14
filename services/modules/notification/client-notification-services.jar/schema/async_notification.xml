@@ -1,0 +1,32 @@
+<schema> 
+	<element name="async_notification" tablename="async_notification">
+		<field name="objid" primary="true"/>
+		<field name="dtfiled" required="true"/>
+		<field name="messagetype" required="true"/>
+		<field name="data" required="true"/>
+	</element> 
+
+	<element name="pending" tablename="async_notification_pending">
+		<field name="objid" primary="true"/>
+		<field name="dtretry" required="true"/>
+		<field name="retrycount" required="true"/>
+	</element> 
+
+	<element name="processing" tablename="async_notification_processing"> 
+		<field name="objid" primary="true"/> 
+		<field name="dtfiled" required="true"/> 
+	</element> 
+
+	<element name="delivered" tablename="async_notification_delivered"> 
+		<field name="objid" primary="true"/> 
+		<field name="dtfiled" required="true"/> 
+		<field name="refid" required="true"/> 
+	</element> 	
+
+	<element name="failed" tablename="async_notification_failed">
+		<field name="objid" primary="true"/>
+		<field name="dtfiled" required="true"/>
+		<field name="refid" required="true"/>
+		<field name="errormessage" required="true"/>
+	</element> 	
+</schema>

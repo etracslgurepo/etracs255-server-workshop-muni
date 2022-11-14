@@ -1,0 +1,63 @@
+<schema>
+	<element name="cashreceipt" tablename="cashreceipt" >
+		<field name="objid" primary="true" prefix="RCT"/>
+		<field name="state" required="true" />
+		<field name="txndate" required="true" />
+		<field name="receiptno" required="true" searchable="true" indexed="true"/>
+		<field name="receiptdate" required="true" />
+		<field name="txnmode" required="true" indexed="true"/>
+		<field name="payer_objid"  />
+		<field name="payer_name"  caption="Payer" searchable="true"  indexed="true"/>
+		<field name="paidby" required="true" />
+		<field name="paidbyaddress" required="true" />
+		<field name="series" required="true" />\
+		<field name="collector_objid" required="true" />
+		<field name="collector_name" required="true" searchable="true" indexed="true"/>
+		<field name="collector_title" required="true" />
+		<field name="amount" required="true" />
+		<field name="totalcash" required="true" />
+		<field name="totalnoncash" required="true" />
+		<field name="totalcredit" required="true" />
+		
+		<field name="cashchange" required="true" />
+		<field name="totalcredit" required="true" />
+		<field name="org_objid" required="true" />
+		<field name="org_name" required="true" />
+		<field name="formno" required="true" />
+		<field name="formtype" required="true" />
+		<field name="stub" required="true" />
+
+		<field name="controlid" required="true" />
+		<field name="collectiontype_objid" required="true" />
+		<field name="collectiontype_name" required="true" />
+		<field name="user_objid" required="true" />
+		<field name="user_name" required="true" />
+		<field name="remarks" />
+
+		<field name="subcollector_objid" />
+		<field name="subcollector_name" />
+		<field name="subcollector_title" />
+
+		<complex name="void" ref="cashreceipt_void" jointype="many-to-one" required="false" includefields="objid">
+			<key field="objid" target="receiptid" />
+		</complex>	
+
+		<!-- to load -->
+		<complex name="remittance" ref="remittance_cashreceipt" jointype="many-to-one" required="false" includefields="remittanceid">
+			<key field="objid" target="objid" />
+		</complex>	
+		
+		<complex name="items" ref="cashreceiptitem" jointype="one-to-many">
+			<key field="objid" target="receiptid" />
+		</complex>	
+
+		<complex name="payments" ref="cashreceiptpayment_noncash" jointype="one-to-many">
+			<key field="objid" target="receiptid" />
+		</complex>
+
+
+	</element>
+	
+	
+</schema>
+

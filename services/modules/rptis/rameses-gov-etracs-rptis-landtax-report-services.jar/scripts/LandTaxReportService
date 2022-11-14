@@ -1,0 +1,357 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+
+class LandTaxReportService
+{
+    @PersistenceContext('main')
+    def em
+
+    @ActiveDB('landtaxreport_collection')
+    def landtaxreport_collection;     
+     
+	@Service('DateService')
+    def dateSvc
+	
+	@Service('NumberService')
+    def numSvc
+
+    @Service('BarangayLookupService')
+    def brgySvc 
+	
+	@Service('Var')
+	def var 
+
+	@Service('RPTUtil')
+	def util
+
+	
+	@Env
+	def env
+	
+
+	@ProxyMethod
+	public def generateDelinquencyReport(params){
+		util.required('Barangay', params.barangay)
+		return em.sqlContext.createNamedQuery('landtaxreport:generateDelinquencyReport')
+				.setParameter('barangayid', params.barangay.objid)
+				.setParameter('currentyear', dateSvc.serverYear)
+				.resultList
+	}
+
+	@ProxyMethod
+	public def generateDelinquencyReportOldFormat(params){
+		util.required('Barangay', params.barangay)
+		def list = em.sqlContext.createNamedQuery('landtaxreport:generateDelinquencyReportOldFormat')
+				.setParameter('barangayid', params.barangay.objid)
+				.setParameter('currentyear', dateSvc.serverYear)
+				.resultList.each{
+					it.yearsdelinquent = util.toInteger(it.yearsdelinquent)
+				}
+		return list 
+	} 
+
+
+	@ProxyMethod
+	public def generateAbstractOfCollection( params ) {
+		def parsedate = dateSvc.parseCurrentDate()		
+		if(params.year > parsedate.year ) throw new Exception('Year must not exceed current year.')
+
+		def reportparams = buildReportParams(params)
+		
+		def whereclause = ''
+		whereclause += 'WHERE rr.year = $P{year}'
+		whereclause += '  AND rr.qtr = $P{qtr}'
+		if (reportparams.month != null)
+			whereclause += '  AND rr.month = $P{month}'
+		if (reportparams.day != null)
+			whereclause += '  AND rr.day = $P{day}'
+		if (reportparams.collectorid)
+			whereclause += '  AND xr.collectorid LIKE $P{collectorid}'
+
+		def items = []
+		def advitems = []
+		
+		//type -> BASIC, SEF 
+		if( params.accttype == null || params.accttype == 'BASIC'  ) {
+			reportparams.whereclause = whereclause + ' AND ri.year <= $P{currentyr}'
+			items +=  em.sqlContext.createNamedQuery('landtaxreport:getAbstractCollectionBASIC')
+							.setVars(reportparams)
+							.setParameters( reportparams ).resultList 
+
+			reportparams.whereclause = whereclause + ' AND ri.year > $P{currentyr}'
+			advitems +=  em.sqlContext.createNamedQuery('landtaxreport:getAbstractCollectionBASIC')
+							.setVars(reportparams)
+							.setParameters( reportparams ).resultList 
+		}
+		if( params.accttype == null || params.accttype == 'SEF'  ) {
+			reportparams.whereclause = whereclause + ' AND ri.year <= $P{currentyr}'
+			items +=  em.sqlContext.createNamedQuery('landtaxreport:getAbstractCollectionSEF')
+							.setVars(reportparams)
+							.setParameters( reportparams ).resultList 
+
+			reportparams.whereclause = whereclause + ' AND ri.year > $P{currentyr}'
+			advitems +=  em.sqlContext.createNamedQuery('landtaxreport:getAbstractCollectionSEF')
+							.setVars(reportparams)
+							.setParameters( reportparams ).resultList 
+		}
+
+
+		if( ! items ) throw new Exception('No records found.')
+		
+		return [
+			title 	: buildTitle( params.year, params.qtr, params.month, params.day, params.accttype, params.collector  ),
+			period 	: util.buildPeriod(params),
+			items  	: items.sort{a,b -> a.type + '-' + a.orno <=> b.type + '-' + b.orno }, 
+			advitems : advitems.sort{a,b -> a.type + '-' + a.orno <=> b.type + '-' + b.orno }, 
+		]
+	}
+
+
+	@Async 
+	@ProxyMethod 
+	public def generateRPTCollectionReport( params ) {
+		def parsedate = dateSvc.parseCurrentDate()		
+		if(params.year > parsedate.year ) throw new Exception('Year must not exceed current year.')
+
+		def periodcode = params.period?.code; 
+		if ( !periodcode ) periodcode = 'monthly'; 
+
+		def period = ''
+		if ( periodcode == 'yearly' ) {
+			params.fromdate = dateSvc.parse('yyyy-MM-dd', params.year + '-01-01');
+			params.todate = dateSvc.parse('yyyy-MM-dd', params.year + '-12-31') + 1;
+			period = 'FOR THE YEAR ' + params.year;
+		} else if ( periodcode.matches('quarterly|asofqtr') ) {
+			if ( !params.qtr ) throw new Exception('qtr parameter is required');
+			params.fromdate = dateSvc.getBeginningQtrDate( (periodcode == 'asofqtr' ? 1 : params.qtr), params.year, 1 ); 
+			params.todate  =  dateSvc.getQtrEndDate( params.qtr, params.year ) + 1;
+			period = (periodcode == 'asofqtr' ? '1ST QUARTER - ' : 'FOR THE ') + util.getQuarterName( params.qtr ) + ' OF ' + params.year 
+		} else if ( periodcode == 'asofday' ) {
+            if ( !params.date ) throw new Exception('date parameter is required');
+			params.fromdate = dateSvc.parse('yyyy-MM-dd', params.year + '-01-01');
+			params.todate   = dateSvc.parse('yyyy-MM-dd', params.date) + 1;
+			period = 'As of ' + dateSvc.format('MMMMM dd, yyyy', params.date);
+		} else if ( periodcode == 'daily' ) {
+            if ( !params.date ) throw new Exception('date parameter is required');
+			params.fromdate = dateSvc.parse('yyyy-MM-dd', params.date);
+			params.todate   = dateSvc.parse('yyyy-MM-dd', params.date) + 1;
+			period = 'For ' + dateSvc.format('MMMMM dd, yyyy', params.date);
+		} else {
+			if ( !params.month ) throw new Exception('month parameter is required ')
+			params.fromdate = dateSvc.parse('yyyy-MM-dd', params.year + '-' + (periodcode == 'asofmon' ? '01' : params.month.index) + '-01');
+			def todate = dateSvc.parse('yyyy-MM-dd', params.year + '-' + params.month.index + '-01');
+			params.todate = dateSvc.getMonthEndDate(todate) + 1;
+			period = (periodcode == 'asofmon' ? 'JANUARY - ' : 'FOR THE MONTH OF ') + util.getMonthName( params.month.index ) + ', ' + params.year  
+		} 
+
+		params.filter = ' liquidationdate >= $P{fromdate} AND liquidationdate < $P{todate} '
+		if (params.postingtype && params.postingtype.code == 'byrem'){
+			params.filter = ' remittancedate >= $P{fromdate} AND remittancedate < $P{todate} '
+		}
+
+		def data = [:]
+		if ( !params.reporttype ) params.reporttype = 'standard' 
+
+		data.items = []; 
+		if ( params.reporttype=='standard' ) {
+			buildStandardReport(data, params)
+		} else { 
+			buildAdvanceReport(data, params)
+		} 
+
+		data.title = "REPORT ON REAL PROPERTY TAX COLLECTIONS"; 
+		data.period = period; 
+        println 'params => ' + params
+		return [reportdata : data]; 
+	} 
+
+
+	void buildStandardReport(data, params){
+		if (params.reportformat.code == 'summbymon'){
+			buildSummaryByMonth(data, params)
+		} else if (params.reportformat.code == 'summbybrgy'){
+			buildSummaryByBrgy(data, params)
+		} else {
+			data.items = landtaxreport_collection.getStandardReport( params ); 
+			if ( !data.items ) throw new Exception("No record(s) found."); 
+
+			data.items.each {
+				it.classname =  (it.special == 1? "  *" + it.classname : it.classname); 
+			}
+			initShares(data)
+			def disposition = landtaxreport_collection.findStandardDispositionReport( params ); 		
+			if ( disposition ) {
+				data.putAll ( disposition ); 
+				data.provcityshare = data.provcitybasicshare.add( data.provcitysefshare );
+				data.munishare = data.munibasicshare.add( data.munisefshare );
+				data.brgyshare = data.brgybasicshare.add( data.brgysefshare );
+			} 
+		}
+	}
+
+	void buildSummaryByMonth(data, params) {
+		data.items = landtaxreport_collection.getCollectionSummaryByMonth( params ); 
+		if ( !data.items ) throw new Exception("No record(s) found."); 
+
+		if (params.year != dateSvc.serverYear) {
+			data.asof = 'As of December 31, ' + params.year 	
+		} else {
+			data.asof = 'As of ' + dateSvc.format('MMMMM dd, yyyy', dateSvc.serverDate)
+		}
+	}
+
+	void buildSummaryByBrgy(data, params) {
+		def p = [:]
+		p.putAll(params)
+
+		data.items = landtaxreport_collection.getCollectionSummaryByBrgy( params ); 
+		if ( !data.items ) throw new Exception("No record(s) found."); 
+
+		if (p.month.index != 1) {
+			//build previous total
+			p.fromdate = params.year + '-' + (params.month.index-1) + '-01 00:00:00'
+			p.todate = dateSvc.format( 'yyyy-MM-dd', dateSvc.getMonthEndDate( dateSvc.parse('yyyy-MM-dd', p.fromdate)) )  + " 23:59:59"
+			def prevtotals = landtaxreport_collection.getPreviousCollectionSummaryByBrgy(p);
+			prevtotals.each{prev -> 
+				def item = data.items.find{ it.brgyindex == prev.brgyindex && it.revtype == prev.revtype}
+				if (item) {
+					item.prevtotal = prev.total
+				}
+			}
+		}
+	}
+
+
+	void buildAdvanceReport(data, params){
+		data.items = landtaxreport_collection.getAdvanceReport( params );
+		if (!data.items) throw new Exception('No record(s) found.')
+
+		data.items.each {
+			it.classname =  (it.special == 1? "  *" + it.classname : it.classname); 
+		}
+
+		initShares(data)
+		buildShares(data, params)
+	}
+
+	void initShares(data){
+		data.provcitybasicshare = 0.0
+		data.munibasicshare = 0.0
+		data.brgybasicshare = 0.0
+
+		data.provcityidleshare = 0.0
+		data.muniidleshare = 0.0
+		data.brgyidleshare = 0.0
+
+		data.provcitysefshare = 0.0
+		data.munisefshare = 0.0
+		data.brgysefshare = 0.0
+
+		data.provcityshare = 0.0
+		data.munishare = 0.0
+		data.brgyshare = 0.0
+	}
+
+	/* this is temporary, yearly advance is not supported in rptpayment_share */
+	void buildShares(data, params){
+		def disposition = landtaxreport_collection.findAdvanceDispositionReport2( params );	
+		if ( disposition ) {
+			if ('city'.equalsIgnoreCase(env.ORGCLASS)){
+				data.brgybasicshare = numSvc.round((disposition.basic - disposition.basicdisc) * 0.30)
+				data.provcitybasicshare = (disposition.basic - disposition.basicdisc) - data.brgybasicshare - data.munibasicshare
+				data.provcityidleshare = disposition.basicidle - disposition.basicidledisc
+				data.provcitysefshare = (disposition.sef - disposition.sefdisc) 
+				data.provcityshare = data.provcitybasicshare + data.provcitysefshare
+				data.brgyshare = data.brgybasicshare + data.brgysefshare
+			}
+			else {
+				data.brgybasicshare = numSvc.round((disposition.basic - disposition.basicdisc) * 0.25)
+				data.munibasicshare = numSvc.round((disposition.basic - disposition.basicdisc) * 0.40)
+				data.provcitybasicshare = (disposition.basic - disposition.basicdisc) - data.brgybasicshare - data.munibasicshare
+				data.provcityidleshare = numSvc.round( (disposition.basicidle - disposition.basicidledisc) * 0.50)
+				data.muniidleshare = (disposition.basicidle - disposition.basicidledisc) - data.provcityidleshare
+
+				data.provcitysefshare = numSvc.round((disposition.sef - disposition.sefdisc) * 0.50)
+				data.munisefshare = (disposition.sef - disposition.sefdisc) - data.provcitysefshare
+				data.provcityshare = data.provcitybasicshare + data.provcitysefshare
+				data.munishare = data.munibasicshare + data.munisefshare
+				data.brgyshare = data.brgybasicshare + data.brgysefshare
+			}
+		} 
+	}
+
+
+	@ProxyMethod 
+	public def generateRPTShareReport( params ) {
+		buildDateFilter(params)
+		params.lguid = params.lgu.objid 
+
+
+		def data = [:]
+		data.items = em.sqlContext.createNamedQuery('landtaxreport:getShare_' + params.sharetype + "_" + params.revenuetype)
+							.setParameters( params )
+							.resultList
+		if(! data.items ) throw new Exception("No record(s) found.      ")		
+
+		data.title = "REPORT ON ${params.sharetype} ${params.revenuetype} SHARE".toString() 
+		data.period = util.buildPeriod(params )	
+		data.lguname = params.lgu.name 
+		return data
+	}
+
+	@ProxyMethod
+	public def getBarangays( params ) {
+		return brgySvc.lookupBarangays(params) 
+	}
+
+
+	@ProxyMethod
+	public List getNumDays( year, month ) {
+		if ( !month && month < 0 ) return []
+		
+		Calendar cal = Calendar.getInstance()
+        cal.set( year, month, 1)
+        int maxday = cal.getActualMaximum(cal.DAY_OF_MONTH)
+		def numdays = []
+		1.upto( maxday ) { numdays.add( it ) }
+		return numdays 
+	}
+
+
+	def buildReportParams(params){
+		def reportparams = [
+			accttype : params.accttype, 
+			year : params.year,
+			qtr  : params.qtr, 
+			currentyr : dateSvc.serverYear,
+		]
+
+		if (params.month)
+			reportparams.month = params.month.index 
+		if (params.collector)
+			reportparams.collectorid = params.collector.objid 
+		return reportparams
+	}
+
+
+	def buildTitle( year, qtr, month, day, type, collector  ) {
+		def stype = ( type ? type + ' ' : '' )
+		def collectorname = ( collector ? ' of ' + collector.name : '' )
+		if( day ) return 'Daily ' + stype + 'Abstract of Realty Tax Collection ' + collectorname
+		if( month ) return 'Monthly ' + stype + 'Abstract of Realty Tax Collection ' + collectorname
+		if( qtr ) return 'Quarterly ' + stype + 'Abstract of Realty Tax Collection ' + collectorname
+		return 'Annual ' + stype + 'Abstract of Realty Tax Collection ' + collectorname
+	}
+
+	void buildDateFilter(params){
+		if (params.qtr != null && params.month != null) {
+			params.fromdate = params.year + '-' + params.month.index + '-01 00:00:00'
+			params.todate   = dateSvc.format('yyyy-MM-dd', dateSvc.getMonthEndDate(dateSvc.parse('yyyy-MM-dd', params.fromdate))) + " 23:59:59"
+		}
+		else {
+			params.fromdate = dateSvc.format('yyyy-MM-dd', dateSvc.getBeginningQtrDate( params.qtr, params.year, 1 ) ) + " 00:00:00"
+			params.todate   = dateSvc.format('yyyy-MM-dd', dateSvc.getQtrEndDate( params.qtr, params.year )) + " 23:59:59"
+		}
+	}
+
+}	

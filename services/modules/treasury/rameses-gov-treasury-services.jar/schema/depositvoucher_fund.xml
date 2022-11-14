@@ -1,0 +1,30 @@
+<schema>
+	<element  tablename="depositvoucher_fund" >
+		<field name="objid" primary="true" prefix="DVF"/>
+		<field name="parentid" required="true" />
+		<field name="fundid" required="true"/>
+		<field name="state" required="true"/>
+
+		<field name="postedby_objid" />
+		<field name="postedby_name" />
+		<field name="dtposted" />
+		
+		<complex name="parent" ref="depositvoucher" jointype="many-to-one" includefields="objid,controlno,controldate,state,dtcreated">
+			<key field="parentid" target="objid" />
+		</complex>	
+		<!-- we need this for querying in deposit initial -->
+		<complex name="fund" ref="fund" jointype="many-to-one" includefields="objid,code,title">
+			<key field="fundid" target="objid" />
+		</complex>
+
+		<field name="amount" required="true" type="decimal" caption="Amount"/>
+		<field name="amountdeposited" required="true" type="decimal" caption="Amount Deposited"/>
+
+		<field name="totaldr" required="true" type="decimal" caption="Amt Due From"/>
+		<field name="totalcr" required="true" type="decimal" caption="Amt Due To"/>
+		<!--
+		<field name="balance"  expr="(amount-totaldr) - (amountdeposited-totalcr)" type="decimal" caption="Balance"/>
+		-->
+	</element>
+</schema>
+

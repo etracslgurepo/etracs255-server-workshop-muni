@@ -1,0 +1,75 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class MunicipalityRequestFAASSeriesService
+{   
+  @Env 
+  def env;
+
+  @Service('DateService')
+  def dtSvc;
+
+	@ActiveDB('municipality_faas_request_series')
+  def db;
+	
+  @DataContext('barangay')
+  def em_barangay;
+
+  @DataContext('sequence')
+  def em_sequence;
+
+  @DataContext('faas_requested_series')
+  def em_requested_series;
+
+
+  @ProxyMethod
+  public def getBarangays() {
+    return em_barangay.select('objid,name,indexno').where('1=1').orderBy('name').list();
+  }
+
+  @ProxyMethod
+  public def getSeries(barangay) {
+    barangay.key = 'TDNO-%' + barangay.indexno;
+    return db.getSeries(barangay);
+  }
+
+  @ProxyMethod
+  public def getRequestedSeries(series) {
+    return db.getRequestedSeries(series)
+  }
+
+  @ProxyMethod
+  public def postRequestedSeries(entity) {
+    def series = entity.series;
+    def oldseries = em_sequence.find([objid: series.objid]).first();
+    
+    if (!oldseries) throw new Exception('Series for ' + series.objid + ' does not exist.');
+    if (series.nextseries != oldseries.nextSeries) {
+      def msg = 'The Current Series does not match.'
+      msg += '\nCancel the transaction, refresh the management screen'
+      msg += '\nto update the current series and generate the request again.'
+      throw new Exception(msg)
+    } 
+
+    def startseries = series.nextseries;
+    def endseries = series.nextseries + entity.requestedcount - 1; 
+    
+    def seriesrange = startseries;
+    if (entity.requestedcount > 1) {
+      endseries = series.nextseries + entity.requestedcount - 1; 
+      seriesrange = startseries + ' - ' + endseries;
+    }
+    em_sequence.find([objid: series.objid]).update([nextSeries: endseries + 1]);
+    
+    entity.series = seriesrange;
+    entity.parentid = series.objid;
+    entity.requestedby.date = dtSvc.serverDate;
+    entity.requestedby = entity.requestedby;
+    entity.createdby = [:];
+    entity.createdby.name = env?.name ? env.name : 'SYSTEM';
+    entity.createdby.date = entity.requestedby.date;
+    return em_requested_series.create(entity);
+  }
+
+}

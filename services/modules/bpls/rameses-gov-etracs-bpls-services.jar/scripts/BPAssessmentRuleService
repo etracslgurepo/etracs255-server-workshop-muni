@@ -1,0 +1,118 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.rules.common.*;
+
+import bpls.facts.*;
+import bpls.actions.*;
+
+public class BPAssessmentRuleService  {
+
+	@Resource("RuleService")	
+	def ruleSvc;
+
+	@ActiveDB("rule")
+	def ruleDB;
+
+	@ActiveDB("revenueitem")
+	def ba;
+
+	@ActiveDB("businessvariable")
+	def bv;
+
+	@ActiveDB("businessrequirement")
+	def br;
+
+	@Service("DateService")
+	def dateSvc;
+
+	@Service("NumberService")
+	def numberSvc;
+
+	@DataContext( dynamic=true )
+	def dynaEm;
+	
+	@Env 
+	def env;
+
+	String RULESET = "bpassessment";
+
+
+	def comparator = { agg, oldvalue, newvalue -> 
+		def oldnum = (oldvalue ? oldvalue : 0);
+		def newnum = (newvalue ? newvalue : 0);
+		switch(agg) {
+			case "COUNT":
+				return (oldnum + 1);
+
+			case "SUM":
+				return (oldnum + newnum);
+
+			case "MIN":
+				return (oldnum <= newnum ? oldnum : newnum); 
+
+			case "MAX":
+				return (oldnum >= newnum ? oldnum : newnum); 
+		}
+		return 0;
+	}
+
+	def buildActions(def request) {
+		def actions = new RuleAction();
+		actions.addCommand( "ask_business_info", new AskBusinessInfo( infotype:'assessment', BV:bv, request:request ));
+		actions.addCommand( "assert_business_info", new AssertBusinessInfo(request:request, BV:bv,  comparator: comparator));
+		actions.addCommand( "compute_businesstax", new ComputeTaxFee( request:request, BA:ba, NA: numberSvc, type:'TAX')); 
+		actions.addCommand( "compute_regfee", new ComputeTaxFee( request:request, BA:ba, NA: numberSvc, type:'REGFEE')); 
+		actions.addCommand( "compute_othercharge", new ComputeTaxFee( request:request, BA:ba, NA: numberSvc, type:'OTHERCHARGE')); 
+
+		actions.addCommand( "assert_taxfee", new AssertTaxFee( request:request, ruleSvc: ruleSvc));
+		actions.addCommand( "update_taxfee", new UpdateTaxFee(request:request));
+		actions.addCommand( "remove_taxfee", new RemoveTaxFee(request:request));
+		actions.addCommand( "select_taxfee", new SelectTaxFee(request:request));
+		actions.addCommand( "add_sysvar", new AddSysVar(request:request, comparator: comparator));
+		actions.addCommand( "assert_sysvars", new AssertSysVars(request:request));
+		actions.addCommand( "add_requirement", new AddRequirement(request:request, BR: br));
+		actions.addCommand( "change_business_account", new ChangeAccount(request:request, BA:ba));
+		actions.addCommand( "print_test", new PrintTest());
+		return actions;
+	}
+
+
+	@ProxyMethod
+	public def getRuleGroups( param ) { 
+		return ruleDB.getRulegroups([ ruleset: (param.ruleset ? param.ruleset : "") ]); 
+	} 
+
+	@ProxyMethod
+	public def execute( def param ) { 
+		return executeImpl( RULESET, param.facts, param.entity ); 
+	}
+
+	@ProxyMethod
+	public def executeImpl( String ruleset, def facts, def entity) {
+		def request = [newinfos:[], taxfees:[], lobMap:[:], vars:[:], taxfeefacts:[], requirements:[] ]; 
+		request.facts = facts;
+		request.entity = entity;
+		request.actions = buildActions( request );
+
+		int phase = 0;
+		def grps = getRuleGroups([ ruleset: ruleset ]);
+		for ( g in grps ) { 
+			request.phase = phase; 
+			request.phasename = g.name; 
+
+			request.vars.clear(); 
+			request.taxfeefacts.clear(); 
+
+			ruleSvc.execute( ruleset, request.facts, request.actions, g.name ); 
+			
+			//if first phase and there is entry in newinfos break it.
+			if ( phase <= 1 && request.newinfos ) break; 
+
+			phase++; 
+		} 
+
+		return [infos: request.newinfos, taxfees: request.taxfees, phase: phase];
+	} 
+}
+

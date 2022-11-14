@@ -1,0 +1,25 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+
+class AdminLogoutInterceptor
+{
+	@ActiveDB('session') 
+	def em;
+
+	@Service('DateService')
+	def dateSvc;
+
+	@After(pattern="LogoutService.logout") 
+	public void logout( evt ) {
+		def params = evt.args[0];
+		if (!params.SESSIONID) return;
+
+		def sessinfo = em.read([sessionid: params.SESSIONID]);
+		if (!sessinfo) return;
+
+		sessinfo.timeout = dateSvc.serverDate; 
+		sessinfo.state = 'LOGOUT'; 
+		em.create(sessinfo, 'log');
+		em.delete(sessinfo);
+	} 
+}

@@ -1,0 +1,114 @@
+<schema>
+	<element name="bldgrpu" tablename="bldgrpu">
+		<field name="objid" primary="true" />
+		<field name="landrpuid" required="true" />
+		<field name="houseno" />
+		<field name="psic" />
+		<field name="permitno" />
+		<field name="permitdate" />
+		<field name="permitissuedby" />
+		<field name="bldgtype_objid" />
+		<field name="bldgkindbucc_objid" />
+		<field name="basevalue" type="decimal" />
+		<field name="dtconstructed" />
+		<field name="dtcompleted" />
+		<field name="dtoccupied" />
+		<field name="floorcount" required="true" type="integer" />
+		<field name="depreciation" required="true" type="decimal" />
+		<field name="depreciationvalue" required="true" type="decimal" />
+		<field name="totaladjustment" required="true" type="decimal" />
+		<field name="additionalinfo" />
+		<field name="bldgage" required="true" type="integer" />
+		<field name="effectiveage" required="true" type="integer" />
+		<field name="percentcompleted" required="true" type="integer"/>
+		<field name="bldgassesslevel_objid"  />
+		<field name="assesslevel" required="true" type="decimal"/>
+		<field name="condominium" required="true" type="boolean" />
+		<field name="bldgclass" />
+		<field name="predominant" type="integer" />
+		<field name="condocerttitle" />
+		<field name="dtcertcompletion" />
+		<field name="dtcertoccupancy" />
+		<field name="occpermitno" />
+		<field name="cdurating" />
+	</element>
+
+	<element name="structure" tablename="bldgstructure">
+		<field name="objid" primary="true" />
+		<field name="bldgrpuid" required="true" />
+		<field name="floor" required="true" type="integer" />
+		<field name="structure_objid" required="true" />
+		<field name="material_objid" />
+	</element>
+
+	<element name="structuraltype" tablename="bldgrpu_structuraltype">
+		<field name="objid" primary="true" />
+		<field name="bldgrpuid" required="true" />
+		<field name="classification_objid" required="true" />
+		<field name="bldgtype_objid" />
+		<field name="bldgkindbucc_objid" />
+		<field name="floorcount" type="integer"/>
+		<field name="basefloorarea" required="true" type="decimal" />
+		<field name="totalfloorarea" required="true" type="decimal" />
+		<field name="basevalue" required="true" type="decimal" />
+		<field name="unitvalue" required="true" type="decimal" />
+	</element>
+
+	<element name="bldgland" tablename="bldgrpu_land">
+		<field name="objid" primary="true" />
+		<field name="bldgrpuid" required="true" />
+		<field name="landfaas_objid" required="true" />
+	</element>
+
+	<element name="bldguse" tablename="bldguse">
+		<field name="objid" primary="true" />
+		<field name="bldgrpuid" required="true" />
+		<field name="structuraltype_objid" required="true" />
+		<field name="actualuse_objid" required="true" />
+		<field name="basevalue" required="true" type="decimal" />
+		<field name="area" required="true" type="decimal" />
+		<field name="basemarketvalue" required="true" type="decimal" />
+		<field name="depreciationvalue" required="true" type="decimal" />
+		<field name="assesslevel" type="decimal" />
+		<field name="assessedvalue" type="decimal" />
+		<field name="adjustment" required="true" type="decimal" />
+		<field name="adjfordepreciation" required="true" type="decimal" />
+		<field name="marketvalue" required="true" type="decimal" />
+		<field name="addlinfo" />
+		<field name="taxable" required="true" type="boolean" />
+	</element>
+
+	<element name="floor" tablename="bldgfloor">
+		<field name="objid" primary="true" />
+		<field name="bldguseid" required="true" />
+		<field name="bldgrpuid" required="true" />
+		<field name="floorno" required="true" />
+		<field name="area" required="true" type="decimal" />
+		<field name="storeyrate" required="true" type="decimal" />
+		<field name="basevalue" required="true" type="decimal" />
+		<field name="unitvalue" required="true" type="decimal" />
+		<field name="basemarketvalue" required="true" type="decimal" />
+		<field name="adjustment" required="true" type="decimal" />
+		<field name="marketvalue" required="true" type="decimal" />
+	</element>
+
+	<element name="additional" tablename="bldgflooradditional">
+		<field name="objid" primary="true" />
+		<field name="bldgfloorid" required="true" />
+		<field name="bldgrpuid" required="true" />
+		<field name="additionalitem_objid" required="true" />
+		<field name="amount" required="true" type="decimal" />
+		<field name="expr" required="true" />
+		<field name="depreciate" required="true" type="boolean" />
+		<field name="issystem" required="true" type="boolean" />
+	</element>
+
+	<element name="param" tablename="bldgflooradditionalparam">
+		<field name="objid" primary="true" />
+		<field name="bldgflooradditionalid" required="true" />
+		<field name="bldgrpuid" required="true" />
+		<field name="param_objid" required="true" />
+		<field name="intvalue" type="integer"/>
+		<field name="decimalvalue" type="decimal"/>
+	</element>
+</schema>

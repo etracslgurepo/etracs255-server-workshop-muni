@@ -1,0 +1,10 @@
+<schema>
+	<element tablename="rpt_requirement_type">
+		<field name="objid" primary="true" prefix="RT"/>
+		<field name="state" caption="State" required="true" searchable="true" indexed="true" width="100" />
+		<field name="name" caption="Name" required="true" searchable="true"  indexed="true" width="350" />
+		<field name="description" width="400"/>
+		<field name="handler" width="100"/>
+		<field name="sortorder" type="integer" width="100"/>
+	</element>
+</schema>

@@ -1,0 +1,47 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+
+public class BusinessUserRoleService  {
+
+	@Service("UserRoleService")
+	def roleSvc;
+
+	@ActiveDB('user')
+	def userdb; 
+
+	@Env 
+	def env;
+
+	@ProxyMethod
+	public def getCurrentUser() {
+		return [objid:env.USERID, name:env.FULLNAME, title:env.JOBTITLE];
+	}
+
+	@ProxyMethod
+	public def getReceiverList() {
+		return roleSvc.getUsers( [domain:'BPLS', roles:'BUSINESSINFO'] ).collect { 
+			[objid:it.objid, name:it.firstname+' '+it.lastname, title:it.title] 
+		}
+	}
+
+	@ProxyMethod
+	public def getAssessorList() {
+		return roleSvc.getUsers( [domain:'BPLS', roles:'ASSESSOR'] ).collect { 
+			[objid:it.objid, name:it.firstname+' '+it.lastname, title:it.title] 
+		}
+	}
+
+	@ProxyMethod
+	public def getApproverList() {
+		return roleSvc.getUsers( [domain:'BPLS', roles:'APPROVER'] ).collect { 
+			[objid:it.objid, name:it.firstname+' '+it.lastname, title:it.title] 
+		}
+	}
+
+	@ProxyMethod
+	public def findUser( params ) {
+		return userdb.read([ objid: params.objid ]); 
+	}
+
+}

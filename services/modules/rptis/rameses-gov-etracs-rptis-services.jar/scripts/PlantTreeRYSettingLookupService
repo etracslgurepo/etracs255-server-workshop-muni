@@ -1,0 +1,52 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import com.rameses.util.*
+
+public class PlantTreeRYSettingLookupService
+{
+    @PersistenceContext('main')
+    def em
+    
+
+    @Service('LookupUtilService')
+	def lupSvc 
+
+
+    @ProxyMethod
+    public def lookupAssessLevels(params){
+        if (!params.searchtext) params.searchtext = ''
+        params.searchtext += '%'
+    	def list = lupSvc.lookup( 'planttreerysettinglookup:lookupAssessLevels', params, 'lal.objid' )
+        return filterByBarangay(params, list)
+    }
+
+
+    @ProxyMethod
+    public def lookupAssessLevelByPrevId(previd){
+        return em.sqlContext.createNamedQuery('planttreerysettinglookup:lookupAssessLevelByPrevId')
+                .setParameter('previd', previd).singleResult    
+    }
+
+
+    @ProxyMethod
+    public def lookupUnitValues(params){
+        if (!params.searchtext) params.searchtext = ''
+        params.searchtext += '%'
+    	def list = lupSvc.lookup( 'planttreerysettinglookup:lookupUnitValues', params, 'puv.objid' )
+        return filterByBarangay(params, list)
+    }
+
+
+    @ProxyMethod
+    public def lookupUnitValueByPrevId(previd){
+        return em.sqlContext.createNamedQuery('planttreerysettinglookup:lookupUnitValueByPrevId')
+                .setParameter('previd', previd).singleResult    
+    }
+
+    def filterByBarangay(params, list){
+        def res = list.findAll{it.barangayid == params.barangayid}
+        if ( res )
+            return res 
+        return list.findAll{it.barangayid == null} 
+    }
+}

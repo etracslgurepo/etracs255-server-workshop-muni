@@ -1,0 +1,24 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class RPTReportSubdivisionService
+{
+    @ActiveDB('rptreport_subdivision')
+    def em
+
+    @ProxyMethod
+    public def buildSummaryData( subdivision ) {
+    	def data = [:]
+    	
+    	data.items = em.getSubdividedLands(subdivision)
+    	data.previtems = em.getMotherLandsSummary(subdivision)
+    	
+    	if (data.items){
+    		data.txnno = data.items[0].txnno
+            data.barangay = data.items[0].barangay
+    		data.lguname = data.items[0].lguname
+    	}
+    	return data 
+    }
+}

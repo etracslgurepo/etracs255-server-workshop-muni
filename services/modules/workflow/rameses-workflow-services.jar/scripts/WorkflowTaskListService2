@@ -1,0 +1,23 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.services.extended.*;
+
+/***********************************************************************
+* This is a generic workflow service. 
+* The em is a dynamic active db. pass the name of the workflow instance
+* workflow instance must have the standard field names
+************************************************************************/
+class WorkflowTaskListService2 extends ActiveListService {		
+
+	@ActiveDB("wf")
+	def em;
+
+	String listMethod = "getTaskListByRef"
+
+	public void beforeList(o) {
+		o.taskTablename = o.processname + "_task";
+	}
+
+
+}

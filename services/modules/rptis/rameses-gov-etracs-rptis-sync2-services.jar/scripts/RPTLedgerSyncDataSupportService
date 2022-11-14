@@ -1,0 +1,127 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.util.*
+import com.rameses.services.extended.*
+
+
+class RPTLedgerSyncDataSupportService
+{
+    @Env
+    def env
+
+    @Service('RPTMainSyncDataService')
+    def syncSvc 
+    
+    @Service('DateService')
+    def dtSvc
+
+    @DataContext('rptledger')
+    def em_ledger
+
+    @DataContext('remote_mapping')
+    def em_mapping
+
+    @DataContext('faas')
+    def em_faas
+
+    @DataContext('rptledger_credit')
+    def em_credit    
+
+    @DataContext('sys_org')
+    def em_org
+
+
+    @ProxyMethod
+    public def getLedgerMapping(ledger){
+        def mapping = em_mapping.find([objid:ledger.objid, doctype:'rptledger']).first()
+        if (!mapping){
+            def remoteledger = getRemoteLedger(ledger)
+            
+            mapping = [:]
+            mapping.objid = ledger.objid 
+            mapping.doctype = 'rptledger'
+            mapping.orgcode = getOrgCode()
+            mapping.remote = remoteledger
+            mapping.createdby = [
+                name: (env.NAME ? env.NAME : 'SYSTEM'), 
+                title: (env.JOBTITLE ? env.JOBTITLE : 'SYSTEM')
+            ]
+            mapping.dtcreated = dtSvc.serverDate
+            em_mapping.create(mapping) 
+        }
+        mapping.remote.orgcode = mapping.remote.orgcode.replace('-', '')
+        return mapping
+    }
+
+    @ProxyMethod
+    public def getRemoteOrg(faasid){
+        def faas = em_faas.select('objid,lguid,originlguid').find([objid:faasid]).first()
+        if (!faas) throw new Exception('FAAS ' + faas.tdno + ' does not exist or has already been deleted.')
+        def org = em_org.find([objid:faas.lguid]).first();
+        if (!org) throw new Exception('Org ' + faas.lguid + ' does not exist or has already been deleted.')
+
+        if ('PROVINCE'.equalsIgnoreCase(env.ORGCLASS)) {
+            return [objid: faas.lguid, orgcode: org.code.replaceAll('-', '')]
+        } else {
+            def parentorg = em_org.find([objid: org.parent.objid]).first();
+            return [
+                objid: faas.lguid, 
+                orgcode: parentorg.code.replaceAll('-', '')
+            ]
+        }
+    }
+
+
+    @ProxyMethod
+    public void resolveIds(ledger, remoteledger){
+        remoteledger.objid = ledger.objid 
+        remoteledger.faases?.each{ it.rptledgerid = ledger.objid}
+        if (remoteledger.subledger){
+            remoteledger.subledger.parent?.objid = ledger.objid 
+            remoteledger.parent?.objid = ledger.objid   
+        }
+        remoteledger._items?.each{
+            it.parentid = ledger.objid 
+        }
+        remoteledger._differences?.each{
+            it.rptledgerid = ledger.objid 
+        }
+        remoteledger._credits?.each{
+            it.rptledgerid = ledger.objid 
+            it.refid = ledger.objid 
+        }
+        remoteledger._subledgers?.each{
+            it.parent.objid = ledger.objid 
+        }
+        remoteledger._restrictions?.each{
+            it.parent.objid = ledger.objid 
+        }
+    }    
+
+
+    def getRemoteLedger(ledger){
+        def params = [remote:[:]]
+        params.orgcode = env.ORGCODE
+        params.remote = getRemoteOrg(ledger.faasid)
+        params.ledger = ledger
+
+        def syncdata = [:]
+        syncdata.refid =  ledger.objid 
+        syncdata.reftype = 'rptledger'
+        syncdata.action = 'CREATEMAPPING'
+        syncdata.remote = params.remote 
+        syncdata.data = params 
+
+        def remote = syncSvc.send(syncdata)
+        remote.orgcode = params.remote.orgcode 
+        return remote 
+    }
+
+    def getOrgCode() {
+        if (env.ORGCODE) return env.ORGCODE;
+        em_org.find([root: 1]).first()?.code
+    }
+
+}
+
+

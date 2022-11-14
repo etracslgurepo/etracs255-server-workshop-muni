@@ -1,0 +1,16 @@
+<schema>
+	<element tablename="cashreceipt_af_summary">
+		<field name="objid" primary="true" />
+		<field name="collector_objid" />
+		<field name="afcontrolid" />
+		<field name="formtype" />
+		<field name="stubno" caption="Stub No"/>
+		<field name="formno" caption="Form No"/>
+		<field name="fromseries" caption="From Series"/>
+		<field name="toseries" caption="To Series"/>
+		<field name="endseries" caption="To Series"/>
+		<field name="qty" type="integer" />
+		<field name="amount" type="decimal"/>
+		<field name="remittanceid" />
+	</element>
+</schema>

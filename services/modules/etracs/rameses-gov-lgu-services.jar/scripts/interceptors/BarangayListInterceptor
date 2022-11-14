@@ -1,0 +1,48 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+
+public class BarangayListInterceptor {
+
+	@Env
+	def env
+
+	@DataContext("sys_org")
+	def orgEm;
+
+	@After(pattern="QueryService.getNodeList", eval="#{ args[0]._schemaname == 'barangay' }")
+	public void getNodes( evt ) { 
+		def x = evt.args[0];
+		def result = evt.result;
+		result << [id:'all', title:'All'];
+
+		def m = [_schemaname: "sys_org" ];
+		if( env.ORGCLASS == "PROVINCE") {
+			orgEm.where("orgclass = 'MUNICIPALITY' " ).orderBy("code");
+			result.addAll( orgEm.list().collect{ [id: it.objid, title: it.name] } );
+		}
+		else if( env.ORGCLASS == "CITY" ) {
+			orgEm.where("orgclass = 'DISTRICT' " ).orderBy("code");
+			result.addAll( orgEm.list().collect{ [id: it.objid, title: it.name] } );
+		}
+	}
+
+	@Before(pattern="QueryService.getList", eval="#{ args[0]._schemaname == 'barangay' }")
+	public void loadList(def evt) {
+		def o = evt.args[0];
+		def nodeid = o?.node?.id; 
+		if ( !nodeid || nodeid == 'all' ) return;
+
+		def str = " parent.objid = :parentid ";
+		def m = [parentid: nodeid ];
+
+		//add to first position of where
+		if( o.where ) {
+			o.where[0] = str + " AND " + o.where[0];	
+			o.where[1].putAll( m );
+		}
+		else {
+			o.where = [str, m];
+		}
+	}
+
+} 

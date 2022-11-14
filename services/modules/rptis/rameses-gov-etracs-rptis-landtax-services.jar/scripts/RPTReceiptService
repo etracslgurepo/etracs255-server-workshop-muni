@@ -1,0 +1,627 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import com.rameses.services.extended.*
+
+class RPTReceiptService
+{
+	@Env 
+	def env 
+
+	@ActiveDB('rptreceipt')
+	def em
+
+	@Service()
+	def self 
+    
+    @Service('DateService')
+	def dtSvc
+
+	@Service('NumberService')
+	def numSvc
+
+	@Service('RPTBillingService')
+	def billSvc 
+
+	@Service('RPTUtil')
+	def util
+
+	@Service('RPTLedgerService')
+	def ledgerSvc
+	
+	@Service('Var')
+	def var 
+
+	@Service('CashReceiptService')
+    def cashReceiptSvc
+
+	@DataContext('rptledger')
+	def em_rptledger
+
+	@DataContext('rptledger_item')
+	def em_rptledger_item
+
+	@DataContext('cashreceipt_rpt')
+	def em_cashreceipt_rpt
+
+	@DataContext('rptpayment')
+	def em_rptpayment
+
+	@DataContext('rptpayment_item')
+	def em_rptpayment_item
+
+	@DataContext('rptpayment_share')
+	def em_rptpayment_share
+
+	@DataContext('rptbill')
+	def em_rptbill
+
+	@DataContext('rptbill_ledger')
+	def em_rptbill_ledger
+
+	@DataContext('faas_restriction')
+	def em_faas_restriction
+
+	@DataContext('cashreceipt_rpt_share_forposting')
+	def em_cashreceipt_forposting
+
+    @DataContext('sys_org')
+    def em_org
+
+    @DataContext("city")
+    def em_city
+
+    @DataContext("province")
+    def em_prov
+
+    @DataContext("municipality")
+    def em_muni
+
+
+	@ProxyMethod
+	public def create(receipt) {
+		validateTotals(receipt)
+		def pdate = dtSvc.parseDate(receipt.txndate, null)
+		receipt.year = pdate.year
+		receipt.qtr = pdate.qtr
+		receipt.month = pdate.month
+		receipt.day = pdate.day
+		em_cashreceipt_rpt.create(receipt)
+		postPaidLedgers(receipt)
+		return receipt
+	}
+
+	@ProxyMethod
+	public def open( receipt ) {
+		def rct = em_cashreceipt_rpt.read(receipt)
+		if (rct){
+			receipt.putAll(rct)
+		}
+
+		def checks = []
+		receipt.paymentitems.each{
+		  if (it.refdate){
+		  	it.refdate = dtSvc.parse('yyyy-MM-dd', it.refdate)
+		  }
+		  checks << it.bank + ' - ' + it.refno + ' / ' + dtSvc.format('MM-dd-yyyy', it.refdate)
+		}
+		receipt.checkno = null
+		if (checks){
+			receipt.checkno = checks.join('\n')
+		}
+	}
+
+
+	@ProxyMethod
+	public def loadBarcode(param){
+		if (param.billid) {
+			def bill = em_rptbill.select('barcode').find([objid: param.billid]).first()
+			if (bill) param.barcodeid = bill.barcode
+		}
+		if (!param.barcodeid) {
+			throw new Exception('barcodeid must be specified.')
+		}
+
+		def bill = billSvc.getBillByBarcode(param)
+
+		def entity = [:]
+		entity.formtype = 'serial'
+		entity.txnmode = 'ONLINE'
+		entity.txntype = 'online'
+		entity.amount = 0.0 
+        entity.payer = bill.taxpayer
+        entity.paidby = bill.taxpayer.name
+        entity.paidbyaddress = bill.taxpayer.address
+        entity.collectiontype = bill.collectiontype;
+		entity.formno = entity.collectiontype.formno;
+        entity.putAll(cashReceiptSvc.init(entity))
+		entity.billid = bill.objid
+		bill.billdate = entity.receiptdate
+		bill.ledgers = em_rptbill_ledger.find([billid: bill.objid]).list().each{it.objid = it.rptledgerid}
+		entity.bill = bill 
+		return entity
+	}
+
+	@ProxyMethod
+	public def initReceiptFromBarcode(barcode){
+		if (!barcode.barcodeid) {
+			throw new Exception('barcodeid must be specified.')
+		}
+		
+		def bill = billSvc.getBillByBarcode(barcode)
+
+		def entity = [:]
+		entity.formtype = 'serial'
+		entity.formno = '56'
+		entity.txnmode = 'ONLINE'
+		entity.txntype = 'online'
+		entity.amount = 0.0 
+        entity.payer = bill.taxpayer
+        entity.paidby = bill.taxpayer.name
+        entity.paidbyaddress = bill.taxpayer.address
+        entity.collectiontype = bill.collectiontype
+        entity.putAll(cashReceiptSvc.init(entity))
+		entity.billid = bill.objid
+		bill.billdate = entity.receiptdate
+		bill.ledgers = self.getItemsForPayment(bill)
+		entity.bill = bill 
+		return entity
+	}
+
+	@ProxyMethod
+	public void voidReceipt(receipt) {
+		def payments = em_rptpayment.select('objid,refid,voided,fromyear,fromqtr').find([receiptid:receipt.objid]).list()
+		payments.each{pmt ->
+			if (!util.isTrue(pmt.voided)){
+
+				//void payment
+				em_rptpayment.find([objid:pmt.objid]).update([voided:true])
+
+				def ledger = em_rptledger.select('objid,tdno,fullpin,taxpayer.objid,taxpayer.name,taxpayer.address').find([objid:pmt.refid]).first()
+
+				ledgerSvc.fixLedger([
+					objid: ledger.objid,
+					tdno: ledger.tdno,
+					fullpin: ledger.fullpin,
+					taxpayer: ledger.taxpayer,
+					lastyearpaid: (pmt.fromqtr == 1 ? pmt.fromyear - 1 : pmt.fromyear),
+					lastqtrpaid: (pmt.fromqtr == 1 ? 4 : pmt.fromqtr - 1),
+					basicpaid : 0.0,
+					sefpaid: 0.0,
+				]) 
+
+				
+			}
+		}
+	}	
+
+	@ProxyMethod
+	public def getLedgersForPayment(bill) {
+		return billSvc.getOpenLedgers(bill);
+	}
+
+	@ProxyMethod
+	public def getItemsForPaymentByTaxpayer( bill ) {
+		bill._forpayment = true;
+		bill.ledgers = billSvc.getOpenLedgers(bill)
+		bill = billSvc.generateBill(bill)
+		bill.ledgers.each{
+			it.pay = true 
+			it.partialled = false 
+		}
+		return bill.ledgers
+	}
+
+	@ProxyMethod
+	public def getItemsForPayment( bill ) {
+		if (bill.rptledgerid){
+			bill.ledgers = em.getItemsForPaymentByLedger(bill)
+		}else {
+			bill.rptledgerid = (bill.rptledgerid ? bill.rptledgerid : '%') 
+			bill.ledgers = em.getItemsForPayment(bill)
+		}
+		if (!bill.ledgers) throw new Exception('There are no open ledgers found.')
+		bill._save = false 
+		bill._forpayment = true;
+		bill = billSvc.generateBill(bill)
+		bill.ledgers.each{
+			it.pay = true 
+			it.partialled = false 
+		}
+		return bill.ledgers
+	}
+
+	@ProxyMethod
+	public def getItemsForPaymentByBarcode(barcode){
+		if (!barcode.barcodeid) {
+			throw new Exception('barcodeid must be specified.')
+		}
+
+        def bill = billSvc.getBillByBarcode(barcode)
+        return self.getItemsForPayment(bill)
+	}
+
+
+	/*======================================================
+	* structure : receipt - ledgers - shares 
+	======================================================*/
+	@ProxyMethod
+	public def buildCashReceiptItemsAndShares(receipt){
+		receipt.sharing = []
+		receipt.items = []
+		receipt.ledgers.each{rl->
+			receipt.sharing += rl.shares 
+			receipt.items += rl.billitems
+		}
+	}
+
+
+	@ProxyMethod
+	public def applyPartialPayment(bill){
+		def rptledger = bill.rptledger 
+		def partialamt = bill.partial.amount 
+		
+		def postingitems = rptledger.remove('postingitems')
+		if (!postingitems) {
+			throw new Exception('Ledger posting items must be specified.')
+		}
+
+		rptledger.remove('shares')
+		rptledger.postingitems = []
+
+		def priorities = postingitems.priority.unique().sort()
+		def yrs = postingitems.year.unique().sort();
+
+		def toqtr = null;
+
+		for (int idx = 0; idx < yrs.size(); idx++){
+			if (partialamt <= 0) break;
+
+			def yritems = postingitems.findAll{it.year == yrs[idx]}
+			def qtrs = yritems.qtr.unique().sort();
+
+			for (int q = 0; q < qtrs.size(); q++){
+				if (partialamt <= 0) break;
+
+				def qtritems = yritems.findAll{ it.qtr == qtrs[q]}
+				for (int i = 0; i < priorities.size(); i++){
+					if (partialamt <= 0) break;
+
+					def items = qtritems.findAll{it.priority == priorities[i]}
+					def itemtotal = numSvc.round(items.total.sum())
+					if (partialamt >= itemtotal){
+						partialamt -= itemtotal 
+						rptledger.postingitems += items 
+						continue
+					}
+					else if (partialamt > 0){
+						def partialledqtr = items.first().qtr 
+						toqtr = partialledqtr
+						distributePartial(partialamt, items)
+						rptledger.postingitems += items 
+						partialamt = 0
+						break;
+					}
+				}
+			}
+		}
+
+		rptledger.shares = billSvc.getShares(bill)
+		def lastitem = rptledger.postingitems.last()
+		rptledger.toyear = lastitem.year 
+		rptledger.toqtr = toqtr == null ?  lastitem.qtr : toqtr
+		rptledger.partialled = rptledger.postingitems.find{it.partialled == true} != null 
+		rptledger.total = rptledger.postingitems.total.sum()
+
+		rptledger.billitems.each {
+    		it.amount = numSvc.round(it.amount)
+    	}
+		return rptledger
+	}
+
+	@ProxyMethod
+	public def buildShares(bill) {
+		def rptledger = bill.rptledger
+		rptledger.shares = billSvc.getShares(bill)
+		return rptledger 
+	}
+
+	@ProxyMethod
+	public def formatReceiptForPrinting(receipt){
+		receipt._items = em.getItemsForPrinting(receipt)
+		receipt.totalbasic = receipt._items.basicnet.sum();
+		receipt.totalsef = receipt._items.sefnet.sum();
+		receipt.owners = receipt._items.owner?.name.unique().join(";")
+		util.buildPeriodCovered(receipt._items)
+		receipt.itemcount = receipt._items.size()
+		if(receipt.itemcount > 0) {
+			addLGUInfo(receipt)
+		}
+		receipt.remove('ledgers')
+		return receipt
+	}
+
+
+	@ProxyMethod
+	public def getCollectingAgency(){
+		def agency = 'TREASURY'
+		if ('city'.equalsIgnoreCase(env.ORGCLASS))
+			agency = 'CTO'
+		else if ('municipality'.equalsIgnoreCase(env.ORGCLASS))
+			agency = 'MTO'
+		else if ('province'.equalsIgnoreCase(env.ORGCLASS))
+			agency = 'PTO'
+		return agency 
+	}
+
+
+	@ProxyMethod
+	public void addLGUInfo( receipt ) {
+		def lgu = em_city.find([root: 1]).first()
+        if (!lgu) lgu = em_prov.find([root: 1]).first()
+        if (!lgu) lgu = em_muni.find([root: 1]).first()
+        if (!lgu) throw new Exception("sys_org root lgu not specified.")
+
+        def org = em_org.find([objid: lgu.objid]).first()
+
+        def parentlgu = [:]
+        if (org.orgclass == "MUNICIPALITY") {
+			parentlgu = em_prov.find([objid: lgu.parentid]).first()
+		}
+
+        receipt.lguname = lgu.fullname
+        receipt.parentlguname = parentlgu.fullname
+	}
+
+	@ProxyMethod
+	public def getPaidLedgers(receipt) {
+		return em.getPaidLedgers(receipt)
+	}
+
+
+	/*======================================================
+	*
+	* SUPPORT METHODS 
+	*
+	======================================================*/
+
+	void validateTotals(receipt){
+		def ZERO = new BigDecimal('0.0')
+		def totalItems = ZERO
+		def totalShares = ZERO
+		receipt.ledgers.each{
+			totalItems += numSvc.round(it.postingitems.sum{ it.total ? it.total : ZERO})
+			if (it.shares) {
+				totalShares += (it.shares.sum{ it.amount ? it.amount : ZERO})
+			}
+			totalShares += (it.billitems.sum{ it.amount - it.share })
+			totalShares = numSvc.round(totalShares) 
+		}
+
+		def samount = numSvc.format('#,##0.00', receipt.amount)
+		if (receipt.amount != totalItems){
+			printTotals(receipt, totalItems, totalShares)
+			def sItemTotal = numSvc.format('#,##0.00', totalItems)
+			throw new Exception('Receipt amount ' + samount + ' is not equal to items total of ' + sItemTotal + '.')
+		}
+		if (receipt.amount != totalShares){
+			printTotals(receipt, totalItems, totalShares)
+			def sTotalShares = numSvc.format('#,##0.00', totalShares)
+			throw new Exception('Receipt amount ' + receipt.amount + ' is not equal to total share of ' + sTotalShares + '.')
+		}
+	}
+
+	void printTotals(receipt, totalItems, totalShares){
+		println '======================================>'
+		println 'receipt.amount  = ' + receipt.amount
+		println 'totalItems      = ' + totalItems
+		println 'totalShares     = ' + totalShares
+	}
+
+	void postPaidLedgers(receipt){
+		receipt.ledgers.each{ledger ->
+			def ledgerpmt = createLedgerPayment(receipt, ledger)
+			postPaidItems(ledgerpmt, ledger.postingitems)
+			updateLedgerPaidYearQtr(ledger)
+			unrestrictProperty(receipt, ledger)
+			createForPostingShareEntry(receipt, ledger)
+			postMainLedgerPayment(receipt, ledger)
+		}
+	}
+
+	void createForPostingShareEntry(receipt, ledger) {
+		em_cashreceipt_forposting.create([
+			objid: 'FP' + new java.rmi.server.UID(),
+			receiptid: receipt.objid, 
+			rptledgerid: ledger.objid, 
+			txndate: receipt.txndate,
+			error: 0
+		])
+	}
+
+	void updateLedgerPaidYearQtr(ledger){
+		def info = [objid: ledger.objid]
+		if (ledger.partialled){
+			info.lastyearpaid = (ledger.toqtr == 1 ? ledger.toyear - 1 : ledger.toyear)
+			info.lastqtrpaid = (ledger.toqtr == 1 ? 4 : ledger.toqtr - 1)
+		}
+		else {
+			info.lastyearpaid = ledger.toyear 
+			info.lastqtrpaid = ledger.toqtr 
+		}
+		em_rptledger.where('objid = :objid and lastyearpaid <= :lastyearpaid', info).update(info)
+		if (info.lastqtrpaid == 4) {
+			em_rptledger_item.find([parentid: info.objid, year: info.lastyearpaid]).delete();
+		}
+	}
+
+    def createpaymentInfo(receipt, ledger) {
+        def pmt = [:]
+        pmt.objid = 'RPMT' + new java.rmi.server.UID()
+        pmt.rptledger = ledger
+        pmt.type = 'online'
+        pmt.refid = ledger.objid 
+        pmt.reftype = 'rptledger'
+        pmt.receiptid = receipt.objid 
+        pmt.receiptno = receipt.receiptno 
+        pmt.receiptdate = receipt.receiptdate 
+        pmt.paidby = [name:receipt.paidby, address: receipt.paidbyaddress]
+        pmt.postedby = receipt.collector.name 
+        pmt.postedbytitle = receipt.collector.title 
+        pmt.dtposted = receipt.txndate 
+        pmt.fromyear = ledger.fromyear 
+        pmt.fromqtr = ledger.fromqtr ? ledger.fromqtr : 1 
+        pmt.toyear = ledger.toyear 
+        pmt.toqtr = ledger.toqtr ? ledger.toqtr : 4 
+        pmt.amount = ledger.total 
+        pmt.collectingagency = getCollectingAgency()
+        pmt.voided = false 
+        return pmt
+    }
+
+	def createLedgerPayment(receipt, ledger){
+        def pmt = createpaymentInfo(receipt, ledger)
+        em_rptpayment.create(pmt)
+        return pmt 
+	}
+
+	def createParentLedgerPayment(receipt, ledger, parentledger){
+        def pmt = createpaymentInfo(receipt, ledger)
+		 pmt.rptledger = parentledger
+        pmt.refid = parentledger.objid 
+        pmt.receiptid = null
+        pmt.fromyear = parentledger.fromyear 
+        pmt.fromqtr = parentledger.fromqtr ? parentledger.fromqtr : 1 
+        pmt.toyear = parentledger.toyear 
+        pmt.toqtr = parentledger.toqtr ? parentledger.toqtr : 4 
+        em_rptpayment.create(pmt)
+        return pmt 
+	}
+
+	void postPaidItems(ledgerpmt, postingitems){
+		postingitems.each{
+			it.objid =  'RPI' + new java.rmi.server.UID() 
+			it.parentid = ledgerpmt.objid 
+			it.partialled = (it.partialled ? it.partialled : false)
+			em_rptpayment_item.create(it)
+			em_rptledger_item.find([objid:it.itemid]).update([amtpaid:'{amtpaid + :amount}'], [amount:it.amount])
+		}
+		em_rptledger_item.where('parentid = :refid and amtpaid >= amount', ledgerpmt).delete()
+		em_rptledger.closePaidAvDifference(ledgerpmt)
+	}
+
+	/*=================================================================================
+	// Apply partial proportionally between amtdue, interest and discount.
+	// If multiple items with same priority,
+	// determine proportional partialamt per item 
+	// to handle case where amount is based on different rates 
+	// e.g. basic = 1.5% and sef = 1%
+	//
+	// Sample Computation: 
+	// partialamt : 100
+	// basicamt   : 150   int : 42   total: 192
+	// sefamt     : 100   int : 28   total: 128 
+	//
+	// basicpartial : partialamt * (basicamt / (basicamt + sefamt))
+	// basicpartial  = 60
+	// sefpartial    = partialamt - basicpartial = 100 - 60 = 40
+	//
+	// partial basic : 60 * 150/192 = 46.88 
+	// partial int   : 60 - 46.88   = 13.12
+	//
+	// partial sef   : 40 * 100/128 = 31.25
+	// partial int   : 40 - 31.25   =  8.75
+	=================================================================================*/
+	@ProxyMethod
+	public void distributePartial(partialamt, items){
+		if (items.size() == 1){
+			distributePartialProportionally(partialamt, items.first())
+		} 
+		else {
+			def runningpartial = partialamt
+			def totalamount = items.amount.sum() 
+
+			for (int i = 0; i < items.size() - 1; i++){
+				def item = items[i]
+				def partial = numSvc.round(partialamt * numSvc.round(item.amount / totalamount))
+				distributePartialProportionally(partial, item) 
+				runningpartial -= partial 
+			}
+			distributePartialProportionally(runningpartial, items.last()) 
+		}
+	}
+
+	void distributePartialProportionally(partial, item){
+		def totaldue = numSvc.round(item.amount + item.interest )
+		def discrate = numSvc.round(item.discount / item.amount)
+
+		def amtpartial = numSvc.round(partial * (item.amount / totaldue))
+		def intpartial = numSvc.round(partial - amtpartial)
+		def discpartial = 0
+
+		if (discrate != 0.0){
+			item.amount = numSvc.round(partial / (1 - discrate))
+			discpartial = numSvc.round(item.amount * discrate)
+		}else {
+			item.amount = amtpartial
+		}
+		item.interest = intpartial
+		item.discount = discpartial
+		item.total = numSvc.round(item.amount + item.interest - item.discount)
+		item.amtdue = item.total 
+		item.partialled = true 
+	}
+
+	void unrestrictProperty(receipt, ledger) {
+		def params = [objid: ledger.objid, state: 'ACTIVE']
+		def restrictions = em_faas_restriction.where('ledger_objid = :objid and state = :state', params).list()
+		restrictions.each{
+			def pmt = [:]
+			pmt.objid = receipt.objid 
+			pmt.receiptno = receipt.receiptno
+			pmt.receiptdate = receipt.receiptdate
+			pmt.amount = ledger.total 
+			pmt.lastyearpaid = ledger.toyear
+			pmt.lastqtrpaid = ledger.toqtr
+			it.state = 'UNRESTRICTED'
+			it.receipt = pmt
+			em_faas_restriction.update(it)
+		}
+	}
+
+	void postMainLedgerPayment(receipt, ledger) {
+		if (! ledgerSvc.isSubLedger(ledger)) return
+        def parentledger = ledgerSvc.getParentLedger(ledger)
+        if (!parentledger) return
+
+        def bill = billSvc.initBill()
+        bill.taxpayer = parentledger.taxpayer
+        bill.ledgers = [parentledger]
+        bill._forpayment = true
+        bill = billSvc.generateBill(bill)
+        bill.partial = [amount: ledger.total]
+        bill.rptledger = bill.ledgers[0]
+        parentledger = applyPartialPayment(bill)
+        def ledgerpmt = createParentLedgerPayment(receipt, ledger, parentledger)
+        postPaidItems(ledgerpmt, parentledger.postingitems)
+        updateParentLedgerPaidYearQtr(parentledger)
+	}
+
+    void updateParentLedgerPaidYearQtr(ledger){
+		def info = [objid: ledger.objid]
+		if (ledger.partialled){
+			info.lastyearpaid = (ledger.toqtr == 1 ? ledger.toyear - 1 : ledger.toyear)
+			info.lastqtrpaid = (ledger.toqtr == 1 ? 4 : ledger.toqtr - 1)
+		}
+		else {
+			info.lastyearpaid = ledger.toyear 
+			info.lastqtrpaid = ledger.toqtr 
+		}
+		em_rptledger.where('objid = :objid and lastyearpaid <= :lastyearpaid', info).update(info)
+		if (info.lastqtrpaid == 4) {
+			em_rptledger_item.find([parentid: info.objid, year: info.lastyearpaid]).delete();
+		}
+	}
+
+
+}
+

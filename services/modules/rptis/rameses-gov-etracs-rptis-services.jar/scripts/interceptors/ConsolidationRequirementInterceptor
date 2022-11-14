@@ -1,0 +1,60 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+
+class ConsolidationRequirementInterceptor
+{
+	@ActiveDB('rpt_requirement')
+	def em 
+
+	@Service('RPTRequirementRuleService')
+    def ruleSvc
+
+
+	@After(pattern="ConsolidationService.create", index=1000) 
+	public void initRequirements( evt ) {
+		def entity = evt.result 
+		def info = evt.args[0] 
+
+		def requirements = ruleSvc.getRequirements([
+			txntype 		: entity.txntype,
+			txntypemode 	: info.txntypemode,
+			attributes		: info.attributes
+		])
+
+		requirements.unique().each{
+			em.create([
+				objid  				: 'R' + new java.rmi.server.UID(),
+				requirementtypeid 	: it.objid,
+				handler 			: it.handler,
+				refid 				: entity.objid,
+				value_objid 		: null,
+				value_txnno			: null,
+				value_txndate 		: null,
+				value_txnamount 	: 0.0,
+				value_remarks 		: null,
+				complied 			: 0,
+			])
+		}
+	}
+
+
+	@Before(pattern="ConsolidationService.delete") 
+	public void deleteRequirements( evt ) {
+		def entity = evt.args[0]
+		em.deleteRequirements([refid:entity.objid])
+	}
+
+
+	@Before(pattern="ConsolidationService.submitForExamination") 
+	public void validateRequirements( evt ) {
+		def entity = evt.args[0]
+		def requirements = em.getRequirements([refid:entity.objid])
+		def uncompliedrequirements = requirements.findAll{it.complied == 0}
+		if (uncompliedrequirements){
+			throw new Exception('There are still uncomplied requirements.')
+		}
+	}
+}
+

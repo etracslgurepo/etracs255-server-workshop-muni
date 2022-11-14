@@ -1,0 +1,60 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class FaasAnnotationInterceptor
+{
+	@Service('FAASAnnotationService')
+    def annotationSvc 
+
+    @DataContext('faasannotation')
+    def em_annotation
+
+    @DataContext('faasannotation_faas')
+    def em_annotation_faas
+
+
+	@After(pattern="FAASService.open") 
+	public void afterOpenFaas( evt ) {
+		def faas = evt.result 
+		def annotations = annotationSvc.getAnnotationsByFaasId(faas.objid)
+		faas.annotated = annotations.size() > 0
+	}
+
+	@After(pattern="FAASService.(createFaas|initOnlineTransaction|initCaptureAndCreate|initCapture|initNewDiscovery)") 
+	public void afterCreateFaas( evt ) {
+		def faas = evt.result 
+
+		//if prev faas is annotated, 
+		//then post faasannotation_faas entry for the new faas
+		def annotations = []
+		faas.previousfaases?.each{ pf ->
+			def annotatedFaas = em_annotation_faas.where("faas_objid = :prevfaasid and parent.state = 'APPROVED'", pf).first()
+			if (annotatedFaas) {
+				if (!annotations.contains(annotatedFaas.parent.objid)) {
+					annotations << annotatedFaas.parent.objid 
+					em_annotation_faas.create([
+						parent: annotatedFaas.parent,
+						faas: faas,
+					]);
+				}
+			}
+		}
+	}
+
+	@Before(pattern="FAASService.deleteFaas") 
+	public void beforeDeleteFaas( evt ) {
+		def faas = evt.args[0]
+		em_annotation_faas.find([faas_objid: faas.objid]).delete()
+	}
+
+	@After(pattern="FAASService.approveFaas") 
+	public void afterAppovedFaas( evt ) {
+		def faas = evt.result
+		def annotatedFaas = em_annotation_faas.find([faas_objid: faas.objid]).first();
+		if (annotatedFaas) {
+			em_annotation.find([objid: annotatedFaas.parent.objid]).update([faasid: faas.objid])
+		}
+	}
+}
+

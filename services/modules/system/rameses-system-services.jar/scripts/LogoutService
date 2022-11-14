@@ -1,0 +1,13 @@
+import com.rameses.annotations.*;
+
+class LogoutService 
+{
+
+	@ProxyMethod
+    public void logout( Map params ) { 
+    	/*
+			Create an implementation of this method by providing an interceptor 
+    	*/    	
+    } 
+
+}

@@ -1,0 +1,27 @@
+import com.rameses.annotations.*;
+import com.rameses.services.extended.*;
+
+class OnlineRPTNOAReportInterceptor {
+	@Service('RPTAssessmentNoticeService')
+	def svc;
+
+	@DataContext("assessmentnotice")
+	def em_cert;
+
+	@Service('RPTUtil')
+	def util;
+	
+	@After(pattern="FormReportService.getData", eval="#{args[0].reportid == 'rptnoa'}", index=100)
+	public void afterGetData(def evt) {
+		def arg = evt.args[0];
+		def result = evt.result;
+
+		def cert = em_cert.find([objid: arg.parameters.objid]).first();
+		if (!cert) throw new Exception("certification objid does not exist");
+
+		def data = svc.getReportData(cert);
+		data.isonline = true;
+		result.data = data;
+		data.template = "reports/rpt/noa";
+	}
+}

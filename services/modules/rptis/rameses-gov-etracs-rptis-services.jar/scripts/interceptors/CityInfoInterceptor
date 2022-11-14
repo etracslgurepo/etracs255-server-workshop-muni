@@ -1,0 +1,51 @@
+import com.rameses.annotations.*
+import com.rameses.eserver.*;
+import com.rameses.common.*;
+
+class CityInfoInterceptor
+{
+	@Service('CityLookupService')
+	def citySvc 
+
+
+	def STATE_FORAPPROVAL = 'FORAPPROVAL'
+	
+	@Before(pattern="FAASService.submitFaasForApproval", eval="#{args[0].lgutype.equalsIgnoreCase('city') && args[0].state.matches('INTERIM|FORAPPRAISAL')}") 
+	public void submitFaasForApproval( evt ) {
+		def faas = evt.args[0]
+		faas.state = STATE_FORAPPROVAL
+	}
+
+	@Before(pattern="SubdivisionService.submitForApproval", eval="#{args[0].motherfaas.lgutype.equalsIgnoreCase('city') && args[0].state.matches('DRAFT|FORAPPRAISAL')}") 
+	public void submitSubdivisionForApproval( evt ) {
+		def subdivision = evt.args[0]
+		subdivision.state = STATE_FORAPPROVAL
+	}
+
+
+	@Before(pattern="ConsolidationService.submitForApproval", eval="#{args[0].lgutype.equalsIgnoreCase('city') && args[0].state.matches('DRAFT|FORAPPRAISAL')}") 
+	public void submitConsolidationForApproval( evt ) {
+		def consolidation = evt.args[0]
+		consolidation.state = STATE_FORAPPROVAL
+	}
+
+	@Before(pattern="ResectionService.submitForApproval", eval="#{args[0].lgutype.equalsIgnoreCase('city') && args[0].state.matches('DRAFT|FORAPPRAISAL')}") 
+	public void submitResectionForApproval( evt ) {
+		def resection = evt.args[0]
+		resection.state = STATE_FORAPPROVAL
+	}
+
+	@Before(pattern="MCSettlementService.submitForApproval", eval="#{args[0].lgutype.equalsIgnoreCase('city') && args[0].state.matches('DRAFT|FORAPPRAISAL')}") 
+	public void submitMCSettlementForApproval( evt ) {
+		def entity = evt.args[0]
+		entity.state = STATE_FORAPPROVAL
+	}
+
+
+	@After(pattern="RPUService.getLgus", eval="#{'city'.equalsIgnoreCase(args[0])}")
+	public void getLgus(evt){
+		def list = evt.result 
+		list += citySvc.getList([:])
+	}
+}
+

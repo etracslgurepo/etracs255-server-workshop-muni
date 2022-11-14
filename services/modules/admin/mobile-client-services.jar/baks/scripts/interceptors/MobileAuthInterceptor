@@ -1,0 +1,59 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+
+class MobileAuthInterceptor
+{
+	@Service('DateService')
+	def dateSvc;
+
+	@Service('DefaultMobileUserService')
+	def userSvc;
+
+	@Service('Var')
+	def var;	
+
+	@After(pattern="AuthenticationService.authenticate", eval="env.CLIENTTYPE=='mobile'") 
+	public void authenticate( evt ) {
+		def username = evt.args[0];
+		def password = evt.args[1];
+		def resmap = authenticateImpl(username, password);
+		evt.result.putAll(resmap);
+		evt.result.HANDLER = this; 
+	} 
+
+	private Map authenticateImpl( username, password ) {
+		def isSA = username.toString().equalsIgnoreCase("sa");
+		if (isSA) {
+			if (password == var.sa_pwd) return [:]; 
+
+			throw new Exception("Access denied. Please check your username and password"); 
+		}
+
+		def info = userSvc.authenticate(username, password);
+		info.pwdlogincount = toInt(info.pwdlogincount); 
+
+		def pwd_change_login_count = toInt(var.pwd_change_login_count);
+		if (pwd_change_login_count > 0) {
+			userSvc.incrementLoginCount(username, info.pwdlogincount);
+			info.pwdlogincount++;
+		}
+
+		def CHANGE_PWD_ON_LOGIN = false; 
+		if (pwd_change_login_count > 0 && info.pwdlogincount > pwd_change_login_count) 
+			CHANGE_PWD_ON_LOGIN = true;
+		else if (!info.pwdexpirydate || dateSvc.serverDate >= info.pwdexpirydate) 
+			CHANGE_PWD_ON_LOGIN = true; 
+
+		def result = [:];
+		result.CHANGE_PWD_ON_LOGIN = CHANGE_PWD_ON_LOGIN;
+		return result;
+	} 
+	
+	private def toInt( value ) {
+		try {
+			return value.toInteger(); 
+		} catch(e) {
+			return 0; 
+		}
+	}	
+}

@@ -1,0 +1,23 @@
+<schema>
+
+	<element tablename="account">
+		<field name="objid" primary="true"/>
+
+		<field name="code" caption="Code" required="true" searchable="true" indexed="true"/>
+		<field name="title" caption="Title" required="true" searchable="true" indexed="true"/>
+
+		<complex name="maingroup" ref="account_maingroup" jointype="many-to-one" includefields="name,title">
+			<key field="maingroupid" target="objid" />	
+		</complex> 
+		<complex name="group" ref="account" jointype="many-to-one" includefields="objid,code,title" required="false">
+			<key field="groupid" target="objid" />	
+		</complex> 
+		<field name="type" />
+		<field name="leftindex" type="integer"/>
+		<field name="rightindex" type="integer"/>
+		<field name="level" type="integer"/>
+
+		<field name="grouppath" expr="''" caption="GroupPath"/> 
+	</element>
+
+</schema>

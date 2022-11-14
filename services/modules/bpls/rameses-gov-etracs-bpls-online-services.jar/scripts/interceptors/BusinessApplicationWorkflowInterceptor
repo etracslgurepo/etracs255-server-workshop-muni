@@ -1,0 +1,65 @@
+import com.rameses.annotations.*;
+
+class BusinessApplicationWorkflowInterceptor {
+
+	final String DFEAULT_MAIL_CONNECTION = "bpls-email-server"; 
+
+	@DataContext( dynamic=true )
+	def dynaEm;
+
+	@Service( dynamic=true )
+	def dynaSvc; 
+
+	@ActiveDB('online_bpls_renewal_builder')
+	def app_builder; 
+
+
+	@After( pattern="BusinessApplicationWorkflowService.notifyChangeAppState") 
+	public void afterNotifyChangeAppState( evt ) {
+		def param = evt.args[0]; 
+		if ( !param.objid ) return; 
+
+		def app = app_builder.findBusinessApp([ objid: param.objid ]); 
+		if ( !app ) return; 
+
+		if ( app.state == 'PAYMENT' ) {
+
+			if ( app.contact?.email ) {
+				sendEmail( app ); 
+			}
+			if ( app.contact?.mobileno ) {
+				sendSMS( app ); 
+			}
+		}
+		else if ( app.state == 'COMPLETED' ) { 
+			def em = dynaEm.lookup('online_business_application'); 
+			em.find([ objid: app.objid ]).update([ state: app.state ]); 
+		}
+	}
+
+	void sendEmail( app ) { 
+		def dateSvc = dynaSvc.lookup('DateService'); 
+
+		def data = [:]; 
+		data.dtsent = dateSvc.getServerDate(); 
+		data.connection = DFEAULT_MAIL_CONNECTION; 
+		data.objid = 'SEQ'+ new java.rmi.server.UID(); 
+		data.refid = app.objid; 
+		data.state = 0;
+
+		data.to = app.contact.email; 
+		data.subject = 'Online Business Renewal For Payment'; 
+
+		def href = "https://filipizen.com/partner/"+ app.partnername +"/bpls/businessbilling"; 
+		data.message = """ 
+			Your online business renewal application <b>${app.approvedappno}</b> has been approved for payment.<br/> 
+			To make payment, go to <a href="${href}"> Filipizen.com </a>.
+		""".toString(); 
+
+		dynaEm.lookup('sys_email_queue').create( data ); 
+	}
+
+	void sendSMS( app ) { 
+
+	}
+}

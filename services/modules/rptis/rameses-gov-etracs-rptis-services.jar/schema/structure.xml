@@ -1,0 +1,10 @@
+<schema>
+	<element tablename="structure">
+		<field name="objid" primary="true" prefix="S"/>
+		<field name="state" caption="State" required="true" searchable="true" indexed="true" width="100" />
+		<field name="code" caption="Code" required="true" searchable="true"  indexed="true" width="100" />
+		<field name="name" caption="Name" required="true" searchable="true"  indexed="true" width="350" />
+		<field name="indexno" type="integer" caption="Index No." width="100"/>
+		<field name="showinfaas" type="boolean" caption="Show in FAAS?" width="120"/>
+	</element>
+</schema>

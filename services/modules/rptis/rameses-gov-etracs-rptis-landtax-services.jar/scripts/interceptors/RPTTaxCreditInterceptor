@@ -1,0 +1,54 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class RPTTaxCreditInterceptor
+{
+	@Service('LogService')
+    def logSvc
+
+	@Service('RPTTaxCreditService')
+	def svc 
+
+	@DataContext('rpttaxcredit')
+	def em_credit
+
+
+	@Before(pattern='PersistenceService.create', eval="#{args[0]._schemaname == 'rpttaxcredit'}")
+	public void beforeCreate(evt) {
+		def credit = evt.args[0]
+		svc.beforeCreate(credit)
+	}
+
+	@After(pattern='PersistenceService.create', eval="#{args[0]._schemaname == 'rpttaxcredit'}")
+	public void afterCreate(evt) {
+		logActions(evt)
+	}
+
+	@Before(pattern='PersistenceService.removeEntity', eval="#{args[0]._schemaname == 'rpttaxcredit'}")
+	public void beforeRemoveEntity(evt) {
+		def entity = evt.args[0]
+		def credit = em_credit.find([objid: entity.objid]).first()
+		if (!credit) throw new Exception('Record does not exist or has already been deleted.')
+		if (credit.amtapplied > 0) throw new Exception('Unable to delete this record.\nThe credit has partially been applied.')
+	}
+
+    @After(pattern='RPTTaxCreditService.(approve|apply)') 
+    public void logActions( evt ) {
+        def credit = evt.result 
+		if (!credit) return
+        if ('apply' == evt.methodName) {
+			logSvc.logA( evt.methodName, 'rpttaxcredit', credit.objid, 'Credited Amount: ' + credit._amtcredited)
+    	} else {
+        	logSvc.log( evt.methodName, 'rpttaxcredit', credit.objid)
+        }
+    }
+
+    @After(pattern='RPTLedgerService.buildMessageList') 
+    public void afterBuildMessage( evt ) {
+        def ledger = evt.result 
+        svc.buildMessageList(ledger)
+    }
+
+}
+

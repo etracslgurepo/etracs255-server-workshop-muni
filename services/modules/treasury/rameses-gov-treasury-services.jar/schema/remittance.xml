@@ -1,0 +1,32 @@
+<schema>
+	<element  tablename="remittance" >
+		<field name="objid" primary="true" prefix="REM"/>
+		<field name="state" required="true" caption="Status"/>
+		<field name="controlno" required="true" caption="Control No" searchable="true" indexed="true" />
+		<field name="controldate" required="true"  caption="Remittance Date" indexed="true" type="date"/>
+
+		<field name="dtposted" required="true" caption="TxnDate"/>
+		<field name="collector_objid" required="true"/>
+		<field name="collector_name" required="true" caption="Collector" searchable="true" indexed="true" />
+		<field name="collector_title" required="true"/>
+		<field name="collector_signature"/>
+		<field name="liquidatingofficer_objid" />
+		<field name="liquidatingofficer_name"  caption="Liquidating Officer" indexed="true"/>
+		<field name="liquidatingofficer_title" />
+		<field name="liquidatingofficer_signature"/>
+		<field name="collector_signature"/>
+		<field name="amount" required="true" type="decimal" caption="Amount"/>
+		<field name="totalcash" required="true" type="decimal" caption="Total Cash"/>
+		<field name="totalcheck" required="true" type="decimal" caption="Total Check"/>
+		<field name="totalcr" required="true" type="decimal" caption="Total Credit"/>
+		<complex name="cashbreakdown" required="true" serializer="default" type="list"/>
+		<field name="remarks" />
+
+		<field name="collectionvoucherid"/>
+		
+		<complex name="collection" ref="collectionvoucher" jointype="many-to-one" includefields="controlno,controldate,state" required="false">
+			<key field="collectionvoucherid" target="objid" />
+		</complex>
+		
+	</element>
+</schema>

@@ -1,0 +1,68 @@
+
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+
+
+public class WorkflowPeristenceInterceptor {
+
+	@DataContext(dynamic=true)
+	def em;	
+
+	@Service("WorkflowTaskService")
+	def workflowTaskSvc;
+
+	@Service("SchemaService")
+	def schemaService;
+
+
+	/*****************************************************************************************************
+	* This is fired after creating an entity that is a 
+	*****************************************************************************************************/
+	@After( pattern="PersistenceService.create", eval="#{args[0]._wf == true}", index=1000)
+	public void afterSave( evt ) {
+		def o = evt.result;
+		String schemaName = evt.args[0]._schemaname;
+
+		//find the primary key and pass as refid
+		def schema = schemaService.getSchema([name: o._schemaname]);
+		def primKey = schema.fields.find{it.primary  && it.source == o._schemaname}?.extname;
+		def refid = o.get(primKey);
+		if( !refid ) {
+			throw new Exception("There is no primary key specified in WorkflowPersistenceInterceptor.afterSave");
+		}	
+		workflowTaskSvc.start( [refid:refid, processname: schemaName ] );
+	}
+
+	/*****************************************************************************************************
+	* attach the task after reading the record.  The _wf is set in Seti WorkflowTaskModel
+	*****************************************************************************************************/
+	@After(pattern="PersistenceService.read", eval="#{args[0]._wf == true }", index=-1000)
+	public void findTask(def evt) {
+		def o  = evt.result;
+		def parm = evt.args[0];
+		def m =[processname: parm._schemaname];
+		if(parm.taskid) {
+			m.taskid = parm.taskid; 
+		}
+		else if(parm.findBy){
+			//find task by finding first the refid. The assumption there should only be one primary key! 
+			def schema = schemaService.getSchema([name: parm._schemaname]);
+			def sel = schema.fields.find{it.primary  && it.source == parm._schemaname}?.extname;
+			def refid = em.lookup(parm._schemaname).select(sel).find( parm.findBy ).val();
+			def appTask = em.lookup(parm._schemaname + "_task");
+			m.taskid = appTask.find([refid: refid]).select("taskid").where("enddate IS NULL").val();
+			if(!m.taskid) 
+				throw new Exception("There is no open task for this record");
+		}
+		else {
+			//find task id based on ref
+			def appTask = em.lookup(parm._schemaname + "_task");
+			m.taskid = appTask.find([refid: o.refid]).select("taskid").where("enddate IS NULL").val();
+			if(!m.taskid) 
+				throw new Exception("There is no open task for this record");
+		};
+		o.task = workflowTaskSvc.findTask( m );
+	}
+
+}

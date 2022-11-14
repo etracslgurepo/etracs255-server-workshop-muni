@@ -1,0 +1,101 @@
+import treasury.utils.*;
+import treasury.facts.*;
+import enterprise.utils.*;
+import java.rmi.server.*;
+import java.util.*;
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import com.rameses.rules.common.RuleExecutionContext;
+
+public class BillingCashReceiptInterceptor {
+	
+	@Service("PaymentPostingService")
+	def service;
+
+	@Service("PaymentPostingHandler")
+	def handler;
+
+	@DataContext(dynamic=true)
+	def pmtEm;
+
+	@PersistenceContext
+	def db;
+
+	/*
+	@After(pattern="CashReceiptService.post", eval="#{ args[0]._postpayment == true }",  index=50)
+	public void postCashReceipt( evt ) {
+		def e = evt.args[0];
+		def pp = [ txntype: e.collectiontype.handler ]; 
+		def payinfo = buildPostPaymentInfo( pp, e );
+		payinfo.txntype = pp.txntype;
+		payinfo.reftype = "cashreceipt";
+		payinfo.refdate = e.receiptdate;
+		payinfo.refno = e.receiptno;
+		payinfo.refid = e.objid;
+		payinfo.txndate = evt.result.txndate;
+		payinfo.amount = e.amount;
+		payinfo.txnmode = e.txnmode;
+		service.post( payinfo );		
+	}
+	*/
+
+	@After(pattern="BasicCapturePaymentService.post", eval="#{ args[0]._postpayment == true }",  index=50)
+	public void postCapturePayment( evt ) { 
+		def e = evt.args[0]; 
+		def pp = [ txntype: e.txntype ]; 
+		def payinfo = buildPostPaymentInfo( pp, e );
+		payinfo.txntype = pp.txntype;
+		payinfo.reftype = e.reftype;
+		payinfo.refdate = e.refdate;
+		payinfo.refno = e.refno;
+		payinfo.refid = e.refid;
+		payinfo.txndate = evt.result.txndate; 
+		payinfo.amount = e.amount;
+		payinfo.txnmode = 'CAPTURE';
+		service.post( payinfo );
+	} 
+
+	private def buildPostPaymentInfo( pp, bill ) {
+		if ( !pp.txntype ) throw new Exception('txntype parameter is required');
+
+		def m = [:]; 
+		m.putAll( pp );
+		m.putAll( bill ); 
+		def payinfo = handler.getPaymentInfo( m ); 
+		if ( !payinfo._schemaname ) throw new Exception("payinfo._schemaname is required");
+		if ( !payinfo.items ) throw new Exception('payinfo.items is required'); 
+
+		payinfo._workflow = handler.getPaymentWorkflow( m ); 
+		return payinfo;
+	}
+
+	/*
+	@After(pattern="CashReceiptVoidService.post")
+	public void voidPayment(def evt) {
+		def e = evt.args[0];
+		def res= evt.result;
+		def rct = res.receipt;
+		if ( rct.txnmode == 'CAPTURE' ) {
+			// captured receipts will not be process below 
+			return; 
+		}
+
+		rct.txntype = rct.collectiontype?.handler;
+		if ( !rct.txntype ) throw new Exception("'txntype parameter' is required in BillingCashReceiptInterceptor.voidPayment"); 
+
+		def vi = handler.getVoidInfo( rct ); 
+		if ( !vi ) return; 
+
+		if ( !vi._schemaname ) throw new Exception('please include _schemname in getVoidInfo'); 
+
+		def pmtDb = pmtEm.lookup( vi._schemaname );
+		def pmt = pmtDb.find([ refid: rct.objid ]).first(1);
+		pmt.txntype = rct.txntype; 
+		pmt.collectiontype = rct.collectiontype;
+		pmt._schemaname = vi._schemaname;
+		pmt.creditschemaname = vi.creditschemaname; 
+		pmt._workflow = handler.getVoidWorkflow( pmt );  
+		service.reversePayment( pmt );
+	}
+	*/
+}

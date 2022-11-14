@@ -1,0 +1,36 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class LandTaxReportRealtyTaxCollectibleService
+{
+	@Env 
+	def env
+
+	@ActiveDB('landtaxreport_realty_tax_collectible')
+	def em
+
+	@Service('NumberService')
+	def numSvc 
+
+
+	@Async
+    @ProxyMethod
+	public def buildReport(params){
+		def list = em.getList(params)
+
+		if (!list) throw new Exception('Results not found.')
+
+		list.each{
+			if (it.totalav == null) it.totalav = 0.0 
+			it.basic = numSvc.roundA( it.totalav * params.basicrate / 100.0, 4)
+			it.basicdisc = numSvc.roundA( it.basic * params.basicdiscrate / 100.0, 4)
+			it.sef = numSvc.roundA( it.totalav * params.sefrate / 100.0, 4)
+			it.sefdisc = numSvc.roundA( it.sef * params.sefdiscrate / 100.0, 4)
+			it.total = it.basic - it.basicdisc + it.sef  - it.sefdisc 
+		}
+		return [reportdata:list, parameters:params]
+	}
+
+}
+

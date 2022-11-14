@@ -1,0 +1,114 @@
+import com.rameses.annotations.*;
+import com.rameses.rules.common.*;
+import com.rameses.util.*;
+
+import rptis.facts.*;
+import rptis.actions.*;
+
+import rptis.misc.facts.*;
+import rptis.misc.actions.*;
+
+public class MiscAssessmentRuleService  
+{
+	@Env 
+	def env
+
+	@ActiveDB('miscrpu')
+	def em
+
+	@Resource("RuleService")	
+	def ruleSvc
+
+	@ActiveDB("rule")
+	def ruleDB
+
+	@Service('NumberService')
+	def numSvc
+
+	@Service('DateService')
+	def dtSvc
+
+	@Service('RPTUtil')
+	def util
+
+
+	
+
+	String RULESET = "miscassessment";
+
+	@ProxyMethod
+	public def execute(rpu) throws Exception {
+		rpu.assessments = []
+		def request = [rpu:rpu, variables:[], assessments:[]]; 
+		request.facts = createFacts(request);
+		request.actions = buildActions( request );
+
+		def grps = ruleDB.getRulegroups( [ruleset: RULESET] );
+		grps.each{g ->
+			ruleSvc.execute( RULESET, request.facts, request.actions, g.name);
+		}
+		/*
+		rpu.totalbmv = util.sum(rpu.items, 'basemarketvalue')
+        rpu.totalmv  = util.sum(rpu.assessments, 'marketvalue')
+        rpu.totalav  = util.sum(rpu.assessments, 'assessedvalue')
+		*/
+        return rpu;
+	}
+
+	def createFacts(request){
+		def rpu = request.rpu
+		def facts = []
+
+		/*-------------------------------------
+		* DATE FACTS
+		-------------------------------------*/
+		def currDate = dtSvc.serverDate;
+		def dt = currDate;
+		if (rpu.issuedate){
+			dt = java.sql.Date.valueOf( rpu.issuedate );
+		}
+		facts << new EffectiveDate( dt );
+		facts << new CurrentDate(currDate);
+
+		rpu.useswornamount = util.toBoolean(rpu.useswornamount, false)
+		facts << new rptis.facts.RPU(rpu)
+		facts << new MiscRPU(rpu)
+
+		rpu.items.each{
+			facts << new MiscItem(rpu, it)
+		}
+		
+		rpu.totalmv = rpu.assessments.marketvalue.sum()
+		if (rpu.totalmv == null) rpu.totalmv = 0.0 
+
+		if (rpu.totalav == 0){
+			rpu.totalav = rpu.assessments.assessedvalue.sum()
+			if (rpu.totalav == null) rpu.totalav = 0.0 
+		}
+
+		return facts
+	}
+
+	def buildActions(request) {
+		def actions = new RuleAction();
+		actions.addCommand( "calc-bmv", new CalcBaseMarketValue( request:request));
+		actions.addCommand( "calc-depreciation", new CalcDepreciation( request:request));
+		actions.addCommand( "calc-mv", new CalcMarketValue( request:request));
+		actions.addCommand( "calc-al", new CalcAssessLevel( request:request, em:em, NS:numSvc ));
+		actions.addCommand( "calc-av", new CalcAssessValue( request:request));
+
+		actions.addCommand( "calc-rpu-bmv", new CalcMiscRPUBaseMarketValue( request:request));
+		actions.addCommand( "calc-rpu-mv", new CalcMiscRPUMarketValue( request:request));
+		actions.addCommand( "calc-rpu-al", new CalcMiscRPUAssessLevel( request:request, em:em, NS:numSvc ));
+		actions.addCommand( "calc-rpu-av", new CalcMiscRPUAssessValue( request:request));
+
+		actions.addCommand( "add-derive-var", new AddDeriveVariable( request:request));
+
+		actions.addCommand( "add-assessment-info", new AddAssessmentInfo( request:request, NS:numSvc));
+		actions.addCommand( "recalc-rpuassessment", new CalcRPUAssessValue( request:request, NS:numSvc));
+		actions.addCommand( "recalc-rpu-totalav", new CalcTotalRPUAssessValue( request:request, NS:numSvc));
+		actions.addCommand( "add-derive-var", new AddDeriveVariable( request:request));
+		return actions;
+	}
+}
+

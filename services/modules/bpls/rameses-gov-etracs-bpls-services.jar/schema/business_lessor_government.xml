@@ -1,0 +1,14 @@
+<schema>
+	<element tablename="business_lessor">
+		<field name="objid" primary="true"/>
+		<field name="government" required="true" defaultValue="1" type="integer" visible="false"/>
+		<field name="bldgno" caption="Bldg No"/>
+		<field name="bldgname" required="true" searchable="true" indexed="true" caption="Bldg Name"/>
+		<field name="street"  required="true" caption="Street"/>
+		<field name="subdivision" indexed="true" caption="Subdivision"/>
+		<field name="barangay_objid" visible="false"/>
+		<field name="barangay_name" indexed="true" caption="Barangay"/>
+		<field name="pin" caption="PIN"/>
+	</element>
+</schema>			
+

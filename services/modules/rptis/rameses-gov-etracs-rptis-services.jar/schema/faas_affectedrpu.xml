@@ -1,0 +1,9 @@
+<schema>
+	<element tablename="faas_affectedrpu">
+		<field name="objid" primary="true" />
+		<field name="faasid" required="true" />
+		<field name="prevfaasid" required="true" />
+		<field name="newfaasid" />
+		<field name="newsuffix" />
+	</element>
+</schema>

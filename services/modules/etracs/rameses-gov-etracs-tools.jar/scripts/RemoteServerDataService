@@ -1,0 +1,155 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+import com.rameses.util.*;
+
+class RemoteServerDataService {
+
+	@ActiveDB('remoteserver_data')	
+	def adb; 
+
+	@ProxyMethod 
+	public def getOrgData( entity ) { 
+		if ( !entity.data.org ) throw new Exception("'org' parameter is required.   ")
+
+		def orgs = []; 
+		adb.getRootOrgs().each{
+			loadOrg( orgs, it ); 
+		}
+		loadOrg( orgs, entity.data.org ); 
+
+		entity.data.orgs = []; 
+		orgs.groupBy{ it.objid }.each{ k,v-> 
+			entity.data.orgs << v.first(); 
+		} 
+
+		def orgclasses = []; 
+		entity.data.orgs.groupBy{ it.orgclass }.each{ k,v-> 
+			loadOrgClass( orgclasses, [name: k]); 
+		}
+		entity.data.orgclasses = [];
+		orgclasses.groupBy{ it.name }.each{ k,v-> 
+			entity.data.orgclasses << v.first(); 
+		} 
+
+		def params = [ orgid: entity.data.org.objid ]; 
+		entity.data.usergroups = adb.getUserGroups( params ); 
+		if ( !entity.data.usergroups ) throw new Exception("There are no roles assign to the user for this org.  ");
+		
+		entity.data.users = adb.getUsers( params ); 
+		if ( !entity.data.users )  throw new Exception("There are no users define on the org.  ");
+
+		entity.data.usergrouppermissions = adb.getUserGroupPermissions( params ); 
+		entity.data.securitygroups = adb.getSecurityGroups( params ); 
+		entity.data.userMemberships = adb.getUserGroupMembers( params ); 
+		
+		entity.data.collectiontypes = adb.getCollectionTypes( params );
+		entity.data.collectiontypes.each{ 
+			it.org = [ objid: it.orgid, name: it.orgname, type: it.orgtype ];
+			if ( it.info instanceof String ) { 
+				it.info = ObjectDeserializer.getInstance().read( it.info ); 
+			} 
+		}
+		entity.data.collectiontypeorgs = adb.getCollectionTypeOrgs( params ); 
+		entity.data.collectionTypesAccounts = adb.getCollectionTypeAccounts( params );
+		
+		entity.data.collectiongroups = adb.getCollectionGroups( params );
+		entity.data.collectiongroups.each{
+			it.org = [ objid: it.orgid, name: it.orgname, type: it.orgtype ]; 
+		}
+		entity.data.collectiongrouporgs = adb.getCollectionGroupOrgs( params );
+		entity.data.collectiongroupitems = adb.getCollectionGroupItems( params );
+
+		entity.data.afs = adb.getAFs( params); 
+		
+		def afids = "'"+ entity.data.afs.collect{ it.objid }.join("','") +"'"; 
+		entity.data.afunits = adb.getSearchAFUnits([ filter:" itemid IN ("+ afids +") "]); 
+		entity.data.fundgroups = adb.getFundGroups( params ); 
+		
+		def funds = []; 
+		adb.getFunds( params ).each{
+			loadFund( funds, it ); 
+		}
+		entity.data.funds = []; 
+		funds.groupBy{ it.objid }.each{ k,v-> 
+			entity.data.funds << v.first(); 
+		}
+
+		entity.data.itemaccounts = adb.getItemAccounts( params );
+		entity.data.itemaccounttags = adb.getItemAccountTags( params );
+		entity.data.banks = adb.getBanks( params ); 
+
+		if ( entity.data.outputformat == 'v254' ) { 
+			resolve254Compatibility( entity.data ); 
+		}
+		return new Base64Cipher().encode(entity); 
+	}
+
+	private void loadOrg( list, param ) {
+		def o = adb.findOrg([ objid: param.objid ]); 
+		if ( !o ) return; 
+
+		if ( o.parent?.objid ) {
+			loadOrg( list, o.parent ); 
+		}
+		list << o; 
+	}
+	private void loadOrgClass( list, param ) {
+		if ( !param?.name ) return; 
+
+		def o = adb.findOrgClass([ name: param.name ]); 
+		if ( !o ) return; 
+
+		if ( o.parentclass ) {
+			loadOrgClass( list, [name: o.parentclass] ); 
+		}
+		list << o; 
+	}
+	private void loadFund( list, param ) {
+		if ( !param?.objid ) return; 
+
+		def o = adb.findFund([ objid: param.objid ]);
+		if ( !o ) return; 
+
+		o.objid = (o.objid ? o.objid.toString().toUpperCase() : o.objid);
+		o.groupid = (o.groupid ? o.groupid.toString().toUpperCase() : o.groupid);
+		o.depositoryfundid = (o.depositoryfundid ? o.depositoryfundid.toString().toUpperCase() : o.depositoryfundid);
+
+		if ( o.depositoryfundid && o.depositoryfundid != o.objid ) {
+			loadFund( list, [ objid: o.depositoryfundid ] );  
+		} 
+		list << o; 
+	} 
+
+	private void resolve254Compatibility( data ) {
+		data.users.each{
+			if ( it.state.toString().equalsIgnoreCase("ACTIVE")) it.state = 'APPROVED';  
+		}
+		data.collectiontypes.each{
+			it.state = 'APPROVED'; 
+		}
+		data.collectiongroups.each{
+			it.state = 'APPROVED'; 
+		}
+		data.funds.each{
+			it.state = 'APPROVED'; 
+			it.parentid = it.groupid; 
+		} 
+
+		data.funds.collect{ it.parentid }.findAll{( it )}.unique().each{ k-> 
+			def o = data.funds.find{( it.objid == k )} 
+			if ( o ) return; 
+
+			o = adb.findFund([ objid: k ]); 
+			if ( o ) { 
+				o.state = 'APPROVED'; 
+				o.remove('parentid'); 
+				o.remove('groupid'); 
+				data.funds << o; 
+			} 
+		} 
+
+		data.itemaccounts.each{ 
+			it.state = 'APPROVED'; 
+		} 
+	} 
+} 

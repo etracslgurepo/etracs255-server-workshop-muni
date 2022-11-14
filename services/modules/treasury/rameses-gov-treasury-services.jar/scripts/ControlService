@@ -1,0 +1,63 @@
+import com.rameses.annotations.*;
+
+class ControlService  {
+
+	@Service("Var")
+	def var;
+
+	@Service("DateService")
+	def dateSvc;
+
+	@Service("SequenceService")
+	def seqSvc;
+
+
+    @ProxyMethod
+    public def formatTxnno( params ) {
+    	if ( !params.txncode ) throw new Exception('txncode parameter is required in ControlService'); 
+
+    	def format = ( params.format ? params.format : 'UTFS' ); 
+    	def seqid = params.sequenceid_format;
+    	def txncode = params.txncode; 
+    	
+        //Formatting Options:
+        // YY - YEAR POSTED
+        // MM - MONTH POSTED 
+        // DD - DATE POSTED 
+        // UT - USER TXNCODE
+        // SQ - SEQUENCE 
+        // FS - FORMATTED SEQUENCE 
+        
+        def txndate = params.txndate; 
+        if ( !txndate ) txndate = dateSvc.getBasicServerDate(); 
+
+        def dt = dateSvc.parseDate( txndate, null ); 
+        def values = [ 
+        	YY: dt.year.toString(), 
+        	MM: dt.month.toString().padLeft(2, '0',),
+        	DD: dt.day.toString().padLeft(2, '0'),
+        	UT: txncode 
+        ];
+
+        def txnno = format;  
+        values.keySet().each {
+            txnno = txnno.replace( it, values[it] ); 
+        }
+
+        def series; 
+        if ( seqid ) { 
+        	def seq = seqid;
+        	values.keySet().each {
+            	seq = seq.replace( it, values[it] )
+            }
+            series = seqSvc.getNextSeries( seq ); 
+            
+        } else { 
+        	series = seqSvc.getNextSeries( txnno.replace("FS", '') ); 
+        }
+
+        txnno = txnno.replace( 'SQ', series.toString() );
+        txnno = txnno.replace( 'FS', series.toString().padLeft(5, '0')); 
+        return txnno; 
+    } 
+} 

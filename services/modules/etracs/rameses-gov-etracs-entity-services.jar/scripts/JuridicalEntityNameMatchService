@@ -1,0 +1,54 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.services.extended.*;
+
+public class JuridicalEntityNameMatchService {
+
+	@ActiveDB("entityjuridical")
+	def em;
+
+	@Service("DateService")
+	def dateSvc;
+
+	double threshold = 0.70;
+
+	@ProxyMethod
+	public def getMatches( def info ) {
+		//filter first the data in the database.
+		//let us look first for 100% match in names. 
+
+		def test = [:];
+		if(info.name.length() < 2) 
+			throw new Exception("Name must be at least 2 characters");
+
+		test.name = info.name[0..1]+"%";
+		
+		def list = em.getMatchList( test );
+		if(!list) return  [];
+
+		def matches = [];
+		JaroWinkler matcher = new JaroWinkler( 0.80, 4 );
+
+		list.each {
+			def n1 = info.name.replaceAll('\\s','');
+			def n2 = it.name.replaceAll('\\s', '');
+			it.match = NumberUtil.round( matcher.compare( n1, n2 ) ); 
+			if( it.match >= threshold ) {
+				matches << it;
+			}
+		}
+		def sorted = matches.sort{ it.match * -1 };
+
+		def result = [];
+		int i = 0;
+		for(it in sorted) {
+			if(i>=50) break;
+			it.match = it.match * 100;
+			result << it;
+			i++;
+		}
+		return result.sort{ (it.match * -1) };
+	}
+
+}

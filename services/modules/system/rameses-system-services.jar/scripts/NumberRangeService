@@ -1,0 +1,68 @@
+import com.rameses.annotations.*
+import java.math.BigDecimal
+import java.math.RoundingMode
+import java.text.DecimalFormat
+import java.math.MathContext;
+import java.text.DecimalFormat;
+import java.util.StringTokenizer;
+
+class NumberRangeService {
+
+	/*
+	* passes a cancelled list string for example: 5561-5570,6575,5578,5580-5590. 
+	* if string is null, return an empty list. else return the range of int values
+	*/
+	@ProxyMethod
+	public def parseIntRange( String c ) {
+		if(!c) return [];
+		def newlist = [];
+		def list = c.split(",");
+		list.each {
+		   def m = it.split("-");
+		   if(m.length > 1) {
+			   m[0].toInteger().step( m[1].toInteger()+1,1 ) {
+				   newlist << it;
+			   } 
+		   } 
+		   else {
+			   newlist << m[0].toInteger();
+		   }
+		}	
+		return newlist.unique();
+	}
+
+	/*
+	* accepts a list of int values and returns a compact string.
+	* opposite of the command above
+	*/
+	@ProxyMethod
+	public def stringIntRange(  def intList ) {
+		if(!intList) return "";
+		int prev = 0;
+		intList.unique().sort();
+		def sb = new StringBuilder();
+
+		def appender = { tmp->
+		  if(sb.length()>0) sb.append(",");
+		   if(tmp.size()>1)  
+			   sb.append( tmp.min() + "-" + tmp.max() );
+		   else
+			   sb.append( tmp.min() );    
+		}
+		def tmp = [];
+		intList.each { x->
+		   if( (prev+1)!=x) {
+			   if( tmp.size() > 0 ) {
+				   appender(tmp);
+				   tmp.clear();
+			   }
+		   }  
+		   tmp << x;
+		   prev = x;
+		}
+		appender(tmp);
+		return sb.toString();
+	}
+	
+	
+}

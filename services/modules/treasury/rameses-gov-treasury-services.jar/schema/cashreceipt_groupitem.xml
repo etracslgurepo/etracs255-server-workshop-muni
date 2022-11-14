@@ -1,0 +1,6 @@
+<schema>
+	<element tablename="cashreceipt_groupitem" >
+		<field name="objid" primary="true" />
+		<field name="parentid" required="true" />
+	</element>	
+</schema>

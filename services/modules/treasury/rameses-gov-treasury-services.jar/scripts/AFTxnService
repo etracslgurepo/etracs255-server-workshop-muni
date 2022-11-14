@@ -1,0 +1,343 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.services.extended.*;
+
+/********************************************************************************************************************
+* Notes: 
+* ACTION	    TXNTYPES														DESCRIPTION
+* ------		--------														-----------
+* addBatch      RECEIPT,BEGIN_BALANCE and FORWARD
+* editBatch     FORWARD (current series), ISSUE (for cashtickets - endseries)
+* issue   		ISSUE
+* move			RETURN, TRANSFER
+********************************************************************************************************************/
+
+class AFTxnService  {
+
+	@DataContext("af_control")
+	def afControl;
+
+	@DataContext("af_control_detail")
+	def afControlDetail;
+
+	@DataContext("aftxn")
+	def aftxn;
+
+	@DataContext("aftxnitem")
+	def aftxnItem;
+
+	@DataContext("af_allocation")
+	def afAlloc;
+
+	@Service("DateService")
+	def dateSvc;
+
+	@Service("AFInventoryService")
+	def afInvSvc;
+
+	@Service("PersistenceService")
+	def persistSvc;
+
+	@Env
+	def env;
+
+
+	/****************************************************************************
+	* must only pass the ff:
+	* aftxnitemid, qty, startseries, endseries, startstub, endstub, prefix, suffix
+	*****************************************************************************/
+	@ProxyMethod
+	public void addBatch( def o ) { 
+		def txndate = dateSvc.getServerDate();
+		def afi = aftxnItem.find([objid: o.aftxnitemid] ).select("objid,item.objid,unit,qtyserved,qty,txntype,cost,parent.*,afunit.*").first();
+
+		if( (afi.qtyserved + o.qty) > afi.qty )
+			throw new Exception("qty specified must not exceed the unserved qty");
+
+		//find first if there is already a previous batch
+		def  z = afControlDetail.select( "batchno:{MAX( parent.batchno )}" ).find( [ aftxnitemid: o.aftxnitemid ] ).groupBy( "aftxnitemid" ).first();
+
+		int batchno = 1;
+		if( z ) {
+			batchno = z.batchno + 1;
+		}
+		
+		def afunit = afi.afunit;
+
+		int interval = (!afunit.interval) ? 1 : afunit.interval;
+		int len = (afunit.serieslength ? afunit.serieslength : 10);	
+		int stubno = o.startstub; 
+ 		int starter = (o.startseries ? Integer.parseInt( o.startseries ) : 0);
+		(1..o.qty).each { 
+			def afc = [:];
+			afc.afid = afi.item.objid;
+			afc.unit = afi.unit;
+
+			afc.afunit = afi.afunit;
+			if( afunit.formtype == 'serial' ) {				
+				afc.startseries = starter;
+				afc.endseries = starter + (afunit.qty * interval) - 1;
+				starter = afc.endseries + 1;
+			}
+			else {
+				afc.startseries = 1;
+				afc.endseries = afunit.qty; 
+			}
+
+			afc.dtfiled = afi.parent.dtfiled;
+			afc.stubno = stubno++;
+			afc.prefix = o.prefix;
+			afc.suffix = o.suffix;
+			afc.batchno = batchno;
+			afc.cost = afi.cost;
+			afc.salecost = 0.0;
+			afc.allocation = o.allocation;
+
+			def ref = [:];
+			ref.aftxnid = afi.parent.objid;
+			ref.aftxnitemid = afi.objid;
+			ref.refid = afi.parent.objid;
+			ref.refno = afi.parent.controlno;
+			ref.refdate = afi.parent.dtfiled;
+			ref.reftype = afi.parent.txntype;
+			ref.remarks = (ref.reftype == 'PURCHASE_RECEIPT') ? 'RECEIPT OF PURCHASE' : 'BEGIN BALANCE';
+			ref.txntype = afi.txntype;
+			ref.txndate = txndate;
+			ref.issueto = afi.parent.issueto;
+			ref.respcenter = afi.parent.respcenter;
+
+			afInvSvc.add( ref, afc );
+		} 
+		aftxnItem.find([ objid: afi.objid ]).update( [qtyserved: "{qtyserved + :qty}"], [qty: o.qty] );
+	}
+
+
+	//remove batch is only applicable for PURCHASE_RECEIPT,BEGIN_BALANCE AND FORWARD
+	@ProxyMethod
+	public void removeBatch( def o ) { 
+		if( !o.txntype.matches('PURCHASE_RECEIPT|BEGIN_BALANCE')) 
+			throw new Exception( "AF Remove Batch Entry is only applicable for PURCHASE_RECEIPT, BEGIN_BALANCE, FORWARD, TRANSFER or RETURN"); 
+
+		def p = [ aftxnitemid: o.aftxnitemid, batchno: o.batchno ];
+		def afclist = afControl.where( "currentdetail.aftxnitemid = :aftxnitemid AND batchno = :batchno" , p ).list(); 
+		if ( !afclist ) throw new Exception('failed to locate AF Control with batch#'+ p.batchno); 
+
+		def u = [state:'DELETE', currentdetailid:'{NULL}'];
+		afclist.each{ a-> 
+			afControl.find([ objid: a.objid ]).update( u );
+			afControlDetail.find([ objid: a.currentdetailid ]).delete(); 
+
+			def x = afControlDetail.find([ controlid: a.objid ]).select('objid').orderBy('refdate desc, txndate desc, indexno desc').first(); 
+			if ( x?.objid ) {
+				afControl.find([ objid: a.objid ]).update([ currentdetailid: x.objid ]);
+			}
+			afControl.find([ objid: a.objid ]).delete(); 
+		}
+
+
+		def ws = "aftxnitemid = :aftxnitemid AND parent.batchno = :batchno"
+		int qty = afclist.size(); 
+
+		//update batchno for afcontrols 
+		afControl.where( "currentdetail.aftxnitemid=:aftxnitemid AND batchno > :batchno",p ).update( [batchno: "{batchno - 1}"] );
+		aftxnItem.find([ objid: o.aftxnitemid ]).update([ qtyserved: "{qtyserved - :qty}"], [qty: qty] ); 
+	}	
+
+	@ProxyMethod
+	public void editBatch( def o ) { 
+		o.each {
+			afInvSvc.update( it );
+		}
+	}	
+
+	@ProxyMethod
+	public void revertBatch( o ) { 
+		if( !o.aftxnitemid ) throw new Exception("AFTxnService.revertBatch error. aftxnitemid is required ");
+		
+		def wheres = []; 
+		def wheremap = [:]; 
+		if ( o.batchref ) { 
+			wheremap.batchref = o.batchref; 
+			wheres << 'parent.batchref = :batchref'
+		}
+		if ( o.batchno ) { 
+			wheremap.batchno = o.batchno; 
+			wheres << 'parent.batchno = :batchno'
+		}
+
+		def p = [ aftxnitemid: o.aftxnitemid ];
+		def afcdEm = afControlDetail.find( p ).select('objid,controlid'); 
+		if ( wheres ) {
+			afcdEm.where( wheres.join(' AND '), wheremap ); 
+			wheres.clear(); 
+		}
+
+		def afcs = afcdEm.list(); 
+		wheremap.clear(); 
+		p.clear(); 
+
+		def lockid = new UID().toString();
+		afcs.each{ a-> 
+			afControl.find([ objid: a.controlid ]).update([ lockid: lockid, currentdetailid:'{NULL}' ]);
+		}
+
+		afcs.each{ a-> 
+			afControlDetail.find([ objid: a.objid ]).delete(); 
+
+			def afd = afControlDetail.select('objid').find([ controlid: a.controlid ]).orderBy('refdate desc, txndate desc, indexno desc').first(); 
+			afControl.find([ objid: a.controlid ]).update([ currentdetailid: (afd.objid ? afd.objid : '{NULL}')]); 
+
+			//we need to re-update based on the updated current detail id 
+			def m = [ salecost: 0.0 ]; 
+			m.currentseries = '{currentdetail.endingstartseries}'; 
+			m.endseries =  '{currentdetail.endingendseries}'; 
+			if ( o.txntype == 'ISSUE' ) m.state = 'OPEN'; 
+
+			afControl.find([ objid: a.controlid ]).update( m ); 
+		} 
+
+		def count = afControlDetail.find([ aftxnitemid: o.aftxnitemid ]).select('cnt:{COUNT(objid)}').val(); 
+		aftxnItem.find([ objid: o.aftxnitemid ]).update([ qtyserved: count ]);
+	}	
+
+	@ProxyMethod
+	public void moveBatch( def refitem, def o ) { 
+		def txndate = dateSvc.getServerDate();
+		def afi = aftxnItem.find([objid: refitem.objid ]).select("objid,qtyserved,qty,txntype,parent.*").first();
+		def ref = [:];
+		ref.refid = afi.parent.objid;
+        ref.reftype = afi.parent.txntype;
+        ref.refdate = afi.parent.dtfiled;
+        ref.txntype = afi.txntype;
+        ref.remarks = afi.txntype;
+        ref.txndate = txndate;
+        ref.refno = afi.parent.controlno;
+        ref.issueto = afi.parent.issueto;
+        ref.respcenter = afi.parent.respcenter;
+        ref.aftxnid = afi.parent.objid; 
+        ref.aftxnitemid = afi.objid;
+		o.each {
+			def afc = afControl.find( [objid: it.objid ] ).first();
+			afInvSvc.add( ref, afc );
+		}
+		aftxnItem.find([objid: afi.objid]).update( [qtyserved: '{qtyserved + :qty}'], [qty: o.size() ] );
+	}	
+
+
+	//this is called by the main AFRI ebtry screen
+	@ProxyMethod
+	public void issueBatch( def o ) { 
+		def txndate = dateSvc.getServerDate();
+
+		def afi = aftxnItem.find([objid: o.aftxnitemid ]).select("objid,qtyserved,qty,txntype,afid:{item.objid},unit,parent.*").first();
+		if( (afi.qtyserved+o.qty) > afi.qty )
+			throw new Exception("Qty served must be less than qty requested");
+
+		//lookup allocation based on the resp. center defined in the allocation
+		def alloc = null;
+		if( afi.parent.respcenter?.objid) {
+			alloc = afAlloc.where( "respcenter.objid = :orgid", [orgid: afi.parent.respcenter.objid ] ).first();
+		}
+
+		def ref = [:];
+		ref.aftxnid = afi.parent.objid;
+        ref.aftxnitemid = afi.objid;
+		ref.refid = afi.parent.objid;
+        ref.reftype = afi.parent.txntype;
+        ref.refdate = afi.parent.dtfiled;
+        ref.txntype = afi.txntype;
+        ref.remarks = afi.txntype;
+        ref.txndate = txndate;
+        ref.refno = afi.parent.controlno;
+        ref.issueto = afi.parent.issueto;
+        ref.respcenter = afi.parent.respcenter;
+
+		int qty = o.qty;
+		if ( qty == null ) throw new Exception("Qty to Issue is required"); 
+		else if ( qty < 0 ) throw new Exception("Qty to Issue must be greater than zero"); 
+
+		def remarks = afi.txntype;
+		def sbuff = new StringBuilder();
+		def p = [:];
+        p.afid = afi.afid;
+        p.unit = afi.unit;
+		sbuff.append(" state = 'OPEN' AND afid = :afid AND unit = :unit ");
+		sbuff.append(" AND currentdetail.txntype NOT IN ('RETURN') "); 
+		if ( alloc ) {
+			sbuff.append(  " AND allocid =:allocid " );
+			p.allocid = alloc.objid;
+		} 
+		else { 
+			sbuff.append(  " AND allocid IS NULL " );
+		} 
+
+		def list = afControl.select('objid,startseries,currentseries,endseries,prevdetailid,salecost,afunit.saleprice').where( sbuff.toString(), p ).orderBy('dtfiled,batchno,startseries,stubno').limit( qty ).list();
+		if ( !list ) throw new Exception("No available stock for " + p.afid + " " + p.unit); 
+
+		list = list.subList(0, qty); 
+
+		if ( list.size() != qty ) { 
+			throw new Exception("Not enough stock to issue"); 
+		} 
+
+		def txntype = afi.txntype.toString().toUpperCase(); 
+
+		list.each { itm-> 
+			if ( !itm.salecost ) itm.salecost = itm.afunit?.saleprice; 
+			itm.salecost = ( itm.salecost ? itm.salecost : 0.0 ); 
+			itm.salecost = ( txntype == 'SALE' ? itm.salecost : 0.0 ); 
+			afControl.find([ objid: itm.objid ]).update([ salecost: itm.salecost ]); 
+			afInvSvc.add( ref, itm );
+		}
+		aftxnItem.find([ objid: afi.objid ]).update([ qtyserved: '{qtyserved + :qty}' ], [ qty: qty ]);
+	}	
+
+
+    @ProxyMethod
+	public def post( o ) {
+		def ar = aftxn.find([ objid: o.objid ]).first(1);
+		if ( ar.items.sum{ it.qtyserved } == 0 ) 
+			throw new Exception("There must be at least one qty issued");	
+
+		def  u = [:];
+		u.state = "{currentdetail.statetype.poststate}";
+		u.owner = [ objid: "{currentdetail.issuedto.objid}",  name: "{currentdetail.issuedto.name}" ];
+		u.assignee = [ objid: "{currentdetail.issuedto.objid}",  name: "{currentdetail.issuedto.name}" ];
+		u.respcenter = [ objid: "{currentdetail.respcenter.objid}",  name: "{currentdetail.respcenter.name}" ];
+		u.lockid = "{NULL}";
+
+		if ( ar.txntype == 'RETURN' ) {
+			u.owner = [objid: null, name: null]; 
+			u.assignee = [objid: null, name: null]; 
+		} 
+
+		afControl.where( "currentdetail.aftxnid = :aftxnid", [ aftxnid: ar.objid ]).update( u );
+		afControlDetail.find([ aftxnid: ar.objid ] ).update([ state: 1 ]);
+		aftxn.find([ objid: ar.objid ]).update([ state: 'POSTED' ]);
+	}
+
+
+	@ProxyMethod
+	public def changeSaleCost( param ) {
+		if ( !param.aftxnitemid ) throw new Exception('aftxnitemid parameter is required'); 
+		if ( !param.batchref ) throw new Exception('batchref parameter is required'); 
+		if ( !param.batchno ) throw new Exception('batchno parameter is required'); 
+		if ( param.salecost == null ) throw new Exception('batchno parameter is required'); 
+		if ( param.salecost < 0 ) throw new Exception('salecost must be greater than or equal to zero'); 
+
+		def wheresql = 'parent.batchref = :batchref AND parent.batchno = :batchno'; 
+		def wheremap = [batchref: param.batchref, batchno: param.batchno]; 
+		def findby = [ aftxnitemid: param.aftxnitemid ]; 
+		def afdEm = afControlDetail.find( findby ).select('controlid'); 
+		def afcs = afdEm.where( wheresql, wheremap ).list(); 
+
+		findby.clear(); 
+
+		afcs.each{ 
+			findby.objid = it.controlid; 
+			afControl.find( findby ).update([ salecost: param.salecost ]); 
+		} 
+		return param; 
+	}
+}

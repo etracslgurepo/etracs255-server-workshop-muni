@@ -1,0 +1,34 @@
+import com.rameses.annotations.*;
+import java.io.File;
+import java.util.Calendar;
+
+class ReportOutputCleaner {
+	
+	String output_dir_path = "/apps/server/output";
+
+
+	@Schedule(interval=5, timeUnit="MINUTES")
+	public void runCleaner( task ) {
+		//println "Running cleaner on the next 5 minutes";
+
+		def cal = Calendar.getInstance(); 
+        cal.setTimeInMillis( System.currentTimeMillis());
+        cal.add( Calendar.HOUR, -24 );
+
+		def purgetime = cal.getTimeInMillis();
+
+		def dir = new File( output_dir_path ); 
+		dir.listFiles().each{ o-> 
+			try {
+				if ( o.lastModified() < purgetime ) {
+					o.delete(); 
+				} 
+			} 
+			catch(Throwable t) { 
+				println 'failed to delete file '+ o.name; 
+				t.printStackTrace(); 
+			} 
+		} 
+	}
+
+}

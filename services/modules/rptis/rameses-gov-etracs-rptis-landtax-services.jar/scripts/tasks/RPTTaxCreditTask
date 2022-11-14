@@ -1,0 +1,27 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import com.rameses.services.extended.*
+
+class RPTTaxCreditTask 
+{
+	@DataContext('batch_rpttaxcredit')
+	def em 
+
+	@Service('RPTTaxCreditService')
+	def svc
+
+	@Service('DateService')
+	def dtSvc
+
+	@Schedule(interval=3600)
+	public def closeBatchTaxCredits(task) {
+		def currdate = dtSvc.serverDate - 1;
+		def batch = em.where('state <>  :closed AND validity IS NOT NULL AND validity < :currdate ', [closed: "CLOSED", currdate: currdate]).first()
+		if (batch) {
+			println 'Closing tax credits for Batch #' + batch.txnno
+			svc.closeBatchTaxCredits(batch)
+		}
+	}	
+
+}
+

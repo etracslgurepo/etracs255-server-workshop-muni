@@ -1,0 +1,56 @@
+import com.rameses.annotations.*
+
+class PaymentDistributionService
+{
+	@Service('NumberService')
+	def numSvc
+
+
+	@ProxyMethod
+	public def applyPayment( payment, payables ) {
+		def paidItems = [] 
+		payables.each{
+			if (it.principal == null ) it.principal = 0.0
+			if (it.surcharge == null ) it.surcharge = 0.0
+			if (it.interest == null ) it.interest = 0.0 
+
+			it.principalpaid 	 = 0.0
+			it.surchargepaid = 0.0 
+			it.interestpaid  = 0.0
+			
+			def amtdue = it.principal + it.surcharge + it.interest 
+
+			if ( amtdue > 0.0 && payment > 0.0 ){
+				if ( payment > amtdue){
+					it.principalpaid 	= it.principal 
+					it.surchargepaid 	= it.surcharge 
+					it.interestpaid		= it.interest 
+					payment     -= amtdue 
+				}
+				else {
+					applyPaymentProportionally( payment, amtdue, it)
+					payment = 0.0
+				}
+				paidItems += it 
+			}
+		}
+		return [credit:payment, result:paidItems]
+	}
+
+
+	@ProxyMethod
+	public void applyPaymentProportionally( payment, amtdue, payable){
+		payable.principalpaid = numSvc.round( ( payable.principal / amtdue ) * payment )
+
+		if (payable.surcharge > 0.0 && payable.interest == 0.0){
+			payable.surchargepaid 	= payment - payable.principalpaid
+		}
+		else if (payable.surcharge == 0.0 && payable.interest > 0.0){
+			payable.interestpaid = payment - payable.principalpaid
+		}
+		else {
+			payable.surchargepaid = numSvc.round( ( payable.surcharge / amtdue ) * payment )
+			payable.interestpaid  = payment - payable.principalpaid - payable.surchargepaid
+		}
+	}
+}

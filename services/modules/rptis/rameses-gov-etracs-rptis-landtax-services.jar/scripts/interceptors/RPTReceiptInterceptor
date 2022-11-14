@@ -1,0 +1,50 @@
+import com.rameses.annotations.*
+import com.rameses.eserver.*;
+import com.rameses.common.*;
+
+class RPTReceiptInterceptor
+{
+	@Service('RPTReceiptService')
+	def svc 
+
+	@Service('NumberService')
+	def numSvc
+
+	@Service('RPTUtil')
+	def util
+
+
+	@After(pattern="PersistenceService.read", eval="#{ args[0]._schemaname == 'cashreceipt' && result.collectiontype?.handler?.toString().matches('rpt|rptmanual|rptbatch') }", index=1000)
+	public void afterOpenCashReceiptSchema( evt ) {
+		interceptOpenReceipt( evt );  
+	} 
+
+	@After(pattern="CashReceiptService.open", eval="#{result.collectiontype?.handler.toString().matches('rpt|rptmanual|rptbatch')}") 
+	public void interceptOpenReceipt( evt ) {
+		def receipt = evt.result; 
+		svc.open(receipt) 
+		svc.formatReceiptForPrinting(receipt)
+	}
+
+
+	@Before(pattern="CashReceiptService.post", eval="#{args[0].collectiontype?.handler.toString().matches('rpt|rptmanual|rptbatch')}") 
+	public void beforePostReceipt( evt ) {
+		def receipt = evt.args[0]
+		receipt.amount = numSvc.round(receipt.amount)
+	}
+
+	@After(pattern="CashReceiptService.post", eval="#{args[0].collectiontype?.handler.toString().matches('rpt|rptmanual|rptbatch')}") 
+	public void afterPostReceipt( evt ) {
+		def receipt = evt.result
+		svc.create(receipt)
+		svc.formatReceiptForPrinting(receipt)
+	}
+
+	@After(pattern="CashReceiptVoidService.post", eval="#{result.receipt.collectiontype?.handler.toString().matches('rpt|rptmanual|rptbatch')}") 
+	public void interceptVoidReceipt( evt ) {
+		svc.voidReceipt(evt.result.receipt)
+	}
+
+
+}
+

@@ -1,0 +1,10 @@
+<schema>
+    <element tablename="batch_rpttaxcredit_ledger">
+        <field name="objid" primary="true" />
+        <field name="parentid" required="true" />
+        <!-- FORPROCESS, ERROR -->
+        <field name="state" required="true" />
+        <field name="barangayid" required="true" />
+        <field name="error" />
+    </element>
+</schema>

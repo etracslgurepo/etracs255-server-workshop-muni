@@ -1,0 +1,36 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import java.rmi.server.UID
+import java.text.SimpleDateFormat;
+import com.rameses.services.extended.*;
+
+class VarService extends ActiveCrudService 
+{	
+	@ActiveDB(value='var', em='system')
+	def em;
+
+	@ProxyMethod
+	public List getNodes( params ) { 
+		def list = em.getCategories([:]); 
+		list.each { it.name = it.category }
+		return list; 
+	} 
+
+	@ProxyMethod
+	public List getColumns( params ) {
+		return [
+			[name:'name', caption:'Name'],
+			[name:'value', caption:'Value'],
+			[name:'description', caption:'Description']
+		];
+	} 
+	
+	@ProxyMethod
+	public List getList( params ) {
+		params._pagingKeys = 'name'; 
+		params.searchtext = (params.searchtext? params.searchtext: '')+'%';
+		def list = params.category? em.getList(params): em.getDefaultList(params);
+		list.each { it.filetype = 'var' } 
+		return list; 
+	} 
+}

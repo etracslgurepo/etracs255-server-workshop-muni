@@ -1,0 +1,50 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.common.*
+
+
+class AccountMappingService  {
+
+	@DataContext("account_item_mapping")
+	def mappingEm;
+
+
+	@Service("QueryService")
+	def querySvc;
+
+	@ProxyMethod
+	public def getList(def o) {
+		def mgid = o.maingroupid;
+		def searchText = o.searchText;
+		if( searchText ) {
+			searchText = "%"+searchText +"%";
+		}
+
+		def filter = "maingroup.objid = '" + mgid + "'";
+		def str = mappingEm.select("item.objid").where(filter).statement;
+		o._schemaname = 'itemaccount';
+		o.vars = [ key:  str ];
+		o.select = "objid,code,title";
+		o.where = [ ' objid NOT IN ( ${key} ) ' ];
+		if( searchText ) {
+			o.orWhereList = [];
+			o.orWhereList <<  [" code like :searchtext", [searchtext: searchText ] ];
+			o.orWhereList <<  [" title like :searchtext", [searchtext: searchText ] ];
+		}
+		def list =	querySvc.getList( o );
+		return list.collect{ [item: it ] }
+	}
+
+	@ProxyMethod
+	public def mapAccount( def m ) {
+		return mappingEm.create(m);
+	}
+
+	@ProxyMethod
+	public def unmapAccount( def m ) {
+		return mappingEm.delete(m);
+	}
+
+
+}

@@ -1,0 +1,10 @@
+<schema>
+	<element tablename="aftxn_type">
+		<field name="txntype" primary="true" />
+		<field name="formtype" />
+		<field name="poststate" />
+		<field name="sortorder" />
+	</element>
+</schema>
+
+

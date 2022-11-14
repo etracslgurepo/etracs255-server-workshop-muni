@@ -1,0 +1,55 @@
+import com.rameses.annotations.*; 
+
+class CashbookRevolvingFundInterceptor {
+
+	@Service('DateService')
+	def dateSvc;
+
+	@Env 
+	def env; 
+
+	@After(pattern="QueryService.getNodeList", eval="#{ args[0]._schemaname == 'cashbook_revolving_fund' }")
+	public void afterGetNodes( evt ) { 
+		def param = evt.args[0];
+		def result = evt.result;
+		result << [ state:'POSTED', title: 'Posted' ];
+		result << [ state:'CANCELLED', title: 'Cancelled' ];
+	}
+
+	@Before(pattern="QueryService.getList", eval="#{ args[0]._schemaname == 'cashbook_revolving_fund' }")
+	public void beforeGetList( evt ) {
+		def param = evt.args[0]; 
+		if ( !param?.node ) return; 
+
+		def filters = []; 
+		def filterMap = [:];
+		filters << " state = :state "; 
+		filterMap.state = param.node.state.toString(); 
+
+		if ( param._tag == 'COLLECTOR' ) {
+			filters << ''' issueto.objid = :issuetoid '''; 
+			filterMap.issuetoid = env.USERID; 
+		} 
+
+		def queryStr = filters.join(" AND "); 
+		if ( !queryStr ) {
+			//do nothing 
+		}
+		else if ( param.where ) {
+			param.where[0] = queryStr + " AND " + param.where[0];	
+			param.where[1].putAll( filterMap );
+		}
+		else {
+			param.where = [queryStr.toString(), filterMap];
+		} 
+	} 
+
+	@Before(pattern="PersistenceService.create", eval="#{ args[0]._schemaname == 'cashbook_revolving_fund' }")
+	public void beforeCreate( evt ) { 
+		def param = evt.args[0]; 
+		
+		if ( !param.state ) param.state = 'POSTED'; 
+		if ( !param.dtfiled ) param.dtfiled = dateSvc.getServerDate(); 
+		if ( !param.remarks ) param.remarks = 'OK'; 
+	}
+} 

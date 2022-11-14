@@ -1,0 +1,6 @@
+<schema>
+	<element tablename="business_application_task_lock">
+		<field name="refid" primary="true"/>
+		<field name="state" primary="true"/>
+	</element>	
+</schema>

@@ -1,0 +1,21 @@
+<schema>
+	<element tablename="vw_fund">
+		<field name="objid" primary="true" /> 
+		<field name="parentid" required="true" /> 
+		<field name="state" required="true" caption="State"/> 
+		<field name="code" required="true" caption="Code" indexed="true" searchable="true"/> 
+		<field name="title" required="true" caption="Title" indexed="true" searchable="true"/> 
+		<field name="type" required="true" caption="Type"/> 
+		<field name="special" required="true" /> 
+		<field name="system" required="true" /> 
+		<field name="groupid" required="true" /> 
+		<field name="depositoryfundid" required="true" /> 
+		<field name="group_objid" required="true" /> 
+		<field name="group_title" required="true" caption="Group" indexed="true" searchable="true"/> 
+		<field name="group_indexno" required="true" caption="GroupIndex"/> 
+		<field name="depositoryfund_objid" required="true" /> 
+		<field name="depositoryfund_state" required="true" /> 
+		<field name="depositoryfund_code" required="true" /> 
+		<field name="depositoryfund_title" required="true" caption="DepositoryFund" indexed="true" searchable="true"/> 
+	</element>
+</schema> 

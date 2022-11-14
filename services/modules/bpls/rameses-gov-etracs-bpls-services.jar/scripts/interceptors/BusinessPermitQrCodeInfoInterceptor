@@ -1,0 +1,56 @@
+import com.rameses.annotations.*; 
+
+class BusinessPermitQrCodeInfoInterceptor { 
+
+	@DataContext( dynamic=true )
+	def dynaEm;
+
+	@Service( dynamic=true )
+	def dynaSvc; 
+
+	@After(pattern="QrCodeInfoService.getInfos", eval="#{args[0].reftype == 'business_permit'}")
+	void afterGetInfos( evt ) {
+		def param = evt.args[0]; 
+		if ( !param.refid ) return; 
+
+		def em_permit = dynaEm.lookup('business_permit'); 
+		def perm = em_permit.find([ objid: param.refid ]).first(); 
+		if ( !perm ) return; 
+
+		def permSvc = dynaSvc.lookup('BusinessPermitService'); 
+		def report = permSvc.getReport([ applicationid: perm.applicationid ]); 
+
+		def lobNames = report.lobs.findAll{( it.name )}.collect{ it.name }.join(', '); 
+
+		def res = evt.result; 
+		res << [caption: 'Permit No.  ', value: report.permitno ];
+		res << [caption: 'Issued On   ', value: formatDate( report.dtissued )];
+		res << [caption: 'Issued At   ', value: getLocation() ];
+		res << [caption: 'Expires On  ', value: formatDate( report.expirydate )];
+		res << [caption: 'Owner Name  ', value: report.ownername];
+		res << [caption: 'Business Name  ', value: report.tradename];
+		res << [caption: 'Business Address  ', value: report.businessfulladdress];
+		res << [caption: 'Lines of Business  ', value: lobNames];
+	} 
+
+
+	def getLocation() {
+		try {
+			def orgSvc = dynaSvc.lookup('OrgService', 'admin'); 
+			def org = orgSvc.getRoot(); 
+			return org?.lgu?.fullname; 
+		} 
+		catch(Throwable t) {
+			t.printStackTrace(); 
+			return null; 
+		}
+	}
+
+	def formatDate( value ) {
+		try {
+			return new java.text.SimpleDateFormat('MMMMM dd, yyyy').format( value ); 
+		} catch(Throwable t) { 
+			return null; 
+		}
+	}
+}

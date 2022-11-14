@@ -1,0 +1,35 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class DistrictLookupService extends ActiveListService 
+{
+	
+	@ActiveDB('district')	
+	def em
+	
+	@ProxyMethod 
+	public def getColumns( params ) {
+		return [
+			[name:'name', caption:'Name'],  
+			[name:'indexno', caption:'Index-No'],
+			[name:'pin', caption:'PIN'] 
+		];
+	}
+
+	void beforeList( params ) {
+		params.searchtext = (params.searchtext? params.searchtext: '')
+		params.name = params.searchtext + '%'
+	}
+
+	@ProxyMethod
+	public def getById( objid ) {
+		return em.findById([objid:objid])
+	}
+
+	@ProxyMethod
+	public def getListByParentid( parentid ) {
+		return em.getListByParentid([parentid:parentid])
+	}
+
+}

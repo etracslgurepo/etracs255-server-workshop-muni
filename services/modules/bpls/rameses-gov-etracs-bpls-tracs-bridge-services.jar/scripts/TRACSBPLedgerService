@@ -1,0 +1,31 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.services.extended.*;
+
+public class TRACSBPLedgerService {
+
+	@ActiveDB(value="tracsbpledger", em="tracs")
+	def em;
+
+	@Service("DateService")
+	def dateSvc;
+
+	@ProxyMethod
+	public def getReceivables(o) {
+		o.filter  = '';
+		if(o.year) {
+			o.filter += ''' AND a.year = $P{year} '''
+		}
+		if( o.title) {
+			o.title = '%'+o.title+'%';
+			o.filter += ''' AND a.account_title LIKE $P{title} '''
+		}
+		if( o.lob) {
+			o.lob = '%'+o.lob+'%';
+			o.filter += ''' AND a.lob_name LIKE $P{lob} '''
+		}
+		em.getReceivables(o);
+	}
+
+}

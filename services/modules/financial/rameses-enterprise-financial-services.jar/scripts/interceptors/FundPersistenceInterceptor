@@ -1,0 +1,31 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.common.*
+
+
+class FundListInterceptor  {
+
+	@DataContext("fund")
+	def fundEm;
+
+	
+
+	@After(pattern="PersistenceService.(create|update)", eval="#{ args[0]._schemaname == 'fund' }")
+	public void saveOrUpdate(evt) {
+		def entity = evt.result;
+		if( !entity.depositoryfundid ) {
+			entity.depositoryfundid = entity.objid;
+			fundEm.find( [objid: entity.objid]).update( [depositoryfundid : entity.objid ] );
+			entity.depositoryfund = fundEm.find( [objid: entity.objid ] ).first();
+		}				
+	}
+
+	@Before(pattern="PersistenceService.removeEntity", eval="#{ args[0]._schemaname == 'fund' }")
+	public void beforeRemove(evt) {
+		def entity = evt.args[0];
+		fundEm.find( [objid: entity.objid]).update( [depositoryfundid : "{NULL}" ] );
+	}
+
+
+}

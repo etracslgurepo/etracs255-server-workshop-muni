@@ -1,0 +1,163 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+
+class MunicipalityFAASRemoteCallHandler
+{   
+	@Service('FAASService')
+	def faasSvc
+
+	@Service('RPTLedgerService')
+	def ledgerSvc
+
+	@ActiveDB('faas_task')
+	def task;
+
+	@ActiveDB('faas_list')
+	def faasListEm;
+
+	@Service('RPTUtil')
+	def util
+
+	@Service('FAASSupportService')
+	def supportSvc
+
+	@Service('DateService')
+	def dtSvc 
+
+	@Service('NotificationService')
+	def notifySvc		
+
+	@Service('RPTSmsService')
+	def rptsmsSvc
+
+
+	@ProxyMethod 
+	public void postDataCapturedFaas(faasdata){
+		supportSvc.saveFaasData(faasdata)
+		faasSvc.approveFaasByRemote(faasdata)
+		println 'Data captured FAAS from province was successfully posted.'
+	}
+
+
+	@ProxyMethod
+	public void postMunicipalFaasApprovedByProvince( faasdata ) {
+		println '[postMunicipalFaasApprovedByProvince] Posting FAAS approval from province.'
+		if (!faasSvc.faasExist(faasdata)){
+			faasdata.state = 'INTERIM'
+			supportSvc.saveFaasData(faasdata)
+		}
+
+		def state = faasSvc.getState( faasdata.objid )
+		if (! state.toLowerCase().matches('current|cancelled')){
+			def faas = faasSvc.openFaas(faasdata)
+			faas.approver = faasdata.approver
+			faas.tdno = faasdata.tdno 
+			faas.utdno = faasdata.utdno 
+			faasdata.state = faas.state
+			faasSvc.updateFaas(faasdata)
+			faasSvc.approveFaas(faas)
+			saveTasks(faasdata)
+			faasSvc.updateSignatoryInfo(faasdata.tasks.find{it.state == 'approver'})
+			notifyRecommender(faasdata)
+			rptsmsSvc.notifyClient(faasdata)
+			println 'FAAS approved by province has been successfully posted.'
+		}
+	}
+
+	@ProxyMethod 
+	public void approveFaasByProvince(faasdata){
+		println 'Processing province approved FAAS ' + faasdata.tdno
+		def state = null;
+		try{
+			state = faasSvc.getState( faasdata.objid )
+			if (state.matches('CURRENT|CANCELLED')){
+				throw new Exception('FAAS has already been approved or cancelled.')
+			}
+			doApproveFaas(faasdata)
+			rptsmsSvc.notifyClient(faasdata)
+		}
+		catch(e){
+			supportSvc.saveFaasData(faasdata)
+			faasSvc.approveFaasByRemote(faasdata)
+			println 'Approved Province FAAS has been successfully posted.'
+		}
+		notifyRecommender(faasdata)
+	}
+	
+	@ProxyMethod 
+	public void disapproveFaasByProvince(disapproveinfo){
+		task.deleteOpenTask(disapproveinfo)
+
+		def recommendertask = task.findRecommederTask([refid:disapproveinfo.objid])
+		recommendertask.message = 'Disapproved by ' + disapproveinfo.disapprovedby.name + ':     ' + disapproveinfo.reason
+		recommendertask.objid = disapproveinfo.taskid 
+		recommendertask.startdate = dtSvc.serverDate
+		recommendertask.enddate = null
+		task.create(recommendertask)
+		faasListEm.updateTaskId(recommendertask)
+
+		disapproveinfo.sender = disapproveinfo.disapprovedby
+		disapproveinfo.message = 'Submitted FAAS No. ' + disapproveinfo.tdno + ' was disapproved by ' + disapproveinfo.disapprovedby.name
+		doNotifyRecommender(recommendertask, disapproveinfo)
+	}
+
+	void doApproveFaas(faasdata){
+		def faas = faasSvc.openFaas(faasdata)
+		faas._approvetransmittal_ = faasdata._approvetransmittal_
+		faas.approver = faasdata.approver
+		faas.tdno = faasdata.tdno 
+		faas.utdno = faasdata.utdno 
+		faasdata.state = faas.state
+		faasSvc.updateFaas(faasdata)
+		faasSvc.approveFaas(faas)
+		saveTasks(faasdata)
+		faasSvc.updateSignatoryInfo(getApproverTask(faasdata))
+		println 'FAAS has been successfully approved.'
+	}
+
+	def getApproverTask(faasdata) {
+		def task = faasdata.tasks.find{it.state == 'approver'}
+		if (!task) {
+			task = faasdata.tasks.find{it.state == 'provapprover'}
+		}
+		return task;
+	}	
+
+	void saveTasks( faas ) {
+		task.deleteOpenTask(faas)
+		faas.tasks.each{
+			task.save(it)
+		}
+	}
+
+	void notifyRecommender(faasdata){
+		//get recommender and set taskid to approver task 
+		//to open the faas record in approve state 
+		def recommendertask = task.findRecommederTask([refid:faasdata.objid])
+		if (recommendertask && faasdata.tasks){
+			recommendertask.objid = faasdata.tasks.last().objid
+			def info = [
+				message: 'FAAS No. ' + faasdata.tdno + ' has been approved by ' + faasdata.approver.name,
+				sender : faasdata.approver,
+			]
+			doNotifyRecommender(recommendertask, info)
+		}		
+	}
+
+
+	void doNotifyRecommender(currtask, info){
+		def msg = [
+            objid     : currtask.refid,
+            recipientid : (currtask.assignee.objid ? currtask.assignee.objid : '-'),
+            recipienttype : 'user',
+            senderid  : (info.sender.objid ? info.sender.objid : '-'),
+            sender    : info.sender.name,
+            message   : info.message,
+            filetype  : 'faas',
+            data 	  : [taskid: currtask.objid],
+        ]
+        notifySvc.addMessage(msg)
+	}
+
+
+}

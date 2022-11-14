@@ -1,0 +1,51 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+
+class MunicipalitySubdivisionSupportService
+{
+	@Env
+	def env
+
+    @Service('RPTNotificationService')
+    def svc 
+	
+	@Service('SubdivisionSupportService')
+	def supportSvc
+
+
+    @ProxyMethod
+    public void submitToProvince( subdivision ) {
+        def subdivisiondata = supportSvc.buildSubdivisionData(subdivision)
+        def asyncreq    = svc.createAsyncRequest('ProvinceSubdivisionRemoteService', 'postSubdivisionForApproval', subdivisiondata, svc.buildEnvMap(env))
+        def msg         = svc.createAsyncMessage(asyncreq[0])
+        msg.txnid       = subdivisiondata.objid
+        msg.txnno       = subdivisiondata.txnno 
+        msg.groupid     = 'assign-receiver'
+        msg.filetype    = subdivisiondata.filetype
+        msg.message     = 'Subdivision No. ' + subdivisiondata.txnno + ' (assign-receiver)'
+        msg.messagetype = 'subdivision-forprovapproval'
+        svc.sendAsyncMessage(msg)
+    }
+
+    @ProxyMethod 	
+	public void resubmitToProvince( subdivision ) {
+		def subdivisiondata = supportSvc.buildSubdivisionData(subdivision)
+        subdivisiondata._resubmitted = true 
+        submitToProvince(subdivisiondata)
+        println 'Resubmit Subdivision to province....'
+	}
+
+    @ProxyMethod
+    public def resubmitRequirements( subdivision ){
+        def data        = supportSvc.buildRequirementsData(subdivision)
+        def asyncreq    = svc.createAsyncRequest('ProvinceSubdivisionRemoteService', 'repostSubdivisionRequirements', data, svc.buildEnvMap(env))
+        def msg         = svc.createAsyncMessage(asyncreq[0])
+        msg.txnid       = subdivision.objid
+        msg.txnno       = subdivision.txnno 
+        msg.message     = 'Repost Subdivision No. ' + subdivision.txnno + ' requirements.'
+        msg.messagetype = 'subdivision-repost-requirements'
+        svc.sendAsyncMessage(msg)
+        println 'Resubmit Subdivision requirements to province....'
+    }
+}
+

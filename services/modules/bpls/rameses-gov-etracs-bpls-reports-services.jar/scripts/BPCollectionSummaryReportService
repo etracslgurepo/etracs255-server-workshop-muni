@@ -1,0 +1,28 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+
+class BPCollectionSummaryReportService {
+	
+	@ActiveDB("report_bpcollection_summary")
+	def em;
+
+	@ProxyMethod
+	public def getReport(params) { 
+		if ( !params.permittype?.objid ) throw new Exception('permittype parameter is required'); 
+		if ( !params.year ) throw new Exception('year parameter is required');
+
+		if ( !params.filter ) params.filter = '';
+		params.permittypeid = params.permittype.objid; 
+
+		params.startdate = ''+ params.year +'-01-01'; 
+		params.enddate = ''+ (params.year + 1) +'-01-01'; 
+
+		def list = em.getReport( params );
+		if( ! list ) throw new Exception('No records found.');
+
+		list.each { x-> 
+			if ( x.iqtr ) x.sqtr = 'Q'+x.iqtr; 
+		} 
+		return list;
+	} 
+}

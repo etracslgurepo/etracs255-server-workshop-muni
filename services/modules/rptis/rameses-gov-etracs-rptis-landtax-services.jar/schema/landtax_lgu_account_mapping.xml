@@ -1,0 +1,19 @@
+<schema>
+    <element tablename="landtax_lgu_account_mapping">
+        <field name="objid" primary="true" />
+        <field name="lgu_objid" required="true" />
+        <field name="revtype" required="true" caption="Revenue Type" width="60" searchable="true"/>
+        <field name="revperiod" required="true" caption="Period Period" width="60"  searchable="true"/>
+        <field name="item_objid" required="true" />
+
+        <complex name="lgu" ref="org" jointype="many-to-one"
+            includefields="code,name,orgclass">
+            <key field="lgu_objid" target="objid" />
+        </complex>
+
+        <complex name="item" ref="itemaccount" jointype="many-to-one"
+            includefields="code,title,fund.objid,fund.code,fund.title">
+            <key field="item_objid" target="objid" />
+        </complex>
+    </element>
+</schema>

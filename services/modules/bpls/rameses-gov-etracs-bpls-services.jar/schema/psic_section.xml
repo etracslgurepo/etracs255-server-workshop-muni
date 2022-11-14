@@ -1,0 +1,6 @@
+<schema>
+	<element tablename="psic_section">
+		<field name="code" primary="true" searchable="true" indexed="true" visible="true" caption="Section Code"/>
+		<field name="description"  caption="Description"/> 
+	</element>
+</schema>

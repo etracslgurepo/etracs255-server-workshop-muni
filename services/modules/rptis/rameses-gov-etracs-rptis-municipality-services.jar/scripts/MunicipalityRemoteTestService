@@ -1,0 +1,13 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+
+class MunicipalityRemoteTestService
+{   
+	@Env
+	def env 
+
+	@ProxyMethod
+	public def syncData( params ) {
+		println params	
+	}
+}

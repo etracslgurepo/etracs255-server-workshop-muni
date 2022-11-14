@@ -1,0 +1,182 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.services.extended.*;
+
+public class BusinessMasterService {
+
+	@ActiveDB("business")
+	def em;
+
+	@Service("BusinessAddressService")
+	def bizAddress;
+
+	@Service("EntityService")
+	def entitySvc;
+
+	@Service("DateService")
+	def dateSvc;
+
+	@Service(dynamic=true) 
+	def dynaSvc; 
+
+	@Env
+	def env;
+
+	@Service("SequenceService")
+	def seqSvc;
+
+	@Service("Var")
+	def sysvar;
+
+	@Service("LOVService")
+	def LOV;
+
+	@Service("OrgService")
+	def orgSvc;
+
+	/**********************************************************
+	* called by new application or by data capture.
+	* BIN naming standard = {LGUCODE,3}{YEAR,4}{MONTH,2}{SEQ,5}
+	***********************************************************/ 
+	@ProxyMethod
+	public def create(o) {
+		if(!o.objid) o.objid = "BUS"+new UID();
+		o.taxcredit = 0;
+		o.appcount = 1;
+		o.activeqtr = 0;
+		o.currentapplicationid = null;
+
+		//create the bin
+		def lgucode = orgSvc.getRoot()?.code;
+		if(!lgucode)
+			throw new Exception("LGU code is null. Please check OrgService.getRoot. Ensure there is a root org");
+		lgucode = lgucode.replace("-", "");	
+		def yr = dateSvc.serverYear;
+		def mnth = dateSvc.serverMonth;
+		def smon = ( mnth < 10 ) ? "0"+mnth : mnth+"";
+		def prefix = "B"+lgucode+yr+smon;
+		o.bin = prefix+seqSvc.getNextFormattedSeries(prefix);
+
+		if(!o.address) 
+			throw new Exception("BusinessInfo.beforeCreate error. business address must be provided");
+		//update business 
+		def addr = bizAddress.create( o.address );		
+		o.address.objid = addr.objid;
+
+		//save the business
+		em.create( o );
+
+		//we need to update also businessid of the address.
+		o.address.businessid = o.objid;
+		bizAddress.update( o.address );	
+		return o;			
+	}
+
+	@ProxyMethod
+	public def open(def o) {
+		o = em.read( o );
+		if(!o.orgtype) throw new Exception("Org type does not exist. Please check record");
+		if (o.address?.objid) {
+			def a = bizAddress.open( o.address ); 
+			o.address.putAll( a );
+
+			if(o.address.lessor?.objid) {
+				try {
+					o.address.lessor = entitySvc.open( o.address.lessor );
+				} catch(e) {
+					println "BusinessMaster.open error loading lessor info";
+					e.printStackTrace();
+				}
+			}
+		}
+		o.orgtypename = LOV.ORG_TYPES[o.orgtype];
+		try {
+			o.owner = entitySvc.open( o.owner );
+		} catch(e) { 
+			println "BusinessMaster.open error loading owner info";
+			e.printStackTrace();
+		}
+		return o;
+	}
+
+	@ProxyMethod
+	public def updateOnApply( o ) {
+		def b = em.read( o );
+		b.apptype = o.apptype;
+		b.state = o.state;	
+		if(o.yearstarted && !b.yearstarted) b.yearstarted = o.yearstarted;	
+
+		if (!b.address?.objid) b.address = bizAddress.create( o.address ); 
+		if (!b.owner?.address?.objid) b.owner?.address = o.owner?.address; 
+		if ( o.appcount ) b.appcount = o.appcount; 
+
+		b.phoneno = o.phoneno; 
+		b.mobileno = o.mobileno; 
+		b.email = o.email; 
+		em.update( b ); 
+	}
+
+	@ProxyMethod
+	public def update( o ) {
+		return em.update( o );
+	}
+
+	@ProxyMethod 
+	public void updateOnRelease( params ) {
+		if ( !params.state ) throw new Exception('state is required in updateOnRelease'); 
+		if ( !params.activeyear ) throw new Exception('activeyear is required in updateOnRelease'); 
+		
+		em.updateOnRelease( params ); 
+	}
+
+	@ProxyMethod 
+	public void updateForRetire( params ) {
+		if ( !params.objid ) throw new Exception('objid is required in updateForRetire'); 
+		if ( !params.state ) throw new Exception('state is required in updateForRetire'); 
+		if ( !params.apptype ) throw new Exception('apptype is required in updateForRetire'); 
+		
+		em.updateForRetire( params ); 
+	}	
+
+	@ProxyMethod
+	public void updateApplicationId(o) {
+		em.updateApplicationId(o);
+	}
+
+	@ProxyMethod
+	public void updatePermit( def o ) {
+		if( !o.businessid ) throw new Exception("businessid is required in BusinessMasterService.issuePermit");
+		if( !o.permitid ) throw new Exception("permitid is required in BusinessMasterService.issuePermit");
+		em.updatePermit( o );
+	}
+
+	@ProxyMethod
+	public def findByBIN( def  o ) {
+		if( !o.bin ) throw new Exception("BIN is required for BusinessMasterService.findIdByBIN");
+		def z = em.findByBIN(o);
+		if(!z) throw new Exception("BIN " + o.bin + " does not exist");
+		return z;
+	}
+
+	@ProxyMethod
+	public def getListByOwner(def o ) {
+		if(!o.ownerid) throw new Exception("ownerid is required");
+		return em.getListByOwner( o )
+	}
+
+	@ProxyMethod 
+	public def sendSMS( o ) { 
+		def smsSvc = dynaSvc.lookup('SMSService'); 
+		return smsSvc.send( o ); 
+	} 
+
+
+	@ProxyMethod 
+	public void approveMigratedData( param ) { 
+		if ( !param.objid ) 
+			throw new Exception("objid  parameter is required")
+
+		// to be intercepted
+	} 
+}

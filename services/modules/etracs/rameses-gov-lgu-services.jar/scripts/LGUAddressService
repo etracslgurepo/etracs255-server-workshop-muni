@@ -1,0 +1,51 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+import java.rmi.server.UID
+import com.rameses.services.extended.*;
+
+class LGUAddressService  {
+	
+	@Service("OrgService")
+	def orgSvc
+
+	@Service("CityLookupService")
+	def citySvc
+
+	@Service("ProvinceLookupService")
+	def provSvc 
+
+	@Service("MunicipalityLookupService")
+	def munSvc
+
+	@Env
+	def env;
+
+	@ProxyMethod
+	public def getLocalAddress() {
+		def m = [:];
+
+		def orgclass = env.ORGCLASS?.toString().toLowerCase();
+		switch(orgclass) {
+			case 'city':
+				def lgu = citySvc.getById( env.ORGID );
+				m.city  = lgu.name;  
+				break;
+
+			case 'municipality':
+				def lgu =  munSvc.getById( env.ORGID );
+				m.municipality = lgu.name; 
+				def province = provSvc.getById( lgu.parentid );
+				m.province = province.name
+				break;
+
+			case 'province':
+				def lgu =  provSvc.getById( env.ORGID );
+				m.province  = lgu.name ; 
+				break;	
+		}
+		return m;
+	}
+
+	
+
+}

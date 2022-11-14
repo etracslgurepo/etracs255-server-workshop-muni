@@ -1,0 +1,101 @@
+import com.rameses.annotations.*
+import com.rameses.util.*
+import com.rameses.services.extended.*
+
+class CancelledFAASSupportService
+{
+	@Env
+	def env 
+
+	@ActiveDB('cancelledfaas')
+	def em 
+
+	@ActiveDB('cancelledfaas_task')
+	def taskEm
+
+	@Service('CancelledFAASService')
+	def svc
+
+	@Service('ExaminationService')
+	def examinationSvc
+
+	@Service('RPTRequirementService')
+	def reqSvc 
+
+	@Service('RPTUtil')
+	def util
+
+	@Service('DBImageService')
+	def imageSvc
+
+
+	@ProxyMethod
+	public def findById( cancelledfaas ) {
+		return em.findById(cancelledfaas)
+	}
+
+	@ProxyMethod
+	public def getCancelledFaasData(cancelledfaas){
+		cancelledfaas.putAll(svc.open(cancelledfaas))
+		cancelledfaas.examinationfindings = examinationSvc.getFindings( cancelledfaas.objid ).each{
+			it = examinationSvc.open(it)
+		}
+		cancelledfaas.requirements = reqSvc.getRequirements(cancelledfaas.objid)
+		cancelledfaas.image = getImageData(cancelledfaas)
+		cancelledfaas.tasks = taskEm.getTasks(cancelledfaas)
+		cancelledfaas.signatory = em.read(cancelledfaas, 'signatory')
+		return cancelledfaas 
+	}
+
+	@ProxyMethod
+	public void saveCancelledFaasData( data ) {
+		if (em.findById(data) != null)
+			svc.update(data)
+		else
+			svc.create(data)
+
+		saveRequirements(data)
+
+		data.examinationfindings.each{
+			examinationSvc.save(it)
+		}
+
+		data.tasks.each{
+			taskEm.save(it)
+		}
+
+		em.save(data.signatory, 'signatory')
+
+		saveImageData(data)
+	}
+
+	def getImageData(data){
+		def refids = [data.objid]
+		if (data.examinationfindings)
+			refids += data.examinationfindings.objid 
+		if (data.requirements)
+			refids += data.requirements.objid
+		return util.getImageData(refids)
+	}
+
+	@ProxyMethod
+	public void saveImageData(data){
+		if (!data.image) return
+		
+		data.image.headers.each{
+			imageSvc.saveHeader(it)
+		}
+		data.image.chunks.each{
+			imageSvc.saveItem(it)
+		}
+	}
+
+	@ProxyMethod
+	public def saveRequirements( data ) {
+		data.requirements.each{
+			reqSvc.save(it)
+		}
+	}
+
+}
+ 

@@ -1,0 +1,56 @@
+<schema>
+	<element name="machdetail" tablename="machdetail">
+        <field name="objid" primary="true"  />
+        <field name="machuseid" required="true"  />
+        <field name="machrpuid" required="true"  />
+        <field name="machine_objid" required="true"  />
+        <field name="operationyear" type="integer" />
+        <field name="replacementcost" required="true" type="decimal" />
+        <field name="depreciation" required="true" type="decimal" />
+        <field name="depreciationvalue" required="true" type="decimal" />
+        <field name="basemarketvalue" required="true" type="decimal" />
+        <field name="marketvalue" required="true" type="decimal" />
+        <field name="assesslevel" required="true" type="decimal" />
+        <field name="assessedvalue" required="true" type="decimal" />
+        <field name="brand"  />
+        <field name="capacity"  />
+        <field name="model"  />
+        <field name="serialno"  />
+        <field name="status"  />
+        <field name="yearacquired" type="integer" />
+        <field name="estimatedlife" type="integer" />
+        <field name="remaininglife" type="integer" />
+        <field name="yearinstalled" type="integer" />
+        <field name="yearsused" type="integer" />
+        <field name="originalcost" type="decimal" />
+        <field name="freightcost" required="true" type="decimal" />
+        <field name="insurancecost" required="true" type="decimal" />
+        <field name="installationcost" required="true" type="decimal" />
+        <field name="brokeragecost" required="true" type="decimal" />
+        <field name="arrastrecost" required="true" type="decimal" />
+        <field name="othercost" required="true" type="decimal" />
+        <field name="acquisitioncost" required="true" type="decimal" />
+        <field name="feracid" />
+        <field name="ferac" type="decimal" />
+        <field name="forexid"/>
+        <field name="forex" type="decimal" />
+        <field name="residualrate" type="decimal" />
+        <field name="conversionfactor" type="decimal" />
+        <field name="useswornamount"   type="boolean" />
+        <field name="swornamount" type="decimal" />
+        <field name="imported" type="boolean" />
+        <field name="newlyinstalled"  type="boolean" />
+        <field name="autodepreciate"  type="boolean" />
+        <field name="taxable"  type="boolean" />
+        <field name="smvid" />
+        <complex name="params" serializer="default" />
+
+        <complex name="machine" ref="machine" jointype="many-to-one">
+            <key field="machine_objid" target="objid" />
+        </complex>
+        
+        <complex name="smv" ref="rysetting_mach_smv" jointype="many-to-one" required="false">
+            <key field="smvid" target="objid" />
+        </complex>
+    </element>
+</schema>

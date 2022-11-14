@@ -1,0 +1,59 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import com.rameses.services.extended.*;
+
+
+class OnlineRealtyTaxClearanceService {
+
+    @Service("RPTCertificationOnlineService")
+    def certSvc
+
+    @Service("JasperReportService")
+	def jasperSvc;
+
+    @Service("LandTaxReportTaxClearanceService")
+	def clearanceSvc;
+
+
+    @ProxyMethod
+	public def verifyPayment( eor ) {
+        return [
+			items: eor.items,
+			amount: eor.amount,
+		]
+	}
+
+	@ProxyMethod
+	public void postPayment( eor, bill) {
+        def po = eor.paymentorder
+        def data = po.info.data
+        
+        def params = [:]
+        params.faases = [[objid: data.faasid]]
+        params.entityid = data.taxpayer.objid
+        params.purpose = data.purpose
+        params.refid = eor.objid
+        params.reftype = 'FILIPIZEN'
+        params.refno = eor.receiptno
+        params.refdate = eor.receiptdate
+        def clearance = certSvc.issueTaxClearance(params)
+
+        def payment = [:]
+        payment.objid = clearance.objid
+        payment.orno = eor.receiptno
+        payment.ordate = eor.receiptdate
+        payment.oramount = eor.amount
+        certSvc.postPayment(payment)
+        println 'Online Realty Tax Clearance successfully posted.'
+	}
+
+    @ProxyMethod
+	public def getEmailAttachments( eor ) {
+        def params = [refid: eor.objid]
+        params.reportid = "rpttaxclearance";
+		params.template = "reports/rpt/taxclearance";
+		params.data = clearanceSvc.getOnlineIssuedClearance(params);
+		def data = jasperSvc.generateReport(params);
+		return [[title: "RealtyTaxClearance.pdf", filename: data.tokenid + ".pdf"]];
+    }
+}

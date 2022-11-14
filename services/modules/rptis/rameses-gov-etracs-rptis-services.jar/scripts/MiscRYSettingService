@@ -1,0 +1,413 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import com.rameses.util.*
+import com.rameses.services.extended.*
+
+
+public class MiscRYSettingService
+{
+    @Env 
+    def env
+
+    @ActiveDB('miscrysetting')
+    def em 
+
+    @DataContext('miscitem')
+    def em_miscitem
+
+    @DataContext('rysetting_misc')
+    def em_misc
+
+    @DataContext('rysetting_misc_assesslevel')
+    def em_assesslevel
+
+    @DataContext('rysetting_misc_assesslevel_range')
+    def em_assesslevelrange 
+
+    @DataContext('rysetting_misc_itemvalue')
+    def em_itemvalue  
+
+    @DataContext('rysetting_lgu')
+    def em_rysettinglgu 
+
+    @DataContext('propertyclassification')
+    def em_classification 
+
+    @Service('RPTUtil')
+    def util
+
+    @Service('RPTParameterService')
+    def paramSvc
+
+    @Service('MiscRYSettingService')
+    def self
+
+    
+    @ProxyMethod
+    public List getPropertyClassifications() {
+        return em_classification.find([state:'APPROVED']).orderBy('orderno').list()
+    }
+    
+    @ProxyMethod
+    public def getList( params ) {
+        def list = []
+        if (params.searchtext) 
+            list = em_misc.orderBy('ry').find([ry:params.searchtext]).list()
+        else 
+            list = em_misc.where('1=1').orderBy('ry').list()
+        return list 
+    }
+    
+    @ProxyMethod
+    public def searchMiscItemValues( params ) {
+        if (!params.searchtext) params.searchtext = ''
+        params.searchtext += '%'
+        def filter = 'miscrysettingid = :miscrysettingid and (miscitem.code like :searchtext or miscitem.name like :searchtext)'
+        return em_itemvalue.where(filter, params).orderBy('miscitem.code').list()
+    }
+
+
+    @ProxyMethod
+    public def create( entity ) {
+        entity.state = 'DRAFT'
+        if (entity.ry == null) throw new Exception('Revision year is required.')
+        if (entity.ry <= 0) throw new Exception('Revision year must be greater than zero.')
+
+        def exist = em_misc.where('1=1').first()
+        if (exist) 
+            throw new Exception('A Revision Year setting has already been created.\nUse copy or revise setting instead.')
+
+        em_misc.create(entity )
+
+        //load initial assessment levels
+        getPropertyClassifications().each{pc->
+            def al = [:]
+            al.objid = 'AL' + new java.rmi.server.UID()
+            al.miscrysettingid = entity.objid 
+            al.classification = pc 
+            al.code = 'A' + pc.code 
+            al.name = pc.name 
+            al.fixrate = true 
+            al.rate = 0.0 
+            saveAssessLevel(al)
+        }
+        loadInitialMiscItems(entity)
+        return open(entity)
+    }
+
+
+    @ProxyMethod 
+    public Map open( entity ) {
+        entity = em_misc.read(entity)
+        if (!entity) throw new Exception('Record does not exist or has already been deleted.')
+        entity.type = 'misc'
+        return entity
+    }
+
+
+    @ProxyMethod
+    public def update( entity ) {
+        return em_misc.update(entity)
+    }
+
+
+    @ProxyMethod
+    public void removeEntity( entity ) {
+        def params = [miscrysettingid:entity.objid]
+        em_assesslevelrange.find(params).delete()
+        em_assesslevel.find(params).delete()
+        em_itemvalue.find(params).delete()
+        em_rysettinglgu.find([rysettingid:entity.objid]).delete()
+        em_misc.delete(entity)
+    }
+
+
+    @ProxyMethod
+    public def approve( entity ) {
+        def old = open(entity)
+        if ('APPROVED'.equalsIgnoreCase(old.state)){
+            return old;
+        }
+        entity.state = 'APPROVED';
+        return update(entity)
+    }
+    
+
+
+    @ProxyMethod
+    public def getVariableList( ) {
+        return paramSvc.getVariableList()
+    }
+
+    
+
+    /*----------------------------------------------------------
+    * AssessLevel Methods
+    ----------------------------------------------------------*/
+    @ProxyMethod
+    public def getAssessLevels(entity){
+        return em_assesslevel.find([miscrysettingid:entity.objid])
+                .orderBy('classification.orderno, code')
+                .list()
+                .each{ it.fixrate = (it.fixrate == 1)}
+    }
+
+    @ProxyMethod
+    public def saveAssessLevel( al ){
+        if (util.isTrue(al.fixrate)){
+            em_assesslevelrange.find([miscassesslevelid:al.objid]).delete()
+        }
+        return em_assesslevel.save(al)
+    }
+
+
+    @ProxyMethod
+    public void removeAssessLevel(al) {
+        em_assesslevelrange.find([miscassesslevelid:al.objid]).delete()
+        em_assesslevel.delete(al)
+    }
+
+    @ProxyMethod
+    public def getRanges(al){
+        return em_assesslevelrange
+                    .find([miscassesslevelid:al.objid])
+                    .orderBy('mvfrom')
+                    .list()
+    }
+
+    @ProxyMethod
+    public def saveRange( range ){
+        return em_assesslevelrange.save(range)
+    }
+
+    @ProxyMethod
+    public void deleteRange( range ){
+        em_assesslevelrange.delete(range)
+    }
+
+
+
+
+    /*----------------------------------------------------------
+    * MiscItemValue SUPPORT
+    ----------------------------------------------------------*/
+    
+    @ProxyMethod
+    public def getMiscItemValues( setting ){
+        return em_itemvalue.find([miscrysettingid:setting.objid]).orderBy('miscitem.code').list()
+    }
+
+    
+    @ProxyMethod
+    public void saveMiscItemValue( itemvalue ) {
+        em_itemvalue.save(itemvalue)
+    }
+
+    
+    @ProxyMethod
+    public void deleteMiscItemValue( itemvalue ) {
+           em_itemvalue.delete(itemvalue)
+    }
+
+   
+    /*----------------------------------------------------------
+    * COPY AND REVISION support
+    ----------------------------------------------------------*/
+    @ProxyMethod
+    public Map copy(setting) {
+        def newsetting = em_misc.read(setting)
+        if (!newsetting) throw new Exception('Setting does not exist or has already been deleted.')
+
+        newsetting.objid = util.generateId('LS')
+        newsetting.appliedto = null
+        newsetting.previd = null
+        em_misc.create( newsetting )
+        copyAssessLevels( newsetting, setting, false )
+        copyItemValues( newsetting, setting, false )
+        return open( setting)
+    }
+
+    
+    @ProxyMethod
+    public def revise( oldsetting, params ) {
+        if (params.ry <= oldsetting.ry) 
+            throw new Exception('New Revision Year must be greater than ' + oldsetting.ry + '.')
+
+        def settings = em_misc.find([ry:oldsetting.ry]).list() 
+        if( !settings ) throw new Exception('Revision Year ' + oldsetting.ry  + ' settings are not defined.')
+        
+        settings.each{ setting ->
+            def newsetting = em_misc.read(setting)
+            newsetting.objid = util.generateId('LS')
+            newsetting.previd = setting.objid 
+            newsetting.ry = params.ry  
+            em_misc.create(newsetting )
+            copyAssessLevels( newsetting, setting, true )
+            copyItemValues( newsetting, setting, true)
+            copyLgus(newsetting, setting)
+        }
+        return [:]
+    }
+
+    void copyAssessLevels( newsetting, setting, updateprevid ) {
+        def assesslevels = getAssessLevels( setting )
+        assesslevels.each { al ->
+            def ranges = getRanges(al)
+            al.previd = (updateprevid ? al.objid : null)
+            al.objid = util.generateId('AL')
+            al.miscrysettingid = newsetting.objid 
+            al.fixrate = (al.fixrate == 1)
+            saveAssessLevel( al )
+
+            ranges.each{ range ->
+                range.previd = (updateprevid ? range.objid : null)
+                range.objid = util.generateId('RA')
+                range.miscassesslevelid = al.objid 
+                range.miscrysettingid = newsetting.objid 
+                saveRange( range )
+            }
+        }
+    }    
+
+    void copyItemValues( newsetting, setting, updateprevid ) {
+        def itemvalues = getMiscItemValues( setting )
+        itemvalues.each {
+            it.previd = (updateprevid ? it.objid : null)
+            it.objid = util.generateId('IV')
+            it.miscrysettingid = newsetting.objid 
+            saveMiscItemValue( it )
+        }
+    }
+
+    void copyLgus(newsetting, setting){
+        def lgus = em_rysettinglgu.find([rysettingid:setting.objid]).list()
+        lgus.each{
+            it.objid = 'RL' + new java.rmi.server.UID()
+            it.rysettingid = newsetting.objid 
+            em_rysettinglgu.create(it)
+        }
+    }    
+
+
+
+    /*----------------------------------------------------------
+    * Miscellaneous support
+    ----------------------------------------------------------*/
+    @Async
+    @ProxyMethod
+    public def exportData(setting) {
+        return getFullData(setting)
+    }
+
+    @ProxyMethod
+    public def getFullData(setting) {
+        setting = open(setting);
+        setting.type = 'misc';
+        setting.levels = getAssessLevels(setting);
+        setting.ranges = [];
+        setting.levels.each{
+            setting.ranges += getRanges(it);
+        }
+        setting.miscitemvalues = getMiscItemValues(setting);
+        setting.lgus = em_rysettinglgu.find([rysettingid:setting.objid]).list()
+        return setting
+    }
+
+
+    @Async
+    @ProxyMethod
+    public def importData(setting) {
+        if (setting.type != 'misc')
+            throw new Exception('Invalid data. Imported data is for ' + setting.type.toUpperCase() + ' setting.');
+        sync([setting])
+    }
+
+    @ProxyMethod
+    public getSettingForSync(params) {
+        params.lguid = params.lgu.orgid
+        def settings = []
+        em.getSettingsForSync(params).each{setting -> 
+            settings << getFullData(setting)
+        }
+        return [name: 'misc', type: 'misc', items: settings]
+    }
+
+    @ProxyMethod
+    public void syncSetting(setting) {
+        sync(setting.items)
+    }
+
+
+    /*----------------------------------------------------------
+    * SYNC support
+    ----------------------------------------------------------*/
+    @ProxyMethod
+    public void sync( settings ) {
+        settings.each{ setting ->
+            em_misc.save(setting)
+
+            setting.lgus.each{
+                em_rysettinglgu.save(it)
+            }
+
+            setting.levels.each{lvl -> 
+                saveAssessLevel(lvl)
+                lvl.ranges.each{ saveRange(it) }
+            }
+
+            setting.miscitemvalues.each{
+                saveMiscItemValue(it)
+            }
+        }
+    }
+
+    /*---------------------------------------------------------
+    *
+    * @DEPRECATED 
+    *
+    ---------------------------------------------------------*/
+    @ProxyMethod
+    public void syncData( msg ) {
+        if (msg.msgtype == 'miscrysetting'){
+            em_misc.save( msg.data )
+            msg.data.lgus = em_rysettinglgu.find([rysettingid:msg.data.objid, lguid: env.ORGID]).list()
+            if (!msg.data.lgus){
+                msg.data.lgus << [
+                    objid: 'RSL' + new java.rmi.server.UID(),
+                    rysettingid: msg.data.objid,
+                    lguid: env.ORGID,
+                    barangayid: null,
+                    lguname: env.ORGNAME,
+                    settingtype: 'land',
+                ]
+            }
+            msg.data.lgus?.each{
+                em_rysettinglgu.save(it)
+            }
+        }
+        else if (msg.msgtype == 'assesslevels'){
+            msg.data.each{lvl -> 
+                saveAssessLevel(lvl)
+                lvl.ranges.each{ saveRange(it) }
+            }
+        }
+        else if (msg.msgtype == 'itemvalues'){
+            msg.data.each{
+                saveMiscItemValue(it)
+            }
+        }
+    }
+
+    void loadInitialMiscItems(entity){
+        em_miscitem.find([state:'APPROVED']).list().each{
+            saveMiscItemValue([
+                objid           : util.generateId('MIV'),
+                miscrysettingid : entity.objid,
+                miscitem_objid  : it.objid,
+                miscitem        : it,
+                expr            : 0.00,
+            ])
+        }
+    }
+
+}

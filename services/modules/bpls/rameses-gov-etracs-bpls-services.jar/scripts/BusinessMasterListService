@@ -1,0 +1,103 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.services.extended.*;
+
+public class BusinessMasterListService extends ActiveCrudListService {
+
+	@ActiveDB("business")
+	def em;
+
+	@Service("DateService")
+	def dateSvc;
+
+	@Env
+	def env;
+
+	@ProxyMethod
+	public def getColumns(o) {
+		def cols = [];
+		cols << [name:'bin', caption:'BIN', width:120, resizable:false];
+		cols <<	[name:'businessname', caption:'Business Name'];
+		cols <<	[name:'address.text', caption:'Business Address'];
+		cols <<	[name:'owner.name', caption:'Owner'];
+		cols <<	[name:'permitno', caption:'Permit No', resizable:false];
+		cols <<	[name:'version', caption:'Ver', maxWidth:40, resizable:false];
+		cols <<	[name:'expirydate', caption:'Expiry date', resizable:false];
+		cols <<	[name:'state', caption:'Status', resizable:false];
+		return cols;
+	}
+
+	@ProxyMethod
+	public def getNodes(o) {
+		return [
+		   [name:'active', caption:'Active (w/o Permit)', leaf:true, folder:true, allowSearch:true],
+		   [name:'activep', caption:'Active w/ Permit', leaf:true, folder:true, allowSearch:true],
+		   [name:'retired', caption:'Retired', leaf:true, folder:true, allowSearch:true],
+		   [name:'processing', caption:'Processing', leaf:true, folder:true, allowSearch:true],
+		   [name:'cancelled', caption:'Cancelled', leaf:true, folder:true, allowSearch:true],
+		   [name:'renewal', caption:'For Renewal', leaf:true, folder:true, allowSearch:true],
+		   [name:'delinquent', caption:'Delinquent', leaf:true, folder:true, allowSearch:true],
+		];
+	}	
+
+	void beforeList(o) {
+		o._pagingKeys = "b.objid";
+		o.filter = '';
+		int activeyear = dateSvc.getServerYear();
+
+		switch(o.name) {
+			case 'search':
+				if( !o.searchtext || o.searchtext == '%' ) o.searchtext = "?";
+				break;
+				
+			//--------------- processing--------------------	
+			case 'active':
+				o.state = 'ACTIVE';
+				o.activeyear = activeyear;
+				o.filter = ''' AND b.activeyear=$P{activeyear} AND b.state = $P{state} AND b.permitno IS NULL''';
+				break;
+
+			case 'activep':	
+				o.state = 'ACTIVE';
+				o.activeyear = activeyear;
+				o.filter = ''' AND b.activeyear=$P{activeyear} AND b.state = $P{state} AND NOT(b.permitno IS NULL) ''';
+				break;
+
+			case 'retired':
+				o.state = 'RETIRED';
+				o.filter = ''' AND b.state = $P{state}  ''';
+				break;
+
+			case 'processing':
+				o.state = 'PROCESSING';
+				o.filter = ''' AND b.state = $P{state}  ''';
+				break;
+
+
+			case 'cancelled':
+				o.state = 'CANCELLED';
+				o.filter = ''' AND b.state = $P{state}  ''';	
+				break;
+
+			case 'renewal':
+				o.state = 'ACTIVE';
+				o.activeyear = activeyear - 1;
+				o.filter = ''' AND b.activeyear=$P{activeyear}  AND b.state=$P{state}''';	
+				break;	
+
+			case 'delinquent':
+				o.state = 'ACTIVE';
+				o.activeyear = activeyear - 1;
+				o.filter = ''' AND b.activeyear < $P{activeyear}   AND b.state=$P{state}''';	
+				break;	
+
+			default:
+				break;
+		}
+	}
+
+
+	
+
+}

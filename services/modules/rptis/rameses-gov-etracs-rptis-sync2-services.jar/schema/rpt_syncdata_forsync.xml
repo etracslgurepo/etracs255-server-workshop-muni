@@ -1,0 +1,18 @@
+<schema>
+	<element tablename="rpt_syncdata_forsync">
+		<field name="objid" primary="true" />
+		<field name="remote_orgid" />
+		<field name="reftype" required="true" caption="Ref Type" />
+		<field name="refno" required="true" caption="Ref No." />
+		<field name="action" required="true" caption="Action" />
+		<field name="orgid" required="true" caption="LGU" />
+		<field name="dtfiled" required="true" caption="Date Filed" />
+		<field name="createdby_objid"  />
+		<field name="createdby_name" caption="Created By"/>
+		<field name="createdby_title" caption="Job Title" />
+		<complex name="info" serializer="default" required="false" />
+	</element>
+</schema>
+
+
+

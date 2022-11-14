@@ -1,0 +1,20 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.services.extended.*;
+import com.rameses.rules.common.*;
+import bpls.facts.*;
+import bpls.actions.*;
+
+public class BplsBillingService  {
+
+	@Service("AssessmentRuleService")
+	def ruleSvc;
+
+
+	@ProxyMethod
+	public def execute( def params ) {
+		
+	}
+
+}	

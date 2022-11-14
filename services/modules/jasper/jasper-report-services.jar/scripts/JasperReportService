@@ -1,0 +1,237 @@
+import com.rameses.annotations.*;
+import net.sf.jasperreports.engine.*;
+import net.sf.jasperreports.engine.util.*;
+import com.rameses.osiris2.reports.*;
+import java.io.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import java.net.*;
+import net.sf.jasperreports.engine.util.*;
+
+class JasperReportService  {
+	
+	@Context
+	def appContext;
+
+	String outputReportPath = "/apps/server/output/";
+	String templatePath = "/apps/server/templates/";
+	String customPath = "/apps/server/templates/custom/";
+
+	@Service(dynamic=true)
+	def dSvc;
+
+	@Service
+	def self; 
+
+	@DataContext("sys_report_template")
+	def reportTemplateEm;
+
+	@Service("SysReportTemplateService")
+	def sysReportTemplateSvc;
+
+	@ProxyMethod
+	public def generateReport( def o ) {
+		def params = o.parameters;				
+		def data = o.data;
+		def template = o.template;
+		def reportid = o.reportid;
+		def org = o.org;
+
+		try {
+
+			// -----------------------------------------------------------
+			// in case there is no data found, get the data automatically
+			// -----------------------------------------------------------			
+			if( !data ) {
+				if(!params ) {
+					//if refid is passed, put it in parameters as objid field
+					if( o.refid ) params = [objid: o.refid ];
+				}
+				if(!params) throw new Exception("parameters is required in JasperReportService.generateReport")
+				def svc = dSvc.lookup("FormReportService" );
+				def result = svc.getData( [reportid: reportid, parameters: params ]  );
+				data = result.data;
+			}
+
+			if(data.template) template = data.template;
+			if(!template) throw new Exception("template is required in JasperReportService.generateReport");
+
+			def classLoader = null;
+			def jReport = null;
+			def tmp = reportTemplateEm.find([name: template]).first();
+
+			File headerinfo_file = null; 
+
+			if( tmp ) {
+				def tmpSrc = [
+					getResources: { id->
+						return sysReportTemplateSvc.getResources([name:id]);
+					},
+					getContent: { id->
+						return sysReportTemplateSvc.getContent([name:id]);
+					}
+				] as SysReportTemplateSource;
+
+				def tp = new SysReportTemplate( "reportcache", tmp.filepath );
+				jReport = tp.getReport(tmpSrc);
+
+				classLoader = new SysReportTemplateClassLoader( tp ); 
+				
+				def context_dir = new File( "reportcache", tmp.filepath ).getParentFile(); 
+				headerinfo_file = new File( context_dir, "headerinfo" ); 
+			}
+			else {
+				// --------------------------------------------------------
+				// setup the reports paths
+				// --------------------------------------------------------
+				def _basepath = templatePath;
+				def _customPath = customPath;
+				if( org ) {
+					_customPath = customPath + org + "/" 
+				}
+
+				// --------------------------------------------------------
+				// load jar files
+				// --------------------------------------------------------
+				def custFiles = new File(_customPath);
+				def files = new File(_basepath);
+
+				def filter = { f,fname -> fname.endsWith(".jar") } as FilenameFilter;
+				def urls = [];
+				custFiles.listFiles(filter).each {
+					urls << it.toURI().toURL();
+				}
+				files.listFiles( filter ).each {
+					urls << it.toURI().toURL();
+				}
+				// --------------------------------------------------------
+				// fix filename and prefix if any
+				// --------------------------------------------------------
+
+				def _fprefix = null;
+				if( template.contains("/") ) {
+					int lastIndex = template.lastIndexOf("/");
+					_fprefix = template.substring( 0, lastIndex );
+					template = template.substring( lastIndex + 1 );
+				}
+
+				// --------------------------------------------------------
+				// load the classloader
+				// --------------------------------------------------------
+				classLoader = new CustomClassLoader( urls.toArray() as URL[], getClass().getClassLoader() );
+				classLoader.basepath = _basepath;
+				classLoader.customPath = _customPath;
+				classLoader.fileprefix = _fprefix; 
+
+				// --------------------------------------------------------
+				// get the main report name
+				// --------------------------------------------------------
+				def srcFile = classLoader.getResource( template + ".jasper" );
+				jReport = JRLoader.loadObject( srcFile );
+			}	
+
+			// --------------------------------------------------------
+			// Load the reports
+			// --------------------------------------------------------
+
+			// load the parameters 
+			// 
+			def report_params = self.getStandardParameter(); 
+			if ( report_params == null ) report_params = [:]; 
+
+			if ( headerinfo_file && headerinfo_file.exists()) {
+	            def fis = null; 
+	            try {
+	                fis = new java.io.FileInputStream( headerinfo_file );
+	                def props = new Properties(); 
+	                props.load( fis ); 
+	                report_params.putAll( props ); 
+	            } 
+	            catch(Throwable t){
+	                // do nothing 
+	            }
+	            finally {
+	                try { fis.close(); }catch(Throwable t){;} 
+	            }				
+			}
+
+			def headerName = data.reportheader;
+			if ( headerName ) {
+				def mprops = sysReportTemplateSvc.getHeader([ name: headerName ]);
+				if ( mprops ) { 
+					report_params.putAll( mprops );
+				}
+				else {
+					def inp = null;
+					try {
+						def url = classLoader.getResource( headerName );
+						inp = url.openStream();
+
+						def props = new Properties();
+						props.load( inp );
+						report_params.putAll( props ); 
+					}
+					catch(Throwable t) {
+						// do nothing 
+					}
+					finally {
+						try { inp.close(); }catch(Throwable t){;} 
+					}
+				}
+			}
+
+			report_params.REPORT_CLASS_LOADER = classLoader;
+
+			def jasperFile = JasperFillManager.fillReport( jReport, report_params, new ReportDataSource( data ) );
+
+			String tokenid = Encoder.MD5.encode( ""+new UID() );
+			String destFilename = outputReportPath + tokenid + ".pdf";
+			JasperExportManager.exportReportToPdfFile(jasperFile, destFilename );
+
+			return [tokenid: tokenid];
+		}
+		catch(e) {
+			e.printStackTrace();
+			return [status: "ERROR", error: e.getMessage() ];
+		}
+	}
+
+	@ProxyMethod 
+	public def getStandardParameter() {
+		return [:]; 
+	}
+}
+
+public class CustomClassLoader extends URLClassLoader {
+	
+	String customPath;
+	String basepath;
+	String fileprefix;
+
+	public CustomClassLoader( URL[] urls, ClassLoader parent) {
+		super( urls, parent );
+	}
+
+	public URL getResource(String name) { 
+		// sequence: 
+		// search in custom path file
+		// search in jar
+		// search in basepath
+
+		String sname = name;
+		if( fileprefix ) sname = fileprefix + "/" + name;
+		//println "get resource " + sname;
+
+		def f = new File( customPath +  sname );
+		if( f.exists() ) return f.toURI().toURL();		        
+
+		def fu = super.getResource( sname );
+		if( fu !=null ) return fu;
+
+		f = new File( basepath + sname );
+		if(f.exists()) return f.toURI().toURL();
+		return null;
+    }
+}
+
+

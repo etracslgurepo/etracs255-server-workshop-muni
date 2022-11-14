@@ -1,0 +1,219 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+import java.rmi.server.UID
+
+class RPTReportTMCRService
+{
+    @ActiveDB('rptreport_tmcr')
+    def em
+
+    @Service('RPTUtil')
+    def util
+
+    @Service('NumberService')
+    def numSvc 
+
+    @Service('DateService')
+    def dtSvc 
+
+
+    @ProxyMethod
+    public def getCurrentRy(  ) {
+    	def info = em.findCurrentRy()
+    	if (!info) info = [ry:dtSvc.serverYear]
+    	return info.ry 
+    }
+
+    @Async
+    @ProxyMethod
+	public def getReportData( params )  {
+        if ('STANDARD'.equalsIgnoreCase(params.format.id)) {
+            return generateTMCR(params)
+        }
+        if ('MODIFIED'.equalsIgnoreCase(params.format.id)) {
+            return generateTMCR(params)
+        }
+        if ('SIMPLIFIED'.equalsIgnoreCase(params.format.id)) {
+            return generateTMCRSimplified(params)
+        }
+        return generateTMCRDetailed(params)
+    }
+
+	def generateTMCRSimplified( params )  {
+		def list;
+		buildTxnTypeFilterAndTitle(params)
+		params.barangayid = params.barangay?.objid
+		buildRpuTypeFilter(params)
+
+		list = em.getTmcrSimplified(params);
+		if( ! list ) throw new Exception('Records not found.')
+		return [reportdata:list, parameters:[TITLE:params.title]]
+	}
+
+	def generateTMCRDetailed( params ) {
+		def list = []
+		params.barangayid = params.barangay?.objid
+		params.tmcrfields = getTmcrFields()
+		buildRpuTypeFilter(params)
+		
+		def currentlist = em.getCurrentTmcrList(params)
+		if (!currentlist) throw new Exception('Record(s) not found.')
+
+		currentlist.each{currentfaas ->
+			def cancelledfaases = []
+			getCancelledTmcrFaases(cancelledfaases, currentfaas, params)
+			if (cancelledfaases){
+				list += cancelledfaases 
+				list << currentfaas 
+			}
+			else{
+				list << currentfaas 
+			}
+			list << [section:params.section, barangay:currentfaas.barangay]
+			list << [section:params.section, barangay:currentfaas.barangay]
+		}
+		return [reportdata:list, parameters:[:]]
+	}
+
+	void buildRpuTypeFilter(params){
+		params.rputypefilter = ' '
+		if (params.excludeimprov == true){
+			params.rputypefilter = " AND r.rputype = 'land' "
+		}
+	}
+
+	void getCancelledTmcrFaases(cflist,faas, params){
+		params.faasid = faas.objid 
+		def cancelledfaases = em.getCancelledTmcrFaases(params)
+		if (cancelledfaases){
+			cflist.addAll(0, cancelledfaases)
+			cancelledfaases.each{
+				getCancelledTmcrFaases(cflist, it, params)
+			}
+		}
+	}
+
+	def getTmcrFields(){
+		return '''
+			f.objid, b.name AS barangay, pc.code AS classcode, 
+			f.txntype_objid, ft.displaycode as txntype_code,
+			f.state,  f.memoranda, f.owner_name, f.owner_address, 
+			f.administrator_name, f.administrator_address, 
+			r.rputype, f.tdno, f.titleno, 
+			rp.cadastrallotno, rp.section, rp.surveyno, rp.blockno, r.ry,  
+			r.fullpin, r.totalareasqm, r.totalareaha, r.totalav, r.totalmv 
+		'''
+	}
+
+
+	void buildTxnTypeFilterAndTitle(params){
+		params.title = 'Tax Mapping Control Roll' 
+
+        params.txntypeid = 'GR'
+        params.txntypefilter = '' 
+        if ('GR'.equalsIgnoreCase(params.reporttype)){
+            params.txntypefilter = ' AND f.txntype_objid = $P{txntypeid} '
+            params.title = 'Tax Mapping Control Roll (General Revision)'
+        }
+        else if ('MAINTENANCE'.equalsIgnoreCase(params.reporttype)){
+            params.txntypefilter = ' AND f.txntype_objid <> $P{txntypeid} '  
+            params.title = 'Tax Mapping Control Roll (Maintenance)' 
+        }
+	}
+
+
+	def generateTMCR( params ) {
+		util.required('Barangay', params.barangay)
+		params.barangayid = params.barangay.objid
+
+		buildTxnTypeFilterAndTitle(params)
+		buildRpuTypeFilter(params)
+
+		def list = em.getTMCRData(params)
+		if( ! list ) throw new Exception('Records not found.')
+
+		def tdno = list[0].tdno 
+		def prevtdno = list[0].prevtdno 
+		def ry  = list[0].ry 
+
+		list.each{
+			if (it.administrator?.name){
+				it.owner.name = it.owner.name + '\nAdmin: ' + it.administrator.name
+			}
+
+			if (it.areatype == 'sqm')
+				it.area = numSvc.format('#,##0.00', it.area)
+			else 
+				it.area = numSvc.format('#,##0.000000', it.area)
+
+			it.tdnoseq =  it.tdno.substring(tdno.lastIndexOf('-')+1)
+
+			if (it.rputype == 'land'){
+				def bldg = em.findImprovementCount([objid:it.objid, rputype:'bldg'])
+				it.bldgcount = bldg.count == 0 ? null : bldg.count 
+
+				def mach = em.findImprovementCount([objid:it.objid, rputype:'mach'])
+				it.machcount = mach.count == 0 ? null : mach.count 
+
+				def misc = em.findImprovementCount([objid:it.objid, rputype:'misc'])
+				it.misccount = misc.count == 0 ? null : misc.count 
+			}
+			else {
+				it.parcel = it.suffix+''
+			}
+
+			if (it.state.equalsIgnoreCase('CANCELLED')){
+				it.parcel = '(' + it.parcel + ')'
+				it.cancelinfo = 'CANCELLED "' + it.cancelreason + '" ' 
+				if (it.canceldate){
+					it.cancelinfo += dtSvc.format('MM-dd-yyyy', it.canceldate)
+				}
+			}
+
+		}
+
+		addExtraBlankRows(list)
+
+		def stdno = ''
+		if (tdno.lastIndexOf('-') >= 0)
+			stdno = tdno.substring(0, tdno.lastIndexOf('-'))
+
+		def parameters = [
+			TITLE 		: params.title,
+			ARPCAPTION 	: 'ARP NO.\n' + stdno,
+			OTHERCAPTION: 'Others\nPREVIOUS\nARP NO.\n',
+			REMARKS     : 'Remarks\n' + ry + ' GR\nTransaction\nCode'
+		]
+		return [reportdata:list, parameters:parameters]
+	}
+
+
+	def getPrevTDNos(faas){
+		def prevtdnos = []
+		faas.prevtdno?.split(',').each{
+			prevtdnos << it.substring(it.lastIndexOf('-')+1)
+		}
+		if (prevtdnos)
+			return prevtdnos.join(',')
+		return null 
+	}
+
+	void addExtraBlankRows(list){
+		def last = list.last();
+		1.upto(50){
+			list << [
+				state 			: 'CURRENT', 
+				cadastrallotno 	: '',
+				barangay 		: last.barangay,
+				parentlguname	: last.parentlguname,
+				lguname			: last.lguname,
+				barangayindex	: last.barangayindex,
+				parentlguindex	: last.parentlguindex,
+				lguindex		: last.lguindex,
+				section			: last.section,
+			]
+		}
+	}
+
+}

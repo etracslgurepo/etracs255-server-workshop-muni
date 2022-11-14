@@ -1,0 +1,42 @@
+import com.rameses.annotations.*;
+
+class TerminalListInterceptor {
+
+	@After(pattern="QueryService.getNodeList", eval="#{ args[0]._schemaname == 'terminal' }")
+	public void afterGetNodes( evt ) { 
+		def result = evt.result;
+		result << [ title: 'Open', state:'OPEN' ];
+		result << [ title: 'Assigned', state:'ASSIGNED' ];
+	}
+
+	@Before(pattern="QueryService.getList", eval="#{ args[0]._schemaname == 'terminal' }")
+	public void beforeGetList( evt ) {
+		def o = evt.args[0]; 
+		if ( !o.node?.state ) return; 
+
+		def wherearr = [];
+		def wheremap = [:]; 
+
+		if ( o.node.state == 'OPEN') {
+			wherearr << ' macaddress IS NULL '; 
+		}
+		else if( o.node.state == 'ASSIGNED' ) {
+			wherearr << ' macaddress IS NOT NULL '; 
+		}
+		else {  
+			// unsupported status 
+			wherearr << ' 1=0 '; 
+		}
+		
+		if ( o.where ) { 
+			wherearr = o.where[0]; 
+			o.where[0] = wherearr.join(' AND '); 
+			o.where[1].putAll( wheremap ); 
+		} 
+		else {
+			o.where = [ wherearr.join(' AND '), wheremap ];
+		} 
+
+		wherearr.clear(); 
+	} 
+}

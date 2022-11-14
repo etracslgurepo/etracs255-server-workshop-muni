@@ -1,0 +1,139 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.util.*;
+import com.rameses.services.extended.*;
+
+class FaasMachReportInterceptor
+{
+	@ActiveDB('faasreport_mach')
+	def em
+
+	@Service('RPTUtil')
+	def util 
+
+	@Service('NumberService')
+	def numberSvc
+
+	@Service('FAASReportService')
+	def faasReportSvc 
+
+	@Service('Var')
+	def var;
+
+	def MACH_DETAIL_ROWS = 12
+
+
+	@After(pattern="FAASReportService.getReportData", eval="#{result.rpu.rputype=='mach'}")
+	public void buildReport(evt){
+		def faas = evt.result
+		faas.rpu += em.findMachInfoById(faas.rpu)
+		faasReportSvc.buildLandReference( faas )
+		buildBldgReference(faas)
+		buildMachDetails(faas)
+		buildPropertyAppraisals(faas)
+		buildAssessments(faas)
+	}
+
+	void buildAssessments(faas){
+		faas.propertyassessments = em.getAssessments(faas.rpu)
+		util.buildEmptyRows( faas.propertyassessments, 5)
+	}
+
+	void buildPropertyAppraisals(faas) {
+		def appraisals = em.getAppraisals(faas.rpu)
+		buildAppraisals(appraisals)
+
+		def maxrowcount = util.toInteger2(var.machinery_faas_report_row_count, MACH_DETAIL_ROWS)
+
+		if (appraisals.size() <= maxrowcount) {
+			faas.propertyappraisals = appraisals
+			util.buildEmptyRows( faas.propertyappraisals, maxrowcount)
+			faas.propertyappraisals.each{
+				it.useswornamount = util.toBoolean(it.useswornamount, false)
+			}
+		} else {
+			faas.propertyappraisals = []
+			faas.propertyappraisals2 = []
+			for (int i = 0; i < appraisals.size(); i++) {
+				if (i < maxrowcount) {
+					faas.propertyappraisals << appraisals[i]
+				} else {
+					faas.propertyappraisals2 << appraisals[i]
+				}
+			}
+
+			//insert appraisal2 info to appraisallist
+			def depreciationvalue2 = faas.propertyappraisals2.depreciationvalue.sum()
+			def marketvalue2 = faas.propertyappraisals2.findAll{it.taxable}.marketvalue.sum()
+			if (!marketvalue2) marketvalue2 = 0.0
+			faas.propertyappraisals << [taxable: true, isadditional: true, depreciationvalue: depreciationvalue2, marketvalue: marketvalue2]
+		}
+	}
+
+	void buildAppraisals(appraisals) {
+		appraisals.each{
+			def additionalcost = new BigDecimal( 0.0 )
+			
+			if( it.freightcost )
+				additionalcost.add( it.freightcost )
+			
+			if( it.insurancecost )
+				additionalcost.add( it.insurancecost )
+				
+			if( it.installationcost )
+				additionalcost.add( it.installationcost )
+				
+			if( it.othercost )
+				additionalcost.add( it.othercost )
+				
+			def depreciation = numberSvc.format("#,##0.0000", it.depreciation) + ' %'
+			
+			it.machinename 		= it.machine.name 
+			it.additionalcost	= additionalcost
+			it.depreciation		= depreciation
+
+			it.useswornamount = util.toBoolean(it.useswornamount, false)
+		}
+	}
+
+
+	void buildMachDetails(faas) {
+		def details = em.getMachDetails(faas.rpu)
+		buildDetails(details)
+
+		if (details.size() <= MACH_DETAIL_ROWS) {
+			faas.machdetails = details
+			util.buildEmptyRows( faas.machdetails, MACH_DETAIL_ROWS )
+		} else {
+			faas.machdetails = []
+			faas.machdetails2 = []
+			for (int i = 0; i < details.size(); i++) {
+				if (i < MACH_DETAIL_ROWS) {
+					faas.machdetails << details[i]
+				} else {
+					faas.machdetails2 << details[i]
+				}
+			}
+		}
+	}
+
+	void buildDetails(details) {
+		details.each{ md ->
+			md.brandmodel = (md.brand? md.brand : '') + (md.model ? '/' + md.model : '')
+			if (md.params) {
+				//deconstruct params as field - value
+				def params = md.remove('params')
+				params = em.serializer.read(params)
+				params.each {p ->
+					md[p.param.name] = p.value 
+				}
+			}
+		}
+	}
+
+	void buildBldgReference(faas){
+		def bldginfo = em.findBldgInfoByPin(faas.rpu.bldgmaster)
+		if (bldginfo) faas.putAll(bldginfo)
+	}
+
+}

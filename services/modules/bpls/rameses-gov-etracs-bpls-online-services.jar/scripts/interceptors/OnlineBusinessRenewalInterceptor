@@ -1,0 +1,48 @@
+import com.rameses.annotations.*;
+import com.rameses.util.KeyGen;
+
+class OnlineBusinessRenewalInterceptor {
+	
+	final String DFEAULT_MAIL_CONNECTION = "bpls-email-server"; 
+
+
+	@DataContext('sys_email_queue')
+	def email_queue; 
+
+	@Service 
+	def self; 
+
+	@Service("BusinessApplicationWorkflowService")
+	def workflowSvc;
+
+
+	@After(pattern="OnlineBusinessApplicationService.approve")
+	public void afterApprove( evt ) {
+		def result = evt.result; 
+		def email = result.contact?.email; 
+		if ( !email ) return; 
+
+		if ( !result.objid ) 
+			throw new Exception('OnlineBusinessRenewalInterceptor requires result.objid'); 
+		if ( !result.data ) 
+			throw new Exception('OnlineBusinessRenewalInterceptor requires result.data'); 
+		if ( !result.approvedappno ) 
+			throw new Exception('OnlineBusinessRenewalInterceptor requires result.approvedappno'); 
+
+		def appno = result.approvedappno; 
+		def msg = 'The online business renewal application you submitted has been approved. <br/>Your application number is <b>'+ appno +'</b>'; 
+
+		def data = [:]; 
+		data.state = 0;
+		data.to = email; 
+		data.subject = 'Online Business Renewal Approval'; 
+		data.message = msg; 
+		data.refid = result.objid; 
+		data.dtsent = result.data.txndate; 
+		data.connection = DFEAULT_MAIL_CONNECTION; 
+		data.objid = 'SEQ'+ new java.rmi.server.UID(); 
+		email_queue.create( data ); 
+
+		workflowSvc.start([ refid : result.objid, data  : result.data ]); 
+	} 
+}

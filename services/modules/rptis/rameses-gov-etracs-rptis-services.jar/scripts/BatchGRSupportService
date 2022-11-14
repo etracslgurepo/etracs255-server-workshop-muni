@@ -1,0 +1,282 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+import com.rameses.util.*
+
+
+class BatchGRSupportService
+{
+    @Env
+    def env
+    
+    @Service('DateService')
+    def dtSvc
+
+    @Service('BatchGRService')
+    def batchSvc
+
+    @Service('ExaminationService')
+    def examinationSvc
+
+    @Service('RPTRequirementService')
+    def reqSvc 
+
+    @Service('FAASService')
+    def faasSvc
+
+    @Service('DBImageService')
+    def imageSvc
+
+    @Service('EntityService')
+    def entitySvc 
+
+    @Service('TxnRefService')
+    def txnRef
+
+    @Service('NotificationService')
+    def notifySvc   
+
+
+    @DataContext('batchgr')
+    def em_batchgr 
+
+    @DataContext('batchgr_item')
+    def em_batchgr_item
+
+    @DataContext('batchgr_task')
+    def em_batchgr_task 
+
+    @DataContext('faas')
+    def em_faas 
+
+    @DataContext('faas_task')
+    def em_faas_task
+
+
+    @ProxyMethod
+    public def buildData(batchgr){
+        batchgr.putAll(batchSvc.open(batchgr))
+        batchgr.items = batchSvc.getItems(batchgr)
+        batchgr.tasks = em_batchgr_task.where("refid = :objid and enddate is not null and state not like 'assign%'", batchgr).list()
+        batchgr.image = getImageData(batchgr.objid)
+        return batchgr
+    }
+
+
+    @ProxyMethod
+    public def buildExaminations(batchgr){
+        def data = [:]
+        data.images = []
+        data.examinations = examinationSvc.getFindings( batchgr.objid ).each{
+            it.putAll(examinationSvc.open(it))
+            data.images << getImageData(it.objid)
+        }
+        return data 
+    }
+
+
+    @ProxyMethod
+    public def getRequirements(batchgr){
+        return reqSvc.getRequirements(batchgr.objid)
+    }
+    
+    @ProxyMethod
+    public def getApprovedFaas(faas){
+        faas = faasSvc.openFaas(faas)
+        faas.taxpayer = entitySvc.open(faas.taxpayer)
+        faas.tasks = em_faas_task.where('refid = :refid AND enddate IS NOT NULL', [refid: faas.objid]).list()
+        return faas
+
+    }
+
+    @ProxyMethod
+    public def buildRequirement(requirement){
+        def data = [:]
+        data.requirement = requirement 
+        data.image = getImageData(requirement.objid)
+        return data 
+    }
+
+
+    @ProxyMethod
+    public def buildFaasData(item){
+        def faas = faasSvc.openFaas([objid:item.newfaasid])
+        faas.taxpayer = entitySvc.open(faas.taxpayer)
+        if (item._includetask == null || item._includetask == true){
+            faas.tasks = em_faas_task.where("refid = :objid and enddate is not null and state not like 'assign%'", faas).list()
+        }
+        if (item._includeimage == null || item._includeimage == true){
+            faas.image = getImageData(faas.objid)
+        }
+        return faas 
+    }    
+
+
+    @ProxyMethod
+    public def postData(batchgr){
+        def oldbatch = em_batchgr.find([objid:batchgr.objid]).first()
+        if (!batchgr._resubmitted || !oldbatch){
+            txnRef.delete(batchgr.objid)
+            em_batchgr.save(batchgr)
+        }
+
+        batchgr.items.each{
+            txnRef.delete(it.newfaasid)
+            em_batchgr_item.save(it)
+            txnRef.insertRef(it.newfaasid, batchgr.objid, 'FAAS is currently referenced by Batch GR No. ' + batchgr.txnno +'.')
+        }
+
+        batchgr.tasks.each{
+            em_batchgr_task.save(it)
+        }
+
+        saveImageData(batchgr.image)
+    }
+
+
+    @ProxyMethod
+    public void postExaminations(data) {
+        data.examinations.each{
+            examinationSvc.save(it)
+        }
+
+        data.images.each{
+            saveImageData(it)
+        }       
+    }
+
+
+    @ProxyMethod
+    public void postRequirements(data) {
+        data.requirements.each{
+            reqSvc.save(it)
+        }
+
+        data.images.each{
+            saveImageData(it)
+        }       
+    }
+
+    @ProxyMethod
+    public void postRequirement(data) {
+        reqSvc.save(data.requirement)
+        saveImageData(data.image)
+    }
+
+
+    @ProxyMethod
+    public void postFaasData(faas) {
+        def oldfaas = em_faas.select('state').find([objid:faas.objid]).first()
+        if (oldfaas?.state != 'CURRENT'){
+            //old faas is not yet approved, 
+            //set province faas state to pending 
+            faas.state = 'PENDING'
+        }
+
+        entitySvc.save(faas.taxpayer)
+
+        faas.taxpayer.address = faas.taxpayer.address?.text
+        faas._checkTxnRef = false;
+
+        if (faasSvc.faasExist(faas))
+            faasSvc.updateFaas(faas)
+        else
+            faasSvc.createFaas(faas)
+
+        faas.tasks.each{
+            em_faas_task.save(it)
+        }
+
+        saveImageData(faas.image)
+    }
+
+    @ProxyMethod
+    public def postApprovedFaas(faas){
+        def currfaas = em_faas.select('state').find([objid:faas.objid]).first()
+        if (currfaas && currfaas.state == 'CURRENT') {
+            saveFaasTask(faas)
+            return
+        }
+        faas.state = 'PENDING'
+        postFaasData(faas)
+        faasSvc.approveFaas(faas)
+        saveFaasTask(faas)
+    }
+
+    @ProxyMethod
+    public def postApprovedBatchGr(batchgr){
+        def state = em_batchgr.select("state").find([objid: batchgr.objid]).val();
+        if (!state) {
+            postData(batchgr)
+        } else if (! state.equalsIgnoreCase('APPROVED')){
+            batchgr.tasks.each{
+                em_batchgr_task.save(it)
+            }
+            em_batchgr_task.where('refid = :objid and enddate is null', batchgr).delete()
+            batchSvc.insertFaasSignatories(batchgr)
+            batchSvc.approve(batchgr)
+
+            notifyRecommender(batchgr)
+        } 
+    }
+
+    @ProxyMethod
+    public def postExcludedBatchGrItem(item) {
+        def batchgritem = em_batchgr_item.find([objid: item.objid]).first();
+        if (batchgritem) {
+            batchSvc.postOnlineExcludeItem(batchgritem);
+        }
+    }
+
+    void saveImageData(image){
+        if (!image) return
+        
+        image.headers.each{
+            imageSvc.saveHeader(it)
+        }
+        image.chunks.each{
+            imageSvc.saveItem(it)
+        }
+    }
+
+
+    def getImageData(objid){
+        def headers = imageSvc.getImages([refid:objid])
+        def chunks = []
+        headers.each{
+            chunks += imageSvc.getImageItems(it)
+        }       
+        return [headers:headers, chunks:chunks]
+    }
+
+    void notifyRecommender(batchgr){
+        def recommendertask = em_batchgr_task.where('refid = :objid and state = :state', [objid:batchgr.objid, state:'recommender'])
+                                        .orderBy('enddate desc')
+                                        .first()
+
+        def approvertask = batchgr.tasks.find{it.state.matches('approver|provapprover')}
+        if (recommendertask && approvertask){
+            def sendername = (approvertask.actor.name ? approvertask.actor.name : 'Province')
+            def msg = [
+                objid     : recommendertask.refid,
+                recipientid : (recommendertask.assignee.objid ? recommendertask.assignee.objid : '-'),
+                recipienttype : 'user',
+                senderid  : '-',
+                sender    : sendername,
+                message   : 'Batch GR' + batchgr.txnno + ' has already been approved by ' + sendername + '.',
+                filetype  : 'batchgr',
+                data      : [:],
+            ]
+            notifySvc.addMessage(msg)
+        }       
+    }
+
+    void saveFaasTask(faas) {
+        faas.tasks.each{
+            em_faas_task.save(it)
+        }
+    }
+
+}
+
+

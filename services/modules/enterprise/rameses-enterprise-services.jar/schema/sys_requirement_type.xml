@@ -1,0 +1,13 @@
+<schema>
+	<element  tablename="sys_requirement_type">
+		<field name="objid" primary="true" style="code" visible="true" editable="false"/>
+		<field name="code" searchable="true" required="true" editable="false"/>
+		<field name="title" searchable="true" required="true"/>
+		<field name="type"/>
+		<field name="handler"/>
+		<field name="system"/>
+		<field name="agency"/>
+		<field name="sortindex" type="integer" defaultValue="0"/>
+		<field name="verifier"/>
+	</element>
+</schema>

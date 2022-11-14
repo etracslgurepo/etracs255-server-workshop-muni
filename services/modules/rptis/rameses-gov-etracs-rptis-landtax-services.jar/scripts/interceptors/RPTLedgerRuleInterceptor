@@ -1,0 +1,69 @@
+import com.rameses.annotations.*
+import com.rameses.eserver.*;
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class RPTLedgerRuleInterceptor
+{
+    @ActiveDB('rptledger')
+    def em
+
+    @DataContext('rptledger_item')
+    def em_ledger_item 
+
+
+    /*--------------------------------------------------------
+    * Update amtpaid, incase of partial payment, 
+    * if there are no entries in rptledger_item for this 
+    * ledger. 
+    * 
+    * No entries indicates first build-up of this ledger
+    * for version 03021
+    --------------------------------------------------------*/
+    @After(pattern="RPTLedgerRuleService.buildItems")
+    public void afterBuildItems(evt){
+        def ledger = evt.args[0]
+        def year = evt.args[1]
+        def items = evt.result 
+
+        
+        def ledgeritem = em_ledger_item.find([parentid: ledger.objid]).first()
+        if (ledgeritem) {
+            return
+        }
+
+        if (!items || items.first().taxdifference) {
+            return 
+        }
+
+
+        //update last payment 
+        def pmt = em.findLastPayment([objid: ledger.objid, year: year])
+        if (pmt) {
+            def basicitem = items.find{ it.revtype == 'basic'}
+            if (basicitem) {
+                basicitem.amtpaid = pmt.basic
+            }
+
+            def sefitem = items.find{ it.revtype == 'sef'}
+            if (sefitem) {
+                sefitem.amtpaid = pmt.sef
+            }
+
+            def basicidleitem = items.find{ it.revtype == 'basicidle'}
+            if (basicidleitem) {
+                basicidleitem.amtpaid = pmt.basicidle
+            }
+
+            def firecodeitem = items.find{ it.revtype == 'firecode'}
+            if (firecodeitem) {
+                firecodeitem.amtpaid = pmt.firecode
+            }
+
+            def shitem = items.find{ it.revtype == 'sh'}
+            if (shitem) {
+                shitem.amtpaid = pmt.sh
+            }
+        }
+    }
+}

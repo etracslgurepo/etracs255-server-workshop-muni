@@ -1,0 +1,7 @@
+<schema>
+	<element tablename="sys_rule_deployed">
+		<field name="objid" primary="true" />
+		<field name="ruletext" />
+	</element>	
+</schema>	
+

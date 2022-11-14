@@ -1,0 +1,111 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+
+class DepositSlipService  {
+
+	@DataContext("depositslip")
+	def depositSlipEm;
+
+	@DataContext("depositvoucher_fund")
+	def depositVoucherFundEm;
+
+	@DataContext("checkpayment")
+	def checkpaymentEm;
+
+	@Env
+	def env;
+
+	@Service("DateService")
+	def dateSvc;
+
+	
+	void createCheckDepositSlip( def o, def checks, def checkType ) {
+		if(!checks) throw new Exception("There must be checks for check deposit slip");
+		if(!checkType) throw new Exception("checktype is required in create depositslip");
+		def m = [:];
+		m.putAll( o );
+		m.deposittype = 'CHECK';
+		m.checktype = checkType;
+		m.amount = checks.sum{ it.amount };
+		m.totalcheck = m.amount;
+		m = depositSlipEm.create(m);	
+		checks.each {
+			if(!it.checkid) throw new Exception("checkid is required in create depositlsip")
+			checkpaymentEm.find([objid: it.checkid]).update( [depositslipid: m.objid ]);
+		}
+	}
+	
+	
+	@ProxyMethod
+	public def create( def o ) {
+		def tmp = [:];
+		tmp.depositvoucherfundid = o.depositvoucherfundid;
+		tmp.depositvoucherfund = [objid: o.depositvoucherfundid ];
+		tmp.createdby = [objid:env.USERID, name:env.FULLNAME];
+		tmp.dtcreated = dateSvc.getServerDate();
+		tmp.bankaccount = o.bankaccount;
+		tmp.depositdate = o.depositdate;
+		tmp.state = 'DRAFT';
+		tmp.amount = 0;
+		tmp.totalcash = 0;
+		tmp.totalcheck = 0;
+		tmp.cashbreakdown = [];
+
+		if( o.totalcash > 0 ) {
+			def m = [:];
+			m.putAll( tmp );
+			m.deposittype = 'CASH';
+			m.totalcash = o.totalcash;
+			m.amount = o.totalcash;
+			m.cashbreakdown = o.cashbreakdown;
+			depositSlipEm.create(m);
+		}
+
+		if( o.checks ) {
+			def grps = o.checks.groupBy{ it.deposittype };
+			int i = o.numcheckslimit;
+			if( i > 0 ) {
+				grps.each {k,v->
+					if( !k ) throw new Exception("check type is required");
+					def arr = [];
+					def list = v;
+					while(true) {
+					    if(list.size() > 0 && list.size() <= i) {
+					        arr << list;
+					        break;
+					    }
+							def p = list[0..(i-1)];
+					    arr << p;
+					    list = list - p;
+					}
+					arr.each { 
+						createCheckDepositSlip( tmp, it, k );
+					}
+				}
+			}
+			else {
+				grps.each {k,v->
+					if( !k ) throw new Exception("check type is required");
+					createCheckDepositSlip( tmp, v, k );
+				}
+			}
+		}
+		depositVoucherFundEm.find( [objid: o.depositvoucherfundid] ).update( [ amountdeposited: '{amountdeposited+ :amt}'], [amt: o.amount ]  );
+		return depositVoucherFundEm.find( [objid: o.depositvoucherfundid] ).select("amountdeposited").first();
+	}
+
+
+	@ProxyMethod
+	public def removeDepositSlip( def o ) {
+		def r = depositSlipEm.find([objid: o.objid]).first();
+		if ( r.state != "DRAFT") throw new Exception("Only deposit slip in DRAFT state can be removed");	
+
+		//update all checks for the deposit slip to null
+		checkpaymentEm.find([ depositslipid: o.objid ]).update([ depositslipid: "{NULL}" ]);
+
+		depositSlipEm.find([ objid: o.objid ]).delete();
+		depositVoucherFundEm.find([ objid: r.depositvoucherfundid ]).update([ amountdeposited: '{amountdeposited - :amt}'], [amt: r.amount ]);
+		return depositVoucherFundEm.find([ objid: r.depositvoucherfundid ]).select("amountdeposited").first();
+	} 
+}

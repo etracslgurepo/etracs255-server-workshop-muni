@@ -1,0 +1,25 @@
+<!-- 
+create view vw_collectiontype_account as 
+select 
+	ia.objid, ia.code, ia.title, 
+	ia.fund_objid, fund.code as fund_code, fund.title as fund_title, 
+	cta.collectiontypeid, cta.tag, cta.valuetype, cta.defaultvalue 
+from collectiontype_account cta 
+	inner join itemaccount ia on ia.objid = cta.account_objid 
+	inner join fund on fund.objid = ia.fund_objid 
+
+--> 
+<schema>
+	<element tablename="vw_collectiontype_account">
+		<field name="objid" primary="true"/> 
+		<field name="code" required="true"/> 
+		<field name="title" required="true"/> 
+		<field name="fund_objid" required="true"/> 
+		<field name="fund_code" required="true"/> 
+		<field name="fund_title" required="true"/> 
+		<field name="collectiontypeid" required="true"/> 
+		<field name="tag" required="true"/> 
+		<field name="valuetype" required="true"/> 
+		<field name="defaultvalue" required="true"/> 
+	</element>
+</schema>

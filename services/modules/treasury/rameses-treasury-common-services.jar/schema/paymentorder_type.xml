@@ -1,0 +1,17 @@
+<schema>
+	<element tablename="paymentorder_type">
+		<field name="objid" primary="true" visible="true" searchable="true" caption="ID"/>
+		<field name="title" required="true" caption="Title"/>
+		<field name="collectiontype_objid" required="true"/>
+		<field name="collectiontype_name" caption="CollectionType" required="true"/>
+		<field name="system" caption="System?"/>
+		<field name="barcodeid" caption="BarcodeID" required="true"/>
+		<field name="accesstype" caption="AccessType" required="true"/>
+		<field name="state" caption="Status" required="true"/>
+		<field name="dtcreated" caption="DateCreated" required="true"/>
+		<field name="createdby_objid" required="true"/>
+		<field name="createdby_name" caption="CreatedBy" required="true"/>
+		<field name="domain" caption="Domain"/>
+		<field name="role" caption="Role"/>
+	</element>
+</schema>

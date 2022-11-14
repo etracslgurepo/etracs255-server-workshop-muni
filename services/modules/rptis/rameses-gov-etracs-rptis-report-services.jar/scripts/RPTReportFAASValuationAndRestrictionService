@@ -1,0 +1,68 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+import java.rmi.server.UID
+
+class RPTReportFAASValuationAndRestrictionService
+{
+	@Env 
+	def env 
+
+    @ActiveDB('rptreport_faas_valuationrestriction')
+    def em
+
+    @Service('RPTUtil')
+    def util
+
+
+    @Async
+    @ProxyMethod
+    public def generateReport( params ) {
+    	buildFilter(params)
+		params.imonth = getMonthIndex(params)
+
+		if (params.basicrate == null ) params.basicrate = 1.0
+		if (params.sefrate == null ) params.sefrate = 1.0
+
+		def list = em.getFaasValuationRestrictionSummary(params)
+		if( ! list ) throw new Exception('Record not found.')
+
+		computeDifference(list)
+
+		return [
+			parameters  : [PERIOD:params.period.caption, BASICRATE:params.basicrate, SEFRATE:params.sefrate],
+			reportdata 	: list,
+		]
+    }
+
+    void computeDifference(list){
+    	list.each{
+    		it.mvdifference = it.totalmv - it.restrictionmv
+    		it.avdifference = it.totalav - it.restrictionav
+    	}
+    }
+
+    def getMonthIndex(params){
+    	if (params.month){
+			return params.month.index 
+		}
+		else {
+			def qtrs = [1:3, 2:6, 3:9, 4:12]
+			return qtrs[params.qtr]
+		}
+    }
+
+    void buildFilter(params){
+        params.filter = ''
+        util.buildStartEndDateFilter(params)
+
+        if (params.lgu){
+            params.filter += ' and f.lguid = $P{lguid} '
+            params.lguid = params.lgu.objid 
+        }
+        if (params.barangay){
+            params.filter += ' and rp.barangayid = $P{barangayid} '
+            params.barangayid = params.barangay.objid 
+        }
+    }
+}

@@ -1,0 +1,7 @@
+<schema>
+	<element tablename="sys_domain">
+		<field name="name" primary="true"/>
+		<field name="connection" required="true"/>		
+	</element>	
+</schema>	
+

@@ -1,0 +1,22 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+
+class WebSessionInterceptor
+{
+	@Service('SessionService') 
+	def sessSvc; 
+
+	@Env 
+	def env; 
+
+	@Before(pattern=".*", exclude="(SessionService|interceptors/WebSessionInterceptor).*", eval="env?.CLIENTTYPE=='web' && env.SESSIONID && !env.WEB_SESSION_PASSED") 
+	public void hook( evt ) { 
+		env.WEB_SESSION_PASSED = true; 
+		try { 
+			def userinfo = sessSvc.getUserInfo( env.SESSIONID ); 
+			if (userinfo?.env) env.putAll(userinfo.env); 
+		} catch(e) {
+			e.printStackTrace(); 
+		} 
+	} 
+}

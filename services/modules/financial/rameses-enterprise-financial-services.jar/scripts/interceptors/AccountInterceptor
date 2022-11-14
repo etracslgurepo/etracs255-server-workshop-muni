@@ -1,0 +1,23 @@
+import com.rameses.annotations.*;
+
+class AccountInterceptor {
+	
+	@DataContext('account') 
+	def acct_db; 
+
+	@Before(pattern="PersistenceService.removeEntity", eval="#{ args[0]._schemaname == 'account' }")
+	public void beforeRemoveEntity( evt ) {
+		def o = evt.args[0]; 
+		
+		acct_db.find([ groupid: o.objid.toString() ]).list().each{
+			removeAcct( it ); 
+		}
+	} 
+
+	void removeAcct( acct ) {
+		acct_db.find([ groupid: acct.objid.toString() ]).list().each{
+			removeAcct( it ); 
+		} 
+		acct_db.find([ objid: acct.objid.toString() ]).delete(); 
+	}
+} 

@@ -1,0 +1,393 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.common.*
+import com.rameses.services.extended.*
+
+public class BatchCaptureCollectionService  {
+	
+	@DataContext("batchcapture_collection")
+	def bc_db;
+
+	@DataContext("batchcapture_collection_entry")
+	def bce_db;
+
+	@DataContext("batchcapture_collection_entry_item")
+	def bcei_db;
+
+	@DataContext("af_control")
+	def afc_db;
+
+	@DataContext("sys_user")
+	def user_db;
+
+	@DataContext("cashreceipt")
+	def cashreceipt_db;
+
+	@Service("DateService")
+	def dateSvc;
+
+	@Service("CashReceiptService")
+	def cashReceiptSvc;
+
+	@Service("CashReceiptVoidService")
+	def voidSvc;
+
+	@Service('PersistenceService')
+	def persistenceSvc; 
+
+	@Service('QueryService')
+	def querySvc; 
+
+	@Env
+	def env
+
+	@ProxyMethod
+	public def getColumns(def p) {
+		return [
+			[name:'state', caption:'State'],
+			[name:'txndate', caption:'TxnDate', type:'date', outputFormat:'yyyy-MM-dd HH:mm:ss'],
+            [name:'formno', caption:'AF No.'],
+            [name:'collectorname', caption:'Collector'],
+            [name:'startseries', caption:'Start Series', type:'integer'],
+            [name:'endseries', caption:'Endseries', type:'integer'],
+            [name:'totalamount', caption:'Amount', type:'decimal', format:'#,##0.00' ],
+            [name:'capturedbyname', caption:'Encoded By']
+		];
+	}
+
+	@ProxyMethod
+	public def getList( params ) {
+		params.searchtext = params.searchtext ? params.searchtext + "%" : "%"
+		params.filter = '';
+		if( params.listtype == 'bysubcollector') {
+			params.collectorid = env.USERID;
+			params.filter = ''' AND bcc.capturedby_objid like $P{collectorid} ''';
+		}
+		else if( params.listtype == 'bycollector') {
+			params.collectorid = env.USERID;
+			params.filter = ''' AND bcc.collector_objid like $P{collectorid} ''';
+		} 
+		return em.getList(params);
+	}
+	
+	@ProxyMethod
+	public def create( entity ){ 
+		if( bc_db.findBatchControlByState(entity) ) 	
+			throw new Exception("There are still unposted collection for this series. ");
+
+		def receiptdate = entity.defaultreceiptdate;
+		if ( receiptdate instanceof String ) {
+			receiptdate = java.sql.Date.valueOf( receiptdate );  
+		} 
+
+		def x = bc_db.findMaxReceiptDate([ controlid: entity.controlid ]); 
+		if ( x?.maxreceiptdate && receiptdate.before(x.maxreceiptdate) ) { 
+			def sdate = new java.text.SimpleDateFormat('yyyy-MM-dd').format( x.maxreceiptdate ); 
+			throw new Exception('Transaction date must be greater than or equal to ' + sdate ); 
+		} 
+
+		entity.objid = "BCC"+new java.rmi.server.UID();
+		entity.state = 'DRAFT';
+		entity.org =  [objid:env.ORGID, name:env.ORGNAME];
+		entity.txndate = dateSvc.getServerDate(); 
+		entity.paymenttype = 'CASH';
+		entity.totalamount = 0.0
+		entity.totalnoncash = 0.0;
+		entity.totalcash = 0.0;
+		entity.amount = 0.0;
+		entity.capturedby = [objid: env.USERID, name: env.FULLNAME];
+		entity.capturedby.title = user_db.find([ objid: entity.capturedby.objid ]).select('jobtitle').val(); 
+		entity.collector.title = user_db.find([ objid: entity.collector.objid ]).select('jobtitle').val();
+		bc_db.create(entity);
+
+		entity.batchitems = []; 
+		entity.fund = entity.collectiontype?.fund; 
+		return entity; 
+	}
+
+	@ProxyMethod 
+	public def open( params ) {
+		def entity = bc_db.find([ objid: params.objid ]).first(); 
+		if ( !entity ) throw new Exception("Could not open selected item.  ")
+
+		def ct = entity.collectiontype; 
+		if ( ct == null ) { 
+			ct = [:]; 
+			entity.collectiontype = ct; 
+		} 
+
+        def ctaparam = [_schemaname: "collectiontype_account", select: 'objid'];
+        ctaparam.findBy = [ collectiontypeid: ct?.objid ];
+        ct.hasitems = ( querySvc.findFirst( ctaparam ) ? true : false ); 
+		entity.fund = ct.fund; 
+
+		entity.batchitems = bce_db.find([ parentid: entity.objid ]).orderBy('series').list(); 
+		entity.currentseries = entity.startseries; 
+		if ( entity.batchitems ) { 
+			entity.startseries = entity.batchitems.first().series; 
+		} 
+
+		entity.batchitems.each {
+			it.items = bcei_db.find([ parentid: it.objid ]).list(); 
+			it.items.each {
+				it.item.fund = it.fund;
+			}
+			
+			def fi = (it.items? it.items[0]: [:]); 
+			it.acctinfo = (it.items.size() > 1) ? '( Multiple Accounts )' : fi.item?.title 
+			it.remarks = fi.remarks;
+			it.collector = entity.collector;
+		} 
+		
+		def xxa = bc_db.findRemitCount([ batchid: params.objid ]); 
+		entity.remitted = (xxa?.remitcount && xxa.remitcount>0) ? true: false;  
+		return entity; 
+	}
+
+	@ProxyMethod 
+	public def findItem( param ) {
+		def item = bce_db.find([ objid: param.objid ]).first(); 
+		if ( item ) {
+			item.items = bcei_db.find([ parentid: item.objid ]).list(); 
+		}
+		return item; 
+	}
+
+	@ProxyMethod  
+	public def removeItem( param ) { 
+		def item = bce_db.find([ objid: param.objid ]).first(); 
+		def currentseries = item.series; 
+		def p = [ _schemaname: 'batchcapture_collection_entry', objid: item.objid ]; 
+		persistenceSvc.removeEntity( p ); 
+
+		def bes = bc_db.findBatchSummary([ objid : item.parentid ]); 
+		if ( bes == null ) bes = [:]; 
+
+		def header = bc_db.find([ objid: item.parentid ]).first();  
+		def afc = afc_db.find([ objid: header.controlid ]).first(); 
+		def interval = afc?.afunit?.interval; 
+		if ( interval == null || interval <= 0 ) interval = 1; 
+
+		def previtem = bce_db.find([ parentid: item.parentid ]).select('maxseries:{MAX(series)}').first(); 
+		def maxseries = previtem?.maxseries; 
+		if ( maxseries == null ) { 
+			bes.startseries = currentseries; 
+		} else {
+			bes.startseries = (maxseries + interval); 
+		}
+		
+		bes.totalcash = ( bes.totalcash ? bes.totalcash : 0.0 ); 
+		bes.totalnoncash = ( bes.totalnoncash ? bes.totalnoncash : 0.0 ); 
+		bes.totalamount = bes.totalcash + bes.totalnoncash; 
+		bc_db.find([ objid: item.parentid ]).update( bes ); 
+
+		header = bc_db.find([ objid: item.parentid ]).first(); 
+		header.currentseries = header.startseries; 
+		return header; 
+	} 
+
+	@ProxyMethod 
+	public void removeEntity( params ) {
+		if ( !params.objid ) throw new Exception('objid parameter is required'); 
+
+		def p = [ objid: params.objid ]; 
+		def rec = bc_db.find( p ).select('objid').first(); 
+		if ( !rec ) return; 
+
+		def bceparam = [ parentid: rec.objid ]; 
+		bce_db.find( bceparam ).select('objid').list().each{ o-> 
+			bcei_db.find([ parentid: o.objid ]).delete(); 
+		} 
+		bce_db.find( bceparam ).delete(); 
+		bc_db.find( p ).delete(); 
+	} 
+
+	@ProxyMethod
+	public def submitForPosting( params ) {
+		if ( !params.objid ) throw new Exception('objid parameter is required');
+		if ( !params.checksum ) throw new Exception('checksum parameter is required');
+
+		def header = bc_db.find([ objid: params.objid]).first();
+		if ( !header ) throw new Exception('Could not open batchcapture collection');  
+
+		def entries = bce_db.find([ parentid: header.objid ]).orderBy('series').list(); 
+		if ( !entries ) throw new Exception('Process failed. There must be at least 1 item for this transaction');
+
+		def numformat = new java.text.DecimalFormat('0.00'); 
+		def checklist = [ header.objid ]; 
+		checklist << numformat.format( header.totalamount ); 
+		checklist << entries.size(); 
+		entries.each{ checklist << it.series }
+
+		def targetchecksum = com.rameses.util.Encoder.MD5.encode(checklist.join(',')); 
+		if (!( params.checksum == targetchecksum )) {
+			throw new Exception('Invalid checksum value. Please reopen and verify the transaction');
+		}
+
+		def afc = afc_db.find([ objid: header.controlid ]).first(); 
+		def interval = afc?.afunit?.interval; 
+		if ( interval == null || interval <= 0 ) interval = 1; 
+
+		def nextseries = entries.first().series; 
+		entries.each{ 
+			if ( it.series == nextseries ) {
+				nextseries = it.series + interval; 
+			} else { 
+				throw new Exception('Process failed. Receipt# '+ it.receiptno +' may have been tampered. Please verify');
+			} 
+		} 
+
+		def item = params.batchitems.find{it.amount == 0.0 && (it.voided == 0 || it.voided == false)}
+		validateAmount( item ); 
+
+		header.state = 'FORPOSTING'; 
+		bc_db.find([ objid: header.objid ]).update([ state: header.state ]);
+		return header; 
+	} 
+
+	@ProxyMethod
+	public def disapproved( params ) {
+		def header = bc_db.find([ objid: params.objid ]).first(); 
+		if ( !header ) throw new Exception('Could not open batchcapture collection');  
+
+		header.state = 'DRAFT'; 
+		bc_db.find([ objid: header.objid ]).update([ state: header.state ]);
+		return header;  
+	} 
+
+	@ProxyMethod
+	public def post( params ) { 
+		if ( !params.objid ) throw new Exception('objid parameter is required');
+
+		def entity = bc_db.find([ objid: params.objid ]).first(); 
+		if ( !entity ) throw new Exception('Could not open batchcapture collection');  
+
+		params.batchid = params.objid; 
+		def forpostings = bc_db.getForPostingSummary( params ); 
+		if ( forpostings ) {
+			def x = forpostings.find{ it.objid != params.batchid } 
+			if ( x ) throw new Exception('There is a previous for posting transaction with the same accountable form. Please verify.'); 
+		} 
+
+		entity.batchitems = bce_db.find([ parentid: params.objid ]).orderBy(' series ').list(); 
+		if ( !entity.batchitems ) throw new Exception('Process failed. There must be at least 1 item for this transaction');
+
+		def voidlist = entity.batchitems.findAll{ it.voided > 0 } 
+
+		entity.batchitems.each {bi->
+			validateAmount(bi);
+
+			bi.batchcapture = true;
+			bi.collector = entity.collector;
+			bi.formtype = entity.formtype;
+			bi.formno = entity.formno;
+			bi.stub = entity.stub;
+			bi.controlid = entity.controlid;
+			bi.txnmode = entity.txnmode;
+			bi.org = entity.org;
+			bi.cashchange = 0;
+			bi.totalcredit = 0;
+			bi.user = entity.capturedby;
+
+			bi.items = bcei_db.find([ parentid: bi.objid ]).list(); 
+			bi.items.each { 
+				it.item.fund = it.fund; 
+				it.amount = (it.amount? it.amount: bi.amount);
+				it.remarks = bi.remarks; 
+			}
+
+			if ( !bi.paymentitems ) bi.paymentitems = []; 
+			bi.checks = bi.paymentitems.collect{ it.check }.findAll{( it )}
+			bi.remove('voided');
+
+			cashReceiptSvc.post( bi );
+		} 
+
+		entity.state = 'POSTED';
+		entity.postedby = [ objid: env.USERID, name: env.USER, date: dateSvc.serverDate ]; 
+
+		def voidparam = [ postedby: entity.postedby, txnmode: 'CAPTURE', reason: 'CANCELLED' ]; 
+		voidlist.each{
+			it.collector = entity.collector; 
+			voidparam.receipt = it; 
+			voidparam.txndate = it.receiptdate; 
+			voidSvc.post( voidparam ); 
+		} 
+
+		bc_db.find([ objid: params.objid ]).update([ state: entity.state, postedby: entity.postedby ]);  
+		return entity; 
+	} 
+
+	@ProxyMethod
+	public def submitForOnlineRemittance( params ) { 
+		if ( !params.objid ) throw new Exception('objid parameter is required');
+
+		def entity = bc_db.find([ objid: params.objid ]).first();
+		if ( !entity ) throw new Exception('Could not open batchcapture collection');  
+
+		params.batchid = params.objid; 
+		def postedlist = bc_db.getPostedSummary( params ); 
+		if ( postedlist ) {
+			def x = postedlist.find{ it.objid != params.batchid } 
+			if ( x ) throw new Exception('There is a previous posted transaction with the same accountable form. Please verify.'); 
+		} 
+
+		def batchitems = bce_db.find([ parentid: params.objid ]).list();  
+		if ( !batchitems ) throw new Exception('Process failed. There must be at least 1 item for this transaction');
+
+		batchitems.each { bi-> 
+			cashreceipt_db.find([ objid: bi.objid ]).update([ state: 'POSTED' ]); 
+		} 
+
+		entity.state = 'CLOSED';  
+		bc_db.find([ objid: params.objid ]).update([ state: entity.state ]); 
+		return [ state: entity.state ];  
+	} 
+
+	@ProxyMethod 
+	public def revertPosting( params ) {
+		if ( !params.objid ) throw new Exception('objid parameter is required'); 
+
+		def entity = bc_db.find([ objid: params.objid ]).first(); 
+		if ( entity.state != 'POSTED' ) {
+			throw new Exception('Cannot revert transaction since status is not POSTED');  
+		}
+
+		params.batchid = params.objid; 
+		def history = bc_db.getAFHistory( params ); 
+		if ( history ) {
+			def o = history.find{ it.objid==params.batchid } 
+			if ( o.hasremittance > 0 ) {
+				throw new Exception('Cannot revert transaction since receipts are already remitted'); 
+			} 
+
+			history.remove( o ); 
+			if ( history ) { 
+				throw new Exception('Cannot revert transaction. Please check batch capture transaction history for this accountable form');  
+			}
+		} 
+
+		def info = bc_db.findRemitCount( params ); 
+		if ( info?.remitcount && info.remitcount>0 ) {
+			throw new Exception('Cannot revert transaction since receipts are already remitted'); 
+		}
+
+		def adb = bce_db.find([ parentid: params.objid ]); 
+		adb.select('objid,series').orderBy(' series desc ').list().each {  
+			cashReceiptSvc.removeReceipt( it ); 
+		} 
+
+		entity.state = 'FORPOSTING'; 
+		bc_db.find([ objid: params.objid ]).update([ state: entity.state ]); 
+		return [ state: entity.state ];  
+	} 	
+
+
+
+	void validateAmount(item){
+		if (item && item.amount <= 0.0 && item.voided == 0){
+			throw new Exception('Amount for Receipt No. ' + item.receiptno + ' must be greater than zero.')
+		}
+	}
+}

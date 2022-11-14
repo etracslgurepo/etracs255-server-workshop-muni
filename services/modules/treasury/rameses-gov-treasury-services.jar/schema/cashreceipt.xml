@@ -1,0 +1,72 @@
+<schema>
+	<element tablename="cashreceipt" >
+		<field name="objid" primary="true" prefix="RCT"/>
+		<field name="state" required="true" />
+		<field name="txndate" required="true"  type="timestamp"/>
+		<field name="receiptno" required="true" searchable="true" indexed="true" caption="Receipt No"/>
+		<field name="receiptdate" required="true" caption="Receipt Date" indexed="true" type="date"/>
+		<field name="txnmode" required="true" indexed="true" caption="Txn Mode"/>
+		<field name="paidby" required="true" caption="Paid By" indexed="true" searchable="true"/>
+		<field name="paidbyaddress" required="true" />
+		<field name="payer_objid"  />
+		<field name="payer_name"  caption="Payer" indexed="true" searchable="true"/>
+		<field name="series" required="true" />
+		<field name="collector_objid" required="true" />
+		<field name="collector_name" required="true" indexed="true"/>
+		<field name="collector_title" required="true" />
+		<field name="amount" required="true" type="decimal" caption="Amount"/>
+		<field name="totalcash" required="true" type="decimal" caption="Total Cash"/>
+		<field name="totalnoncash" required="true" type="decimal" caption="Total Noncash"/>
+		<field name="totalcredit" required="true" type="decimal" caption="Total Credit"/>
+		
+		<field name="cashchange" required="true" />
+		<field name="totalcredit" required="true" />
+		<field name="org_objid" required="true" />
+		<field name="org_name" required="true" indexed="true" caption="Org Name"/>
+		<field name="formno" required="true" caption="Form No" searchable="true" indexed="true"/>
+		<field name="formtype" required="true" caption="Form Type" indexed="true"/>
+		<field name="stub" required="true" caption="Stub" indexed="true"/>
+
+		<field name="controlid" required="true" />
+		<field name="collectiontype_objid" required="true" />
+
+		<complex name="collectiontype" ref="collectiontype" jointype="many-to-one" 
+			required="true" includefields="handler,servicename,connection">
+			<key field="collectiontype_objid" target="objid" />
+		</complex> 
+
+		<field name="collectiontype_name" required="true" />
+		<field name="user_objid" required="true" />
+		<field name="user_name" required="true" indexed="true" caption="User Name"/>
+		<field name="remarks" />
+
+		<field name="subcollector_objid" />
+		<field name="subcollector_name" indexed="true"/>
+		<field name="subcollector_title" />
+		<field name="subcollector_remittanceid" />
+
+		<complex name="void" ref="cashreceipt_void" jointype="many-to-one" 
+			required="false" includefields="objid,reason">
+			<key field="objid" target="receiptid" />
+		</complex> 
+
+		<field name="remittanceid" />
+		<complex name="remittance" ref="remittance" jointype="many-to-one" required="false">
+			<key field="remittanceid" target="objid"/> 
+		</complex> 
+
+		<complex name="items" ref="cashreceiptitem" jointype="one-to-many">
+			<key field="objid" target="receiptid" />
+		</complex>	
+
+		<complex name="paymentitems" ref="cashreceiptpayment_noncash" jointype="one-to-many">
+			<key field="objid" target="receiptid" />
+		</complex>	
+
+		<complex name="sharing" ref="cashreceipt_share" jointype="one-to-many" required="false">
+			<key field="objid" target="receiptid" />
+		</complex>	
+
+		<field name="voided" expr="CASE WHEN void.objid IS NULL THEN 0 ELSE 1 END" type="checkbox" checkedValue="1" uncheckedValue="0" caption="Void" />
+	</element>
+</schema>

@@ -1,0 +1,77 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+import com.rameses.util.*;
+
+public class CreditMemoService  {
+	
+	@Env
+	def env;
+
+	@Service("DateService")
+	def dateSvc;
+
+	@DataContext("creditmemo")
+	def cmEm;
+
+	@Service("JevService")
+	def jevSvc;	
+
+	@Service
+	def self; 
+
+	@ProxyMethod
+	public void post( o ) { 
+		// post to accounting 
+		def rec = cmEm.find([ objid: o.objid ]).first();
+		if ( !rec ) throw new Exception('Credit Memo record not found'); 
+
+		def acctid = rec.bankaccount.acctid; 
+		if ( !acctid ) { 
+			def buff = new StringBuilder(); 
+			buff.append("Please specify first the Cash-In-Bank account for this ");
+			buff.append("Bank Account '").append( rec.bankaccount.title ).append("'");
+			throw new Exception( buff.toString() ); 
+		} 
+
+		cmEm.find([ objid: o.objid ]).update([ state: 'POSTED' ]); 
+		// auto post to ledger 
+		self.postJevAsync([ objid: o.objid ]); 
+	} 
+
+	@Async
+ 	@ProxyMethod 
+	public void postJevAsync( o ) { 
+		postJev( o ); 
+	}
+ 
+ 	@ProxyMethod 
+	public void postJev( o ) { 
+		// post to jev
+		def p = cmEm.find([ objid: o.objid ]).first(); 
+		if ( !p ) throw new Exception('Credit Memo record not found'); 
+
+		def acctid = p.bankaccount.acctid; 
+		if ( !acctid ) { 
+			def buff = new StringBuilder(); 
+			buff.append("Please specify first the Cash-In-Bank account for this ");
+			buff.append("Bank Account '").append( p.bankaccount.title ).append("'");
+			throw new Exception( buff.toString() ); 
+		} 
+
+		def ref = [
+			refid: p.objid, refno: p.controlno, reftype: 'creditmemo', 
+			refdate: p.dtissued, txntype:'COLLECTION', amount: p.amount
+		];
+		ref.fundid = p.bankaccount.fund.objid; 
+		
+		ref.items = [];
+		ref.items.addAll( cmEm.getBankAccountLedgerItems([ objid: p.objid ]));
+		ref.items.addAll( cmEm.getIncomeLedgerItems([ objid: p.objid ]));
+		ref.items.each {
+			it.acctid = it.itemacctid; 
+			it.acctcode = it.itemacctcode; 
+			it.acctname = it.itemacctname;
+		} 
+		jevSvc.create( ref ); 
+	} 
+} 

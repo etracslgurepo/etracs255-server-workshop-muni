@@ -1,0 +1,47 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+import com.rameses.util.*;
+import com.rameses.services.extended.*;
+
+class CloudNotificationListService extends ActiveListService
+{   
+    @ActiveDB(value='cloud_notification', em='notification')
+    def em;
+
+    @Service('DateService')
+    def dateSvc;
+
+    @Env
+    def env;
+
+    @ProxyMethod 
+    public def getColumns( params ) {
+        return [
+            [name:"dtfiled", caption:"DateFiled", width:120, maxWidth:140],
+            [name:"sender", caption:"Sender", width:120, maxWidth:300],
+            [name:"message", caption:"Message", width:120],
+            [name:"messagetype", caption:"MessageType", width:100, maxWidth:150],
+            [name:"filetype", caption:"FileType", width:100, maxWidth:150],
+            [name:"channel", caption:"Channel", width:100, maxWidth:150],
+            [name:"channelgroup", caption:"ChannelGroup", width:100, maxWidth:150]
+        ]; 
+    } 
+
+    void beforeList( params ) { 
+        params._pagingKeys = 'n.objid'; 
+        if ( params.filtertype == 'pending' ) {
+            params._listMethod = 'getPendingNotifications'; 
+        } else if ( params.filtertype == 'delivered' ) {
+            params._listMethod = 'getDeliveredNotifications'; 
+        } else if ( params.filtertype == 'failed' ) {
+            params._listMethod = 'getFailedNotifications'; 
+        } else {
+            params._listMethod = 'getAllNotifications'; 
+        } 
+    } 
+
+    void afterList( params, list ) {
+        def txntype = params.filtertype; 
+        list.each { it.txntype = txntype }
+    }
+} 

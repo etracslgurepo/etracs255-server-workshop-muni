@@ -1,0 +1,28 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class FAASTxnTypeInterceptor
+{
+	@ActiveDB('faastxntype')
+	def em
+
+	
+	@After(pattern="PersistenceService.read", eval="#{args[0]._schemaname=='faastxntype'}") 
+	public void loadAttributes( evt ) {
+		def entity = evt.result 
+		entity.attributes = em.getAttributes(entity).each{it.attr = [attribute:it.attribute]}
+	}
+
+
+	@After(pattern="PersistenceService.update", eval="#{args[0]._schemaname=='faastxntype'}") 
+	public void updateAttributes( evt ) {
+		def entity = evt.args[0]
+		em.deleteAttributes(entity)
+		entity.attributes.each{
+			em.insertAttribute(it)
+		}
+		entity.attributes = em.getAttributes(entity).each{it.attr = [attribute:it.attribute]}
+	}
+}
+

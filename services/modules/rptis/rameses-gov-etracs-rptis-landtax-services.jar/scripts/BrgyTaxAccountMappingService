@@ -1,0 +1,51 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class BrgyTaxAccountMappingService
+{
+	@ActiveDB('brgy_taxacct_mapping')
+	def em
+
+
+	@ProxyMethod
+	public def saveUnmappedBarangays(   ) {
+		def unmappedBrgys = em.getUnmappedBarangays()
+		unmappedBrgys.each{
+			it.prioracct = [:]
+			it.priorintacct = [:]
+			it.prevacct = [:]
+			it.previntacct = [:]
+			it.curracct = [:]
+			it.currintacct = [:]
+			it.advacct = [:]
+			it.advintacct = [:]
+			saveMapping(it)
+		}			
+	}
+
+	@ProxyMethod
+	public def getMappings( params ) {
+		params._pagingKeys = 'bm.barangayid'
+		return em.getMappings(params)
+	}
+
+	@ProxyMethod
+	public def saveMapping( mapping ) {
+		em.save(mapping)	
+		return mapping 
+	}
+
+	@ProxyMethod 
+	public def buildAccounts( params ) {
+		def stats = em.findBarangayStats(); 
+		if ( stats?.totalcount > 0 ) { 
+			em.buildItemAccounts(); 
+			em.removeAccountMappings(); 
+			em.buildAccountMappings(); 
+			return getMappings( params ); 
+		} 
+
+		throw new Exception( 'No available barangay(s)' ); 
+	}
+}

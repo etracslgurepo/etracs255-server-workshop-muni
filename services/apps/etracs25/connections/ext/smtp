@@ -1,0 +1,4 @@
+provider=email
+mail.from=${MAIL_RELAY_USER}
+mail.smtp.host=${mail_server_ip}
+mail.smtp.port=2525

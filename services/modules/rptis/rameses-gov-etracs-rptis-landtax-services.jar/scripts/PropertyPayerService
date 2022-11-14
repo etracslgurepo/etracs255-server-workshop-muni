@@ -1,0 +1,87 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.util.*
+import com.rameses.services.extended.*
+
+
+class PropertyPayerService
+{
+    @Env
+    def env
+
+    @ActiveDB('propertypayer')
+    def em
+
+    @Service('RPTUtil')
+    def util
+
+    def SCHEMA_ITEM = 'item'
+
+
+    @ProxyMethod
+    public def create(entity ) {
+        validatePayer(entity)
+        em.create(entity)
+    }
+
+    @ProxyMethod
+    public def open( entity ) {
+        entity = em.findById(entity)
+        if (!entity) throw new Exception('Record does not exist or has already been deleted.')
+        entity.items = em.getItems(entity)
+        return entity 
+    }
+
+    @ProxyMethod
+    public void delete( entity ) {
+        em.deleteItems(entity)
+        em.delete(entity)
+    }
+
+    @ProxyMethod
+    public def addItem( item ) {
+        validateItem(item)
+        em.create(item, SCHEMA_ITEM)    
+    }
+
+    @ProxyMethod
+    public void deleteItem( item ) {
+        em.delete(item, SCHEMA_ITEM)    
+    }
+
+    @ProxyMethod 
+    public void checkDuplicateItem(item){
+        def oitem = em.findItemByLedger([rptledgerid:item.rptledger.objid])
+        if (oitem)
+            throw new Exception('Ledger has already been added to this Property Payer.')
+    }
+
+    
+    void validatePayer(entity){
+        util.required('Taxpayer', entity.taxpayer)
+        checkDuplicatePayer(entity)
+    }
+
+
+    void validateItem(item){
+        if (!item.rptledger)
+            throw new Exception('Ledger is required.')
+            
+        if (item.rptledger.state != 'APPROVED')
+            throw new Exception('Ledger is invalid. Only approved ledger is allowed.')
+
+        checkDuplicateItem(item)
+    }
+
+
+    void checkDuplicatePayer(entity){
+        def pp = em.findByTaxpayer(entity.taxpayer)
+        if(pp)
+            throw new Exception('Taxpayer has an existing Property Payer record already.')
+    }
+
+
+
+
+}
+

@@ -1,0 +1,102 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*
+import com.rameses.util.*;
+
+class JevService  {
+
+	@DataContext('jev') 
+	def jevEm;
+
+	@DataContext(dynamic=true)
+	def em;
+
+	@Service("DateService")
+	def dateSvc;
+
+	@Env
+	def env;
+
+	/*
+    * This will be per fund and posted one by one 
+	*/
+	@ProxyMethod 
+	public void createBatch( def o ) { 
+		if(!o.ref) throw new Exception("ref is required");
+		if(!o.funds) throw new Exception("funds is required");
+		if(!o.items) throw new Exception("items is required");
+
+		def erritem = o.items.find{( !it.itemacctid )} 
+		if ( erritem ) throw new Exception("itemacctid is required in jevitem for "+ erritem._schemaname); 
+
+		def vdr = o.items.sum{it.dr};
+		def vcr = o.items.sum{it.cr}
+		//check firsty if total dr will equal total cr
+		if( vdr != vcr  )
+			throw new Exception("Total DR " + vdr + " must equal total CR " + vcr);
+
+		def ref = o.ref;
+		def itemGroups = o.items.groupBy{ it.fundid };
+		o.funds.each {
+			def fundid = it.fund.objid;
+			def jev = [:];
+			jev.putAll( ref );
+			jev.items = itemGroups.get( fundid );
+			if( !jev.items ) 
+				throw new Exception("No jev items found in posting with fund " + jev.jevno );
+			jev.amount = it.amount; 
+			jev.fundid = fundid; 
+			create( jev ); 
+		} 
+	} 
+
+	@ProxyMethod 
+	public def create( def ref ) { 
+		//check it jev items is balanced
+		def dr = ref.items.sum{ it.dr } 
+		def cr = ref.items.sum{ it.cr } 
+		if ( dr != cr ) 
+			throw new Exception("Total DR " + dr +   " and Total CR " + cr + " must be equal per fund");
+
+		def jev = [ objid: 'JEV'+ new java.rmi.server.UID()]; 
+		jev.putAll( ref );
+		jev.state = 'OPEN'; 
+		jev.refid = ref.refid; 
+		jev.refno = ref.refno; 
+		jev.refdate = ref.refdate;
+		jev.jevdate = ref.refdate; 
+		jev.reftype = ref.reftype; 
+		jev.txntype = ref.txntype; 
+		jev.postedby = [ objid: env.USERID, name: env.FULLNAME, title: env.JOBTITLE ];
+		jev.dtposted = dateSvc.getServerDate();; 
+
+		def emMap = [:];
+		def emLookup = { name ->
+			if( !emMap.containsKey(name)) {
+				emMap.put( name, em.lookup( name));
+			}
+			return emMap.get(name);
+		}
+
+		def j = jevEm.create( jev );
+		jev.items.each {
+			it.jevid = j.objid;
+			def db = emLookup( it._schemaname );
+			db.create( it );
+		}
+	}
+
+	@ProxyMethod 
+	public def updateJevNo( def o ) { 
+		def u = [jevno:o.jevno, jevdate:o.jevdate];
+		u.verifiedby = [objid:env.USERID, name: env.FULLNAME, title: env.JOBTITLE ]; 
+		u.dtverified = dateSvc.getServerDate();
+		u.state = 'POSTED'
+		jevEm.find([objid: o.objid]).update( u);
+		return u;	
+	}
+
+	@ProxyMethod 
+	public def getItemsInNGASAccount( params ) {
+		return jevEm.getItemsInNGASAccount( params ); 
+	}
+}

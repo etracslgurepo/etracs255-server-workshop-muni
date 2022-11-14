@@ -1,0 +1,46 @@
+<schema>
+	
+	<element tablename="business">
+		<field name="objid" primary="true"/>
+		<field name="state" required="true"/>
+		<field name="owner_name" required="true" searchable="true" indexed="true" caption="Owner Name"/>
+		<field name="owner_objid" required="true"/>
+		<field name="owner_address_text" required="true"/>
+		<field name="owner_address_objid" required="true"/>
+		<field name="businessname" required="true" searchable="true" indexed="true" caption="Business Name"/>
+		<field name="tradename" required="true"/>
+		<field name="address_text" required="true" caption="Address"/>
+		<field name="address_objid" required="true"/>
+		<field name="orgtype" required="true"/>
+		<field name="yearstarted" required="true"/>
+		<field name="activeyear" required="true"/>
+		<field name="pin" />
+		<field name="currentapplicationid" />
+		<field name="bin" required="true" searchable="true" indexed="true" caption="BIN"/>
+		<field name="taxcredit" required="true"/>
+		<field name="currentpermitid" />
+		<field name="phoneno" />
+		<field name="mobileno" />
+		<field name="email" />
+		<field name="appcount" required="true"/>
+		<field name="apptype" required="true" />
+		<field name="oldbin"  />
+		<field name="permit_objid"/>
+		<field name="activeqtr" />
+		<field name="expirydate"  />
+		<field name="permittype" required="true"/>
+		<field name="officetype"/>
+		<field name="nextrenewaldate"/>
+
+		<complex name="owner" ref="entity" jointype="many-to-one" required="false" 
+			includefields="mobileno,phoneno,email">
+			<key field="owner_objid" target="objid" />
+		</complex>	
+	</element>	
+	
+	<element name="business_appcount" tablename="business">
+		<field name="objid" primary="true"/>
+		<field name="appcount" required="true"/>
+	</element> 
+
+</schema>

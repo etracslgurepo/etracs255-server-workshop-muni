@@ -1,0 +1,65 @@
+import com.rameses.annotations.*;
+
+import java.rmi.server.UID;
+import com.rameses.util.*;
+import vehicle.facts.*;
+import treasury.utils.*;
+import treasury.facts.*;
+
+class BasicCapturePaymentService {
+
+	@Service('BillingInfoHandler')
+	def handler;
+
+	@Service("BillingRuleService")
+	def ruleSvc;
+
+
+	@ProxyMethod
+	public def getBillingInfo( pp ) {
+		if ( pp.options == null ) pp.options = [:];
+		if( !pp.rulename ) throw new Exception("BasicCapturePaymentService error. rulename is required");
+		if( !pp.params ) throw new Exception("BasicCapturePaymentService error. params is required");
+
+		//this is used as an option because in vehicle reg, getting billitems has a different query than getting for cashreceipt
+		pp.options.request_action = "capture";
+
+		//boolean returnsCredit = (pp.options.returns_credit.toString() == 'true'); 
+		//boolean includeCredit = (pp.options.include_credit.toString() == 'false' ? false : true ); 
+
+		pp.options.include_items = false; 
+
+		pp.headerinfo = handler.getHeaderInfo( pp ); 
+		pp.billitems = handler.getBillItems( pp ); 
+
+		def m = [:]; 
+		m.putAll( pp.params ); 
+		m.putAll( pp.headerinfo ); 
+		m.billitems = pp.billitems; 
+
+
+
+		def ruleParam = [ rulename: pp.rulename ]; 
+		ruleParam.putAll( pp.options ); 
+		ruleParam.params = m; 
+
+		def ruleRes = ruleSvc.execute( ruleParam ); 
+		//if ( !ruleRes.items ) throw new Exception('There must be a result items in your BillingRuleService.execute'); 
+
+		def bill = handler.formatReceiptInfo( m ); 
+		bill.putAll( pp.headerinfo );  
+		bill.billitems = ruleRes.billitems;
+
+		//bill.amount = m.billitems.sum{( it.amount ? it.amount : 0.0 )} 
+		bill.remove('objid');	//we should remove objid bec. there might be conflicts 
+		bill._postpayment = true; //we should mark this to indicate posting will be automatically handled
+		return bill; 
+	}
+
+	@ProxyMethod
+	public def post( pmt ) {
+		//the actual posting code is in the interceptor
+		pmt._postpayment = true; 
+		return pmt; 
+	} 
+}

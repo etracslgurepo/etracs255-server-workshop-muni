@@ -1,0 +1,128 @@
+import com.rameses.annotations.*; 
+
+class BusinessPermitInterceptor { 
+
+	@Env 
+	def env; 
+
+	@ActiveDB('business') 
+	def business_db; 
+
+	@ActiveDB('business_application') 
+	def app_db;
+
+	@DataContext( dynamic=true )
+	def dynaEm;
+
+	@Service( dynamic=true )
+	def dynaSvc;
+
+	@Service('BusinessPermitService') 
+	def permitSvc; 
+
+
+	@After( pattern="BusinessPermitService.create", index=-9999 )
+	public void afterCreate( evt ) { 
+		def perm = evt.result; 
+		perm.lobs = permitSvc.buildPermitLOB([ permitid: perm.objid ]); 
+
+		def p = [ objid: perm.objid ];
+		def o = app_db.read([ objid: perm.applicationid ]); 
+		if ( o ) {
+			o.permit = p; 
+			app_db.update( o );   
+		} 
+
+		o = business_db.read([ objid: perm.businessid ]); 
+		if ( o ) {
+			o.permit = p; 
+			business_db.update( o );  
+		} 
+	}
+
+	@After(pattern="BusinessPermitService.getReport", index=-9999)
+	public void afterGetReport( evt ) { 
+		def res = evt.result; 
+		if ( !res ) return; 
+
+		if ( res.objid ) { 
+			buildQrCodeData( res ); 
+		}
+	} 
+
+    @Before(pattern="JasperEmailQueueService.send", eval="#{args[0].reportid == 'business_permit'}")
+    public void beforeSendEmailQueue( evt ) {
+        def param = evt.args[0];
+        def perm = dynaEm.lookup('business_permit').find([ objid: param.refid.toString() ]).first(); 
+        if ( !perm ) {
+        	println 'Unable to locate Business Permit record '+ param.refid; 
+        	return; 
+        }
+
+        param.info = perm;
+        param.connection = "primary-email-server";
+    } 
+
+    @Before(pattern="JasperReportEmailService.send", eval="#{args[0].reportid == 'business_permit'}")
+    public void beforeSendEmail(def evt) {
+        def param = evt.args[0];
+        def refid = param.refid;
+        def reportid = param.reportid; 
+
+		def org = dynaSvc.lookup('OrgService').getRoot(); 
+        def formReportSvc = dynaSvc.lookup('FormReportService'); 
+        def report = formReportSvc.getData([ reportid: reportid, parameters: [ objid: refid ]]); 
+
+        param.attachments = [
+        	[ title: "${org.objid}_${report.data.permitno}.pdf".toString(), reportid: reportid, data: report.data ]
+        ];
+    } 
+
+    @After(pattern="FormReportService.getData", eval="#{args[0].reportid == 'business_permit'}")
+    public void afterGetFormReportData( evt ) {
+        def param = evt.args[0];
+        def reportid = param.reportid; 
+
+        def objid = param.parameters.objid;
+        if ( !objid ) throw new Exception("objid is required in "+ reportid +" report");
+
+        def perm = dynaEm.lookup('business_permit').find([ objid: objid ]).first(); 
+        if ( !perm ) throw new Exception("business permit record not found");
+        
+		def data = permitSvc.getReport([ applicationid: perm.applicationid ]); 
+        if ( data.photo ) {
+            try {
+                data.photo = new java.io.ByteArrayInputStream( data.photo );
+            } catch(e) {
+                data.photo = null;
+            } 
+        } 
+
+        data.template = "com/rameses/gov/etracs/bpls/reports/permit/BusinessPermit"; 
+        evt.result.data = data;
+    } 
+
+
+	void buildQrCodeData( result ) {
+		def qrCodeSvc = null; 
+		try {
+			qrCodeSvc = dynaSvc.lookup("QrCodeInfoService"); 
+		} 
+		catch(Throwable t) {
+			println '[error] '+ t.message;
+		} 
+
+		if ( qrCodeSvc == null ) return; 
+
+		def data = [:];
+		data.orgcode = env.ORGID;
+		if ( !data.orgcode ) {
+			data.orgcode = dynaSvc.lookup('OrgService').getRoot()?.objid; 
+		}
+
+		data.connection = "bpls";
+		data.reftype = "business_permit";
+		data.refid = result.objid;
+		result.qrcode = "qrcode:" + qrCodeSvc.getData( data ); 
+	}	
+}

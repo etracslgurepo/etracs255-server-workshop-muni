@@ -1,0 +1,48 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import com.rameses.util.*
+import com.rameses.services.extended.*
+
+class FAASOwnerReconcileService
+{
+	@Env 
+	def env
+
+	@Service('LogService')
+	def logSvc;
+
+	@DataContext('faas')
+	def em_faas
+
+	@DataContext('faas_list')
+	def em_faas_list
+
+	@DataContext('rptledger')
+	def em_rptledger
+
+	@ProxyMethod
+	public def getFaasListToReconcile(entity) {
+		return em_faas_list
+				.find([taxpayer_objid: entity.objid])
+				.orderBy('ry,tdno')
+				.list()
+	}
+
+	@ProxyMethod
+	public def reconcileOwners(param) {
+		def entity = param.entity 
+    param.list.each{
+			em_faas.find([objid: it.objid]).update([taxpayer_objid: entity.objid])
+			em_faas_list.find([objid: it.objid]).update([taxpayer_objid: entity.objid])
+			em_rptledger.find([faasid: it.objid]).update([taxpayer_objid: entity.objid])
+			logReconcile(entity, it)	
+		}
+	}
+
+	void logReconcile(entity, faas) {
+		def msg = 'New Entity: ' + entity.entityno;
+		msg += ' Previous Entity: ' + faas.taxpayer.entityno;
+		logSvc.logA('reconcile_taxpayer', 'faas', faas.objid, msg)
+	}
+}
+

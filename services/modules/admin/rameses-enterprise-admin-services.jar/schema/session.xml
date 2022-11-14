@@ -1,0 +1,25 @@
+<schema>
+
+    <element name="session" tablename="sys_session">
+        <field name="sessionid" primary="true" />
+        <field name="userid" />
+        <field name="username" />
+        <field name="clienttype" />
+        <field name="accesstime" />
+        <field name="accessexpiry" />        
+        <field name="timein" />
+    </element>
+
+    <element name="log" tablename="sys_session_log">
+        <field name="sessionid" primary="true" />
+        <field name="userid" />
+        <field name="username" />
+        <field name="clienttype" />
+        <field name="accesstime" />
+        <field name="accessexpiry" />
+        <field name="timein" />
+        <field name="timeout" />
+        <field name="state" />
+    </element>
+
+</schema>

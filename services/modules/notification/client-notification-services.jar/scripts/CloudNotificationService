@@ -1,0 +1,172 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+import com.rameses.util.*;
+
+class CloudNotificationService
+{   
+    @ActiveDB(value='notification', em='notification')
+    def em;
+
+    @Service('DateService') 
+    def dateSvc; 
+
+    @Service('CloudNotificationData') 
+    def dataUtil; 
+
+    @Service('CloudSettings') 
+    def settings;
+
+    @Service 
+    def self; 
+
+    @Env
+    def env;
+
+    @ProxyMethod 
+    public def addMessage( msg ) { 
+        if ( !settings.isEnabled() ) { 
+            //facility is disabled, exit immediately 
+            return msg;  
+        } 
+
+        if (!msg) throw new Exception('Please provide parameters'); 
+
+        boolean hasMessageType = (msg.messagetype? true : false); 
+        boolean hasAsyncRequest = (msg.data instanceof AsyncRequest); 
+        msg.datatype = (hasAsyncRequest ? 'async_request': 'object'); 
+        msg.build_version = 2.0; 
+
+        if (!msg.senderid) msg.senderid = env.USERID; 
+        if (!msg.sender) msg.sender = (env.FULLNAME? env.FULLNAME: env.NAME); 
+        if (!msg.channelgroup) msg.channelgroup = msg.channel; 
+        if (!msg.messagetype) msg.messagetype = 'notification'; 
+        if (!msg.attachmentcount) msg.attachmentcount = 0; 
+
+        if ( hasAsyncRequest ) {            
+            if (!msg.message) msg.message = 'New Async Request';         
+            if (!msg.messagetype) msg.messagetype = 'async_request'; 
+            if (!msg.filetype) msg.filetype = 'async_request'; 
+            if (!msg.groupid) msg.groupid = 'async_request'; 
+        }
+
+        def rundate = dateSvc.serverDate;
+        msg.dtfiled = rundate.toString(); 
+
+        if ( hasAsyncRequest && !hasMessageType ) { 
+            msg.immediate = true; 
+            msg.asyncdata = msg.data; 
+            msg.messagetype = 'async_request'; 
+            msg.filetype = msg.groupid = msg.messagetype; 
+            msg.data = null; 
+            self.postAsyncMessage( msg ); 
+            //
+            //exit immediately after posting this message 
+            //
+            return msg;  
+        } 
+
+        if ( !msg.objid ) { 
+            msg.objid = 'MSG'+new java.rmi.server.UID(); 
+        } 
+        msg.origintype = 'local'; 
+        msg.chunkcount = 0;
+        msg.chunksize = 0; 
+        em.create( msg ); 
+
+        dataUtil.save([ 
+            objid  : msg.objid, 
+            data   : msg.data 
+        ]); 
+        em.updateChunkInfo( msg );  
+        msg.data = null; 
+
+        def pendingdata = [ 
+            objid  : msg.objid, 
+            indexno: 0 
+        ]; 
+        em.create( pendingdata, 'pending' ); 
+        return msg; 
+    } 
+
+    @ProxyMethod 
+    public void removeMessage( params ) { 
+        if ( !settings.isEnabled() ) { 
+            //facility is disabled, exit immediately 
+            return;  
+        } 
+
+        if ( !params.objid ) throw new Exception('objid parameter is required');
+
+        em.removeData([ parentid: params.objid ]); 
+        em.removePending( params ); 
+        em.removeForDownload( params ); 
+        em.delete( params ); 
+    } 
+
+    @ProxyMethod 
+    public def getList( params ) { 
+        if ( !settings.isEnabled() ) { 
+            //facility is disabled, exit immediately 
+            return []; 
+        } 
+
+        return em.getList( params ); 
+    } 
+
+    @ProxyMethod 
+    public def findHeader( params ) {
+        return em.findHeader( params ); 
+    }
+
+    @ProxyMethod 
+    public void createMessageForDownload( params ) {
+        println ''' 
+Downloading message from ${params.channel}_$P{params.origin}: 
+  Sender= ${params.sender}, Msg= ${params.message}, Objid= ${params.objid}  
+        '''; 
+
+        params.origintype='remote'; 
+        params.completed=0; 
+        if ( !em.findHeader( params ) ) { 
+            em.create( params ); 
+        } 
+        if ( !em.read( params, 'fordownload' ) ) { 
+            em.create([ objid: params.objid, indexno:0 ], 'fordownload'); 
+        } 
+    } 
+
+    @ProxyMethod 
+    public void rescheduleFailedMessage( params ) {
+        //do nothing 
+    } 
+
+    @ProxyMethod 
+    public void rescheduleFailedMessages( params ) {
+        //do nothing 
+    } 
+
+
+
+    @Service(value='CloudNotificationService', connection='cloud_notification')
+    def remote;
+
+    /*
+        this is intended for remote proxying to cloud notifcation 
+    */
+    @ProxyMethod
+    public def markAsDelivered( params ) { 
+        return remote.markAsDelivered( params ); 
+    } 
+
+    @Async 
+    @ProxyMethod 
+    public void postAsyncMessage( data ) { 
+        if ( !settings.isEnabled() ) { 
+            //facility is disabled, exit immediately 
+            return;  
+        } 
+                
+        println 'Post AsyncMessage to cloud... Type='+ data.messagetype; 
+        remote.postAsyncMessage( data ); 
+    } 
+} 

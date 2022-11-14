@@ -1,0 +1,11 @@
+<schema>
+
+	<element tablename="sys_usergroup_permission">
+		<field name="objid" primary="true" prefix="USRGRPPERMS"/>	
+		<field name="usergroup_objid" />
+		<field name="object" />
+		<field name="permission" />
+		<field name="title" />
+	</element>
+
+</schema> 

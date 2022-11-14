@@ -1,0 +1,38 @@
+<schema>
+    <element tablename="rptledgerfaas">
+        <field name="objid" primary="true" prefix="RLF"/>
+        <field name="state" required="true"/>
+        <field name="rptledgerid" required="true" />
+        <field name="faasid" />
+        <field name="tdno" required="true" />
+        <field name="txntype_objid" required="true" />
+        <field name="classification_objid" required="true" />
+        <field name="actualuse_objid"  />
+        <field name="taxable" required="true" type="boolean" />
+        <field name="idleland" required="true" type="boolean" />
+        <field name="reclassed" type="boolean" />
+        <field name="backtax" required="true" type="boolean" />
+        <field name="fromyear" required="true" type="integer" />
+        <field name="fromqtr" required="true" type="integer" />
+        <field name="toyear" required="true" type="integer" />
+        <field name="toqtr" required="true" type="integer" />
+        <field name="assessedvalue" required="true" type="decimal" />
+        <field name="systemcreated" required="true" type="boolean" />
+        <complex name="faas" ref="faas_list" jointype="many-to-one" required="false" 
+            includefields="totalmv">
+            <key field="faasid" target="objid" />
+        </complex>
+        <complex name="txntype" ref="faas_txntype" jointype="many-to-one" required="false" 
+            includefields="name">
+            <key field="txntype_objid" target="objid" />
+        </complex>
+        <complex name="classification" ref="propertyclassification" jointype="many-to-one"  required="false" 
+            includefields="code,name">
+            <key field="classification_objid" target="objid" />
+        </complex>
+        <complex name="actualuse" ref="propertyclassification" jointype="many-to-one"  required="false" 
+            includefields="code,name">
+            <key field="actualuse_objid" target="objid" />
+        </complex>
+    </element>
+</schema>

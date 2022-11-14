@@ -1,0 +1,12 @@
+<schema>
+    <element tablename="consolidationaffectedrpu">
+        <field name="objid" primary="true" />
+        <field name="consolidationid" required="true" />
+        <field name="landfaasid" required="true" />
+        <field name="prevfaasid" required="true" />
+        <field name="newrpid" required="true" />
+        <field name="newrpuid" required="true" />
+        <field name="newfaasid" />
+        <field name="newsuffix" />
+    </element>
+</schema>

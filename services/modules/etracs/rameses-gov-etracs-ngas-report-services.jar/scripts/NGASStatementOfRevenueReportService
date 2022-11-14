@@ -1,0 +1,189 @@
+import com.rameses.annotations.*;
+
+class NGASStatementOfRevenueReportService {
+
+	@ActiveDB('ngas_statementofrevenue')
+	def em;
+
+	@DataContext('remittance') 
+	def rem_db;
+
+	@DataContext('collectionvoucher') 
+	def liq_db;
+
+	@DataContext('fund') 
+	def fund_db;
+
+	@DataContext('account_maingroup') 
+	def acctgroup_db;
+
+	@Service("NumberService")
+	def numSvc;
+
+	@Service("DateService")
+	def dateSvc;	
+
+
+	@ProxyMethod 
+	public def initReport( param ) {
+		def m = [funds: []]; 
+		if ( param.reftype == 'remittance' ) {
+			m.funds = em.getRemittanceFunds([ refid: param.objid ]); 
+		} 
+		else if ( param.reftype == 'liquidation' ) {
+			m.funds = em.getLiquidationFunds([ refid: param.objid ]); 
+		} 
+
+		m.acctgroups = acctgroup_db.where("reporttype IN ('NGAS','PPSAS')").orderBy('reporttype, version, title').list(); 
+		return m; 
+	}	
+
+	@ProxyMethod 
+	public def getReport( param ) { 
+		def refdata = null; 
+		if ( param.reftype == 'remittance') {
+			refdata = rem_db.find([ objid: param.objid ]).first(); 
+		}
+		else if ( param.reftype == 'liquidation') {
+			refdata = liq_db.find([ objid: param.objid ]).first(); 	
+		}
+		
+		if ( !refdata?.objid ) 
+			throw new Exception('Transaction record not found'); 
+
+		def fund = null; 
+		if ( param.fund?.objid ) {
+			fund = fund_db.find([ objid: param.fund.objid ]).first(); 
+		} 
+
+		def p = [refid: param.objid];
+		p.maingroupid = param.acctgroup?.objid.toString(); 
+
+		def filters = ['1=1'];
+		if ( fund?.objid ) { 
+			filters << "fundid = '"+ fund.objid +"'";
+		} 
+		p.filters = ' AND '+ filters.join(' AND '); 
+
+		def items = []; 
+		if ( param.reftype == 'remittance' ) {
+			items = em.getRemittanceReport( p );
+		}
+		else if ( param.reftype == 'liquidation' ) {
+			items = em.getLiquidationReport( p );
+		}
+
+		def unmappeditems = items.findAll{( it.acctid == null )}
+		items.removeAll( unmappeditems ); 
+		unmappeditems.each{
+			it.level = 2;
+			it.acctcode = it.itemcode; 
+			it.accttitle = it.itemtitle; 
+			it.itemamount = it.amount; 
+			it.objid = 'unmapped'; 
+			it.type = 'detail';
+			it.unmapped = 1;
+			buildItemTitle( it ); 
+		}
+
+		def accounts = em.getAccounts([ maingroupid: p.maingroupid ]);
+
+		items.groupBy{ it.acctid }.each{ k,v-> 
+			def a = accounts.find{ it.objid == k }
+			if ( a ) { 
+				a.amount = v.sum{( it.amount ? it.amount : 0.0 )} 
+				if ( a.amount == null ) a.amount = 0.0; 
+
+				a.itemamount = a.amount; 
+				a.unmapped = 0;
+
+				a.items = v; 
+				a.items.each{
+					it.level = a.level + 1; 
+					it.acctcode = it.itemcode; 
+					it.accttitle = it.itemtitle; 
+					buildItemTitle( it ); 
+				}
+			} 
+		}
+
+		def amtlist = accounts.findAll{( it.amount > 0 )} 
+		def mlevel = amtlist.max{( it.level ? it.level : 0 )}?.level; 
+		if ( !mlevel ) mlevel = 0; 
+
+		while (mlevel > 0) {
+			accounts.findAll{( it.level == mlevel )}.each{ n-> 
+				def amount = accounts.findAll{( it.groupid == n.objid )}.sum{( it.amount ? it.amount : 0.0 )} 
+				n.amount = (n.amount ? n.amount : 0.0) + (amount ? amount : 0.0);
+			}
+			mlevel--;
+		} 
+
+		accounts.removeAll( accounts.findAll{( it.amount == 0.0 )} ); 
+
+		accounts.each{
+			buildItemTitle( it ) 
+		}
+
+		def finallist = []; 
+		accounts.findAll{( it.type == 'root' )}.each{
+			buildTree( it, accounts, finallist ); 
+		}
+
+		items.clear(); 
+		if ( unmappeditems ) {
+			def m = [objid: 'unmapped', title: 'UNMAPPED ACCOUNTS*']; 
+			m.amount = unmappeditems.sum{( it.amount ? it.amount : 0.0 )}
+			m.type = 'root';
+			items << m;
+		}
+		items.addAll( unmappeditems ); 
+		items.addAll( finallist ); 
+
+		def acctgroup = acctgroup_db.find([ objid: p.maingroupid ]).first();
+		def reporttype = (acctgroup?.reporttype ? acctgroup.reporttype : 'NGAS').toUpperCase(); 
+
+		def hdr = [:]; 
+		hdr.REPORTTITLE = ''+ reporttype + ' STATEMENT OF REVENUE';
+		hdr.CONTROLDATE = refdata.controldate;
+		hdr.CONTROLNO = refdata.controlno;
+		hdr.COLLECTORNAME = refdata.collector?.name;
+		hdr.COLLECTORTITLE = refdata.collector?.title;
+		hdr.LIQUIDATINGOFFICERNAME = refdata.liquidatingofficer?.name
+		hdr.LIQUIDATINGOFFICERTITLE = refdata.liquidatingofficer?.title
+		hdr.AMTINWORDS = numSvc.doubleToWords( refdata.amount );
+		hdr.DATEPOSTED =  refdata.dtposted;  
+		if ( fund?.objid ) { 
+			hdr.FUNDTITLE = fund.title; 
+		} 
+		else { 
+			hdr.FUNDTITLE = '( ALL FUNDS )';	
+		} 
+		return [ header: hdr, items: items ]; 
+	} 
+
+
+	private void buildItemTitle( o ) {
+		o.prefix = ''; 
+		if ( o.level > 1 ) {
+			o.prefix = ('    ' * o.level-1); 
+		} 
+
+		if ( o.type == 'root') {
+			o.title = ''+ o.accttitle +'*'; 
+		} 
+		else if ( o.type == 'group') {
+			o.title = ''+ o.prefix + o.accttitle; 
+		}
+		else {
+			o.title = ''+ o.prefix + (o.acctcode ? o.acctcode : '-') +'  '+ o.accttitle; 
+		}
+	}
+
+	private void buildTree( node, sourcelist, targetlist ) {
+		targetlist << node; 
+		sourcelist.findAll{( it.groupid == node.objid )}.each{
+			buildTree( it, sourcelist, targetlist ); 
+		}
+	}
+}

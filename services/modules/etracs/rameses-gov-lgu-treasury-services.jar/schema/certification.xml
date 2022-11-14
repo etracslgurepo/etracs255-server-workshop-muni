@@ -1,0 +1,27 @@
+<schema>
+	<element name="certification" tablename="certification">
+		<field name="objid" primary="true" /> 
+		<field name="txnno" required="true" />
+		<field name="txndate" required="true" />
+		<field name="type" required="true" />
+		<field name="refid" required="true" />
+		<field name="name" required="true" />
+		<field name="address" required="true" />
+		<field name="requestedby" required="true" />
+		<field name="requestedbyaddress" required="true" />
+		<field name="purpose" required="true" />
+		<field name="certifiedby" required="true" />
+		<field name="certifiedbytitle" required="true" />
+		<field name="byauthority" />
+		<field name="byauthoritytitle" />
+		<field name="orno" required="true" />
+		<field name="ordate" required="true" />
+		<field name="oramount" required="true" type="decimal" />
+		<field name="stampamount" required="true" type="decimal"  />
+		<field name="createdbyid" required="true" />
+		<field name="createdby" required="true" />
+		<field name="createdbytitle" required="true" />
+		<field name="office" required="true" />
+		<complex name="info" required="false" serializer="default" /> 
+	</element>
+</schema>

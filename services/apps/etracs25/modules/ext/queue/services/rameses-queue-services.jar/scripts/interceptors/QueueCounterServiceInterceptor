@@ -1,0 +1,115 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+import com.rameses.util.*;
+
+class QueueCounterServiceInterceptor {
+
+    @XConnection('queue_ws_server')
+    def wssender;
+
+	@DataContext(value='queue_section', adapter='queue') 
+	def qs; 
+
+	@DataContext(value='queue_counter', adapter='queue') 
+	def qc; 
+
+	@DataContext(value='queue_counter_section', adapter='queue') 
+	def qcs; 
+
+	@Service 
+	def self; 
+
+	@After( pattern="QueueCounterService.create", index=9999 ) 
+	public void afterCreate( evt ) { 
+		def result = evt.result; 
+		if ( !result ) return; 
+
+		def msgs = []; 
+		result.sections.each{ 
+			msgs << createAddCounterSectionMessage([ counterid: result.objid, sectionid: it.objid ]);
+		} 
+		notify( msgs ); 
+	} 
+
+	@After( pattern="QueueCounterService.update", index=9999 ) 
+	public void afterUpdate( evt ) { 
+		def result = evt.result; 
+		if ( !result ) return; 
+
+		def msgs = []; 
+		def qcslist = qcs.find([ counterid: result.objid ]).list(); 
+		qcslist.each{ 
+			msgs << [ counterid: it.counterid, sectionid: it.sectionid, type: 'REMOVE_COUNTER_SECTION' ]; 
+		} 
+		qcslist.each{
+			msgs << createAddCounterSectionMessage([ counterid: it.counterid, sectionid: it.sectionid ]);
+		} 
+		notify( msgs ); 
+	} 	
+
+	@After( pattern="QueueCounterService.addSection", index=9999 ) 
+	public void afterAddSection( evt ) {
+		def params = evt.args[0]; 
+		if ( params.sectionid && params.counterid ) { 
+			def msg = createAddCounterSectionMessage([ counterid: params.counterid, sectionid: params.sectionid ]); 
+			notify( msg );
+		}
+	}
+
+	@After( pattern="QueueCounterService.removeSection", index=9999 ) 
+	public void afterRemoveSection( evt ) {
+		def params = evt.args[0]; 
+		if ( params.sectionid && params.counterid ) {
+			params.type = 'REMOVE_COUNTER_SECTION'; 
+			notify( params ); 
+		}
+	}
+
+	def createAddCounterSectionMessage( params ) {
+		def rec = qc.find([ objid: params.counterid ]).first(); 
+		params.countercode = rec.code; 
+		params.sectionid = params.sectionid.toLowerCase(); 
+		params.uuid = (params.sectionid +'_'+ params.counterid).toLowerCase(); 
+		params.type = 'ADD_COUNTER_SECTION'; 
+		return params; 
+	} 
+
+	void loadGroup( data ) {
+		def o = qs.find([ objid: data.sectionid ]).first(); 
+		if ( o ) data.groupid = o.groupid; 
+	} 
+
+	void notify( data ) { 
+		def msgs = (data instanceof List ? data : [data]); 
+		msgs.each{
+			def uuid = ''+ it.sectionid +'_'+ it.counterid; 
+			it.uuid = uuid.toLowerCase(); 
+			loadGroup( it ); 
+		}
+		self.notifyWs( msgs ); 
+	} 
+
+	@Async 
+	@ProxyMethod(local=true) 
+	public void notifyWs( data ) { 
+		if ( !data ) return; 
+
+		def msgs = (data instanceof List? data : [data]); 
+		msgs.each{
+			it.channel = it.group = 'queue'; 	
+			wssender.send([ 
+	            channel : it.channel, 
+	            group   : it.group, 
+	            data    : resolveData( it )  
+	        ]); 
+		} 
+	} 	
+
+	def resolveData( data ) {
+        try {
+            return new Base64Cipher().decode( data ); 
+        } catch(Throwable t) { 
+            return data; 
+        } 
+    }  
+}

@@ -1,0 +1,64 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+
+class BPEmployerListReportService { 
+	
+	@ActiveDB("bpreport")
+	def em;
+
+    @Service('DateService') 
+    def dateSvc; 
+    
+	@ProxyMethod
+	public def getReport(params) { 
+		if ( !params.permittype?.objid ) 
+			throw new Exception('permit type parameter is required'); 		
+
+		def startdate = resolveDate( params.startdate ); 
+		if ( !startdate ) throw new Exception('startdate parameter is required'); 
+
+		def enddate = resolveDate( params.enddate );  
+		if ( !enddate ) throw new Exception('enddate parameter is required'); 
+
+		params.startdate = startdate; 
+		params.enddate = resolveDate( dateSvc.add( enddate, '1d' )); 
+		params.permittypeid = params.permittype.objid;  
+		
+		params.apptypefilter = '';
+		if ( params.apptypes ) { 
+			params.apptypefilter = params.apptypes.findAll{( it?.objid )}.collect{"'"+ it.objid +"'"}.join(','); 
+		} else { 
+			params.apptypefilter = "''";	
+		}
+
+		params.appstatefilter = ''; 
+		if ( params.appstates ) { 
+			params.appstatefilter = params.appstates.findAll{( it?.objid )}.collect{"'"+ it.objid +"'"}.join(','); 
+		} else { 
+			params.appstatefilter = "''"; 
+		} 
+
+		def list = em.getEmployerList( params );
+		if ( !list ) throw new Exception('No record(s) found that matches your criteria.');
+
+		return list;
+	} 
+
+	private def resolveDate( value ) { 
+		if ( !value ) return null; 
+		if ( value instanceof java.util.Date ) { 
+			return new java.sql.Date( value.time ); 
+		} 
+
+		try { 
+			def dt = java.sql.Timestamp.valueOf( value.toString() ); 
+			return new java.sql.Date( dt.time );  
+		} catch(Throwable t) {;} 
+
+		try { 
+			return java.sql.Date.valueOf( value.toString() ); 
+		} catch(Throwable t) { 
+			return null; 
+		} 
+	}	
+}

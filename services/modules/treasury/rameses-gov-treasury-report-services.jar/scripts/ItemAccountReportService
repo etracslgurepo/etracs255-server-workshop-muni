@@ -1,0 +1,38 @@
+import com.rameses.annotations.*;
+
+class ItemAccountReportService { 
+
+	@ActiveDB('itemaccount_liquidation_report')
+	def liq_report_db; 
+
+	@ActiveDB('itemaccount_remittance_report')
+	def rem_report_db; 
+
+	@ProxyMethod
+	public def getReport( param ) {
+		if ( !param.startdate ) throw new Exception("'startdate' parameter is required"); 
+		if ( !param.enddate ) throw new Exception("'enddate' parameter is required"); 
+
+		if ( param.accounts ) {
+			param.acctids = param.accounts.findAll{( it )}.collect{("'"+ it +"'")}.join(","); 
+		} 
+
+		if ( !param.acctids ) 
+			throw new Exception("'accounts' parameter is required");
+
+		def postingtype = param.postingtype?.objid.toString(); 
+		def report_db = ( postingtype == 'liquidation' ? liq_report_db : rem_report_db); 
+
+		def template = param.template?.objid.toString(); 
+		if ( template == 'summary' ) {
+			return buildReport( report_db.getSummary( param )); 
+		} else {
+			return buildReport( report_db.getReceipts( param )); 
+		}
+	}
+
+	private def buildReport( list ) { 
+		def res = [ reportdata: list, header: [:]]; 
+		return res; 
+	}
+} 

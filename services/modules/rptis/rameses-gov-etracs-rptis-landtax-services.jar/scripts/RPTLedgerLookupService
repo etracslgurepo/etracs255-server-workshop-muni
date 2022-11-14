@@ -1,0 +1,66 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.util.*
+
+class RPTLedgerLookupService
+{
+    @Service('RPTUtil')
+    def util
+
+
+    @ProxyMethod
+    public def getList( params ) {
+        if (! params) params = [:]
+        
+        params.tdno = params.searchtext
+        params.prevtdno = params.searchtext
+        params.searchtext = (params.searchtext ? params.searchtext : '') + '%'
+        params.columns = getLookupColumns()
+        params.fixfilters = ''
+        params.filters = ''
+        params.orderby = ''
+
+        if (params.state) {
+            params.fixfilters += ' AND rl.state = $P{state}'
+        }
+        if (params.taxpayer?.objid) {
+            params.taxpayerid = params.taxpayer.objid
+            params.fixfilters += ' AND rl.taxpayer_objid = $P{taxpayerid}'
+        }
+
+        def filters = [
+            ' AND rl.tdno LIKE $P{tdno}',
+            ' AND e.entityname LIKE $P{searchtext}',
+            ' AND rl.administrator_name LIKE $P{searchtext}',
+            ' AND rl.fullpin LIKE $P{searchtext}',
+            ' AND rl.cadastrallotno LIKE $P{searchtext}',
+            ' AND rl.prevtdno = $P{prevtdno}',
+        ]
+        return util.getListFromQuery('rptledger:getList', filters, params, 'rl.objid')
+    }
+
+    @ProxyMethod
+    public def getColumns( params ) {
+        return [ 
+            [name:'tdno', caption:'TD No.', width:120],
+            [name:'taxpayer.name', caption:'Taxpayer Name', width:250],
+            [name:'fullpin', caption:'PIN', width:150],
+            [name:'totalav', caption:'Assessed Value', type:'decimal', width:110],
+            [name:'taxable', caption:'Tax?', type:'boolean', width:50],
+            [name:'state', caption:'State', width:100],
+        ]   
+    }
+
+    def getLookupColumns(){
+        return '''
+            rl.objid, rl.state, rl.faasid, rl.tdno, rl.prevtdno, rl.titleno,
+            rl.owner_name, rl.administrator_name, rl.taxpayer_objid, 
+            e.entityno as taxpayer_entityno, e.name AS taxpayer_name, e.address_text as taxpayer_address_text,
+            rl.fullpin, rl.cadastrallotno, rl.totalareaha, rl.classcode, rl.rputype,  
+            rl.totalmv, rl.totalav, rl.lastyearpaid, rl.lastqtrpaid, rl.taxable, f.effectivityyear, 
+            CASE WHEN rl.faasid IS NULL THEN 'M' ELSE '' END AS type,
+            b.objid AS barangay_objid, b.name AS barangay_name
+        '''
+    }
+}
+

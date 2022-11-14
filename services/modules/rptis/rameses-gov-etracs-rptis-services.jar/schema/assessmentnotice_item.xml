@@ -1,0 +1,8 @@
+<schema>
+	<element tablename="assessmentnoticeitem">
+		<field name="objid" primary="true" prefix="ANI"/>
+		<field name="assessmentnoticeid" required="true" />
+		<field name="faasid" required="true" />
+		<complex name="info" required="false" serializer="default" />
+	</element>
+</schema>

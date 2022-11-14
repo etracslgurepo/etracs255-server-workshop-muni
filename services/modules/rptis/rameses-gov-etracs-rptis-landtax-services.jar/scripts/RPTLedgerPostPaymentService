@@ -1,0 +1,122 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import com.rameses.services.extended.*
+
+class RPTLedgerPostPaymentService
+{
+	@DataContext('rptledger')
+	def em_rptledger
+
+	@DataContext('rptledger_item')
+	def em_rptledger_item
+
+	@DataContext('cashreceipt_rpt')
+	def em_cashreceipt_rpt
+
+	@DataContext('rptpayment')
+	def em_rptpayment
+
+	@DataContext('rptpayment_item')
+	def em_rptpayment_item
+
+	@DataContext('rptpayment_share')
+	def em_rptpayment_share
+
+	@DataContext('rptbill_ledger')
+	def em_rptbill_ledger
+
+
+	@ProxyMethod
+	public void postPayment(eor){
+		def ledgerpmt = createLedgerPayment(eor)
+		postPaidItems(ledgerpmt, eor.rptledger.postingitems)
+		postShares(ledgerpmt, eor.rptledger)
+		updateLedgerPaidYearQtr(eor.rptledger)
+		println 'Landtax EOR Payment successfully posted.'
+	}
+
+	@ProxyMethod
+	public def buildCashReceiptItemsAndShares(receipt){
+		receipt.sharing = []
+		receipt.items = []
+		receipt.ledgers.each{rl->
+			rl.shares.each{
+				it.parentid = receipt.objid 
+				receipt.sharing << it
+			}
+			rl.billitems.each{
+				it.parentid = receipt.objid 
+				receipt.items << it 
+			}
+		}
+	}
+
+	def createLedgerPayment(eor){
+		def rptledger = eor.rptledger 
+		def pmt = [:]
+			pmt.rptledger = rptledger
+			pmt.type = 'eor'
+			pmt.refid = rptledger.objid 
+			pmt.reftype = 'rptledger'
+			pmt.receiptid = eor.objid 
+			pmt.receiptno = eor.receiptno 
+			pmt.receiptdate = eor.receiptdate 
+			pmt.paidby = [name: eor.paidby, address: eor.paidbyaddress]
+			pmt.postedby = 'eps'
+			pmt.postedbytitle = 'eps'
+			pmt.dtposted = eor.txndate 
+			pmt.fromyear = rptledger.fromyear 
+			pmt.fromqtr = rptledger.fromqtr 
+			pmt.toyear = rptledger.toyear 
+			pmt.toqtr = rptledger.toqtr 
+			pmt.amount = rptledger.total 
+			pmt.collectingagency = ''
+			pmt.voided = false 
+			em_rptpayment.create(pmt)
+			return pmt 
+	}
+
+	void postPaidItems(ledgerpmt, postingitems){
+		postingitems.each{
+			it.parentid = ledgerpmt.objid 
+			it.partialled = (it.partialled ? it.partialled : false)
+			em_rptpayment_item.create(it)
+			em_rptledger_item.find([objid:it.itemid]).update([amtpaid:'{amtpaid + :amount}'], [amount:it.amount])
+		}
+		em_rptledger_item.where('parentid = :refid and amtpaid >= amount', ledgerpmt).delete()
+	}
+
+	void postShares(ledgerpmt, ledger){
+		ledger.shares.each{
+			it.parentid = ledgerpmt.objid 
+			it.item = it.payableitem
+			em_rptpayment_share.create(it)
+		}
+		ledger.billitems.each{
+			def share = [:]
+			share.parentid = ledgerpmt.objid 
+			share.revtype = it.revtype
+			share.revperiod = it.revperiod
+			share.sharetype = it.sharetype 
+			share.item = [objid:it.item.objid]
+			share.amount = it.amount - it.share 
+			share.discount = it.discount - it.sharedisc 
+			em_rptpayment_share.create(share)
+		}
+	}
+
+
+	void updateLedgerPaidYearQtr(rptledger){
+		def info = [:]
+		if (rptledger.partialled){
+			info.lastyearpaid = (rptledger.toqtr == 1 ? rptledger.toyear - 1 : rptledger.toyear)
+			info.lastqtrpaid = (rptledger.toqtr == 1 ? 4 : rptledger.toqtr - 1)
+		}
+		else {
+			info.lastyearpaid = rptledger.toyear 
+			info.lastqtrpaid = rptledger.toqtr 
+		}
+		em_rptledger.find([objid:rptledger.objid]).update(info)
+	}	
+}
+

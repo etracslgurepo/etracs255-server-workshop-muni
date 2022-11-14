@@ -1,0 +1,44 @@
+import com.rameses.annotations.*;
+
+class VwMigratedBusinessInterceptor {
+
+	@DataContext( dynamic=true )
+	def dynaEm;
+
+	@Service( dynamic=true )
+	def dynaSvc; 
+
+	@Env 
+	def env; 
+
+
+	@After(pattern="BusinessMasterService.open")
+	public void afterOpen( evt ) { 
+		def result = evt.result;
+		if ( result?.objid ) {
+			def em = dynaEm.lookup('vw_migrated_business'); 
+			def bus = em.find([ objid: result.objid ]).first(); 
+			boolean b = (bus?.appstate.toString().toUpperCase() == 'FOR-APPROVAL');
+			result._requires_data_approval = b;
+		}
+	}
+
+	@After(pattern="BusinessMasterService.approveMigratedData")
+	public void afterApprovedMigratedData( evt ) { 
+		def param = evt.args[0]; 
+		def em = dynaEm.lookup('vw_migrated_business'); 
+		def bus = em.find([ objid: param.objid ]).select('objid,applicationid').first(); 
+		if ( bus ) { 
+			def mbus_db = dynaEm.lookup('migrated_business'); 
+			def dateSvc = dynaSvc.lookup('DateService'); 
+			def rundate = dateSvc.getServerDate();
+			
+			em.approve( bus ); 
+			em.approveApp( bus ); 
+
+			def u_param = [ dtapproved: rundate ]; 
+			u_param.approvedby = [objid: env.USERID, name: env.FULLNAME]; 
+			mbus_db.find([ objid: bus.objid ]).update( u_param ); 
+		}
+	} 
+}

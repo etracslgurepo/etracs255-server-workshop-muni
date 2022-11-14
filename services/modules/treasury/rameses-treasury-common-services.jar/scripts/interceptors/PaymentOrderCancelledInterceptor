@@ -1,0 +1,42 @@
+import com.rameses.annotations.*;
+
+class PaymentOrderCancelledInterceptor {
+
+	@DataContext( dynamic=true )
+	def dynaEm;
+
+	@Service( dynamic=true )
+	def dynaSvc;
+
+
+	@After(pattern="PersistenceService.read", eval="#{args[0]._schemaname == 'paymentorder_cancelled'}")
+	public void afterRead( evt ) {
+		def result = evt.result;
+		if ( result ) result.state = 'CANCELLED'; 
+	}
+
+	@After(pattern="PersistenceService.update", eval="#{args[0]._schemaname == 'paymentorder_cancelled'}")
+	public void afterUpdate( evt ) { 
+		def param = evt.args[0];
+		logAction( param, evt.result ); 
+
+		if ( param._action == 'delete' ) {
+			def em = dynaEm.lookup('paymentorder_cancelled'); 
+			em.find([ objid: param.objid.toString()]).delete(); 
+		}
+	} 
+
+	void logAction( param, result ) {
+		if ( !param._action ) return;
+
+		if ( !param.objid ) throw new Exception('objid  parameter is required in logging actions');
+
+		def logSvc = dynaSvc.lookup('LogService'); 
+		def _schemaname = ( param._schemaname ? param._schemaname : 'paymentorder_cancelled' ); 
+		def _refid = param.objid; 
+
+		if ( param._action == 'delete' ) {
+			logSvc.logA( param._action, _schemaname, _refid, 'Delete record');
+		}
+	}	
+}

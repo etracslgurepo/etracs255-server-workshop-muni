@@ -1,0 +1,78 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import com.rameses.services.extended.*
+
+
+class TxnRefService
+{
+
+	@PersistenceContext('main')	
+	def em 
+
+	@Service('RPTUtil')
+	def util 
+
+	@ActiveDB('txnref')
+	def em_txnref 
+
+
+	@ProxyMethod
+	public void checkReference( objid ) {
+		def refs = getTxnRefs(objid)
+		if (refs){
+			throw new Exception(refs[0].msg)
+		}
+	}
+
+
+	@ProxyMethod
+	public def getTxnRefs( objid ) {
+		return em.sqlContext.createNamedQuery('txnref:getByObjId')
+				.setParameter('objid', objid).resultList 
+	}
+
+
+	@ProxyMethod
+	public def getTxnRefByRefId(refid) {
+		return em.sqlContext.createNamedQuery('txnref:getTxnRefByRefId')
+				.setParameter('refid', refid).resultList 
+	}
+
+	@ProxyMethod
+	public def insertRef( objid, refid, msg ) {
+		insert([objid:objid, refid:refid, msg:msg])
+	}
+
+
+	@ProxyMethod
+	public def insert(txnref) {
+		util.required('objid', txnref.objid)
+		util.required('refid', txnref.refid)
+		util.required('msg', txnref.msg)
+		try{
+			em_txnref.insert(txnref)
+		}
+		catch(e) {
+			def refs = getTxnRefs(txnref.objid)
+			if( refs ){
+				throw new Exception(refs[0].msg)
+			}
+		}
+	}
+
+	@ProxyMethod
+	public def delete( refid ) {
+		em.sqlContext.createNamedExecutor('txnref:delete').setParameter('refid', refid).execute()
+	}
+
+	@ProxyMethod
+	public def deleteByObjid(refid, objid ) {
+		em.sqlContext.createNamedExecutor('txnref:deleteByObjid')
+			.setParameters([refid:refid, objid:objid]).execute()
+	}
+
+	def getMessage(tnxref){
+
+	}
+}
+

@@ -1,0 +1,29 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import com.rameses.services.extended.*
+
+public class RYSettingLGUService
+{
+    @DataContext('rysetting_lgu')
+    def rysetting_lgu
+
+
+    @ProxyMethod
+    public def getLgus( entity ) {
+        return rysetting_lgu.find([rysettingid:entity.objid]).orderBy('lguname').list()
+    }
+
+
+    @ProxyMethod
+    public def createLgu(lgu){
+        return rysetting_lgu.create(lgu)
+    }
+
+
+    @ProxyMethod
+    public void removeLgu(lgu){
+        rysetting_lgu.delete(lgu)
+    }
+
+
+}

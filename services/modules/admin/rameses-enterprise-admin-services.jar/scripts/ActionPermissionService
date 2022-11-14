@@ -1,0 +1,48 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+
+class ActionPermissionService  {
+
+    @ActiveDB(value='userrole')
+    def userRoleEm;
+
+    @DataContext("sys_user")
+    def userEm;
+
+    /*************************************************************************************************
+    * This is used to check if a user is allowed to do certain tasks based on their permission list
+    * If permitted the user info will be returned.
+    **************************************************************************************************/
+
+
+    @ProxyMethod
+    public def checkAllowedAction(def u ) {
+        if(!u.username) throw new Exception("username is required in PermissionService.checkAllowedAction");
+        if(!u.password) throw new Exception("password is required in PermissionService.checkAllowedAction");
+        if(!u.action) throw new Exception("action is required in PermissionService.checkAllowedAction");
+
+        def aa = u.action.split("\\.");
+
+        def userInfo = userEm.find([username:u.username]).first();
+        if(!userInfo) throw new Exception("username does not exist");
+        if( userInfo.pwd!=u.password ) throw new Exception("password is not valid");
+
+        //select permissions
+        def mu = [:];
+        mu.userid = userInfo.objid;
+        mu.object = aa[0];
+        mu.action = aa[1];
+        def zu = userRoleEm.findPermissionExist(mu);
+        if(!zu) throw new Exception("user permission not found");
+
+        if( zu.roleexclude ) {
+            if( u.action.matches(zu.roleexclude ) ) throw new Exception("You are not permitted to execute this action");
+        }
+        if( zu.securitygroupexclude ) {
+            if( u.action.matches(zu.securitygroupexclude ) ) throw new Exception("You are not permitted to execute this action");
+        }
+        
+        return userInfo;
+    }
+
+}

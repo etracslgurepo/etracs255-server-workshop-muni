@@ -1,0 +1,34 @@
+import com.rameses.annotations.*; 
+
+class CashReceiptMgmtToolService {
+
+	@ActiveDB('cashreceipt_mgmt_tool') 
+	def em; 
+
+	@Service('RemittanceMgmtToolService') 
+	def remittanceSvc; 
+
+	@ProxyMethod 
+	public void removeCashReceipts( params ) {
+		if ( !params.controlid ) throw new Exception('controlid parameter is required'); 
+
+		def receipts = em.getReceiptsByControlid( params ); 
+		def receiptfunds = em.getReceiptFunds( params ); 
+
+		receipts.each{ cr-> 
+			cr._autorebuild = params._autorebuild; 
+			cr.receiptid = cr.objid; 
+			removeCashReceipt( cr ); 
+		}
+
+		remittanceSvc.removeCashReceipts( params );  
+	} 
+
+	@ProxyMethod 
+	public void removeCashReceipt( params ) {
+		if ( !params.receiptid ) throw new Exception('receiptid parameter is required');  
+
+		remittanceSvc.removeCashReceipt( params ); 
+	} 
+
+}

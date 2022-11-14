@@ -1,0 +1,38 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import com.rameses.services.extended.*
+
+
+class RPTSchedulerTask {
+
+	@Service('RPTMainSyncDataService')
+	def syncSvc
+
+	@DataContext('rpt_syncdata_forsync')
+	def em_forsync
+
+    @Service('RPTUtil')
+    def util;    
+
+    @Service('Var')
+    def var;    
+
+	@Schedule(interval=10)
+	public void processForSync(task) {
+        if (!util.toBoolean(var.fileserver_upload_task_active, true)) {
+            return;
+        }
+
+		def items = em_forsync.where('1=1').orderBy('dtfiled').limit(10).list()
+		items.each {
+			try {
+				syncSvc.scheduleSync(it)
+				em_forsync.find([objid: it.objid]).delete()
+				println 'Sync [INFO] Scheduled ' + it.action + ': ' + it.refno
+			} catch(e) {
+				em_forsync.find([objid: it.objid]).delete()
+				e.printStackTrace();
+			}
+		}
+	}
+}

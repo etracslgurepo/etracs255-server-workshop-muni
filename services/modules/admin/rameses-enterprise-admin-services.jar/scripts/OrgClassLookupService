@@ -1,0 +1,30 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import java.rmi.server.UID;
+import com.rameses.util.*;
+import com.rameses.io.*;
+import com.rameses.services.extended.*;
+
+class OrgClassLookupService extends ActiveListService {
+
+	@ActiveDB(value='orgclass', em='admin')
+	def	em; 
+
+	@Env
+	def env;
+	
+	@ProxyMethod
+	public def getColumns( params ) {
+		return[
+			[name:'name', caption:'Name' ],
+			[name:'title', caption:'Title' ]
+		];
+	}
+	
+	public void beforeList( params ) {
+		params.searchtext = (params.searchtext? params.searchtext: '') + '%'; 
+		params.excludename = (params.excludename? params.excludename: ''); 
+		params._listMethod = 'getLookup';  
+		params._pagingKeys = 'o.name'; 
+	} 
+}

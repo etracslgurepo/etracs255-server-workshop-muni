@@ -1,0 +1,136 @@
+import com.rameses.annotations.*
+import com.rameses.util.*
+import com.rameses.services.extended.*
+
+class FAASRestrictionSyncDataService
+{
+	@Env
+	def env 
+
+	@Service('DateService')
+    def dtSvc
+
+	@Service('RPTMainSyncDataService')
+	def syncSvc 
+
+    @Service('RPTSyncDataService')
+    def rptSync
+
+    @Service('RPTSyncDataSupport')
+    def support
+
+    @Service('FAASRestrictionService')
+    def svc
+
+    @DataContext("faas_restriction")
+    def em_restriction
+
+	@DataContext("rptledger")
+    def em_ledger
+
+
+	def getActions(){
+		return  [
+	    	'FAASRESTRICTION-POST': [send: sendRestriction, receive: postRemoteData, schedule: scheduleRestriction],
+	    	'FAASRESTRICTION-DELETE': [send: sendRestriction, receive: postRemoteDelete, schedule: scheduleRestriction],
+	    	'FAASRESTRICTION-CANCEL': [send: sendRestriction, receive: postRemoteCancel, schedule: scheduleRestriction],
+	    	'FAASRESTRICTION-REACTIVATE': [send: sendRestriction, receive: postRemoteReactivate, schedule: scheduleRestriction],
+	    ]
+	}
+
+
+	/*---------------------------------------------------------
+	*
+	* SCHEDULING SYNC SUPPORT 
+	*
+	---------------------------------------------------------*/
+	@ProxyMethod
+	public void schedule(data) {
+		def action= getActions()[data.action]
+		if (!action) throw new Exception('Scheduler not found for action ' + data.action)
+
+		def restriction = em_restriction.read([objid: data.objid])
+		restriction.lguid = restriction.parent.lguid
+		data.remote = rptSync.getRemoteOrg(restriction)
+        def syncdata = syncSvc.create(data)
+
+		action.schedule(syncdata, restriction)
+	}
+
+	def createItem(item, syncdata, action) {
+		return [
+			refid: item.objid, 
+			reftype: syncdata.reftype, 
+			refno: syncdata.refno, 
+			action: (action ? action : syncdata.action)
+		]
+	}
+
+	void createSyncItem(entity, syncdata, action) {
+		def item = createItem(entity, syncdata, action)
+        syncSvc.createItem(syncdata, item)
+	}	
+
+	def scheduleRestriction = {syncdata, restriction ->
+		createSyncItem(restriction, syncdata, null)
+	}
+
+	
+	/*---------------------------------------------------------
+	*
+	* SEND/RECEIVE HANDLERS 
+	*
+	---------------------------------------------------------*/
+	@ProxyMethod
+	public void send(syncdata) {
+		rptSync.send(syncdata, getActions())
+	}
+
+	@ProxyMethod
+	public void receive(syncdata) {
+		rptSync.receive(syncdata, getActions())
+	}
+
+
+
+	/*---------------------------------------------------------
+	*
+	* SUPPORT METHODS
+	*
+	---------------------------------------------------------*/
+	def sendRestriction = {syncdata ->
+		return em_restriction.read([objid: syncdata.refid])
+	}
+
+	def postRemoteData = {syncdata ->
+		def restriction = syncdata.data 
+		restriction.ledger = getLedger(restriction)
+		em_restriction.save(restriction)
+	}
+
+	def postRemoteDelete = {syncdata ->
+		def restriction = syncdata.data 
+		em_restriction.delete(restriction)
+	}
+
+	def postRemoteCancel = {syncdata ->
+		def restriction = syncdata.data 
+		restriction.ledger = getLedger(restriction)
+		em_restriction.save(restriction)
+	}
+
+	def postRemoteReactivate = {syncdata ->
+		def restriction = syncdata.data 
+		restriction.ledger = getLedger(restriction)
+		em_restriction.save(restriction)
+	}
+
+	def getLedger(restriction) {
+		if (restriction.ledger) {
+			return em_ledger.find([objid: restriction.ledger?.objid]).first()
+		}
+		return em_ledger.find([faasid: restriction.parent.objid]).first()
+	}
+
+}
+ 

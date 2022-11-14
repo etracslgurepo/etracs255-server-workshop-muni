@@ -1,0 +1,64 @@
+import com.rameses.annotations.*;
+
+class OnlineBusinessDownloadTask {
+	
+	@Service
+	def self; 
+
+	@Service( dynamic=true )
+	def dynaSvc; 
+
+	@Service('DateService')
+	def dateSvc; 
+
+	@DataContext( "online_business_application_doc_fordownload" )
+	def em_fordownload; 
+
+
+	@Schedule
+	public void startupProcess( task ) { 
+		self.download([:]); 
+	} 
+
+	@Schedule( interval=5 )
+	public void recurringProcess( task ) { 
+		self.download([:]); 
+	} 
+
+
+	@Async
+	@ProxyMethod
+	void download( arg ) { 
+		def rundate = dateSvc.getServerDate(); 
+		def formatter = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss"); 
+
+		def param = [ rundate: formatter.format( rundate ) ]; 
+		def list = em_fordownload.getListForDownload( param ); 
+
+		rundate = dateSvc.getServerDate(); 
+
+		def dateBean = new com.rameses.util.DateBean( rundate ); 
+
+		param.clear(); 
+		param.scheduledate = formatter.format( dateBean.add("20s"));  
+
+		def findby = [:]; 
+
+		list.each{ o-> 
+			findby.objid = o.objid; 
+			em_fordownload.find( findby ).update( param ); 
+		}
+
+		self.downloadItems( list ); 
+	}
+
+	@Async
+	@ProxyMethod
+	void downloadItems( list ) {
+		def svc = dynaSvc.lookup('OnlineBusinessApplicationDocService', null);
+
+		list.each{ o-> 
+			svc.downloadAttachment( o ); 
+		}
+	}
+} 

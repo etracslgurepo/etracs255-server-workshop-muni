@@ -1,0 +1,257 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class RPTReceiptCityPostShareService
+{
+	@Service('Var')
+	def var 
+
+	@Service('NumberService')
+	def numSvc
+
+	@ActiveDB('landtax_lgu_share_posting')
+	def em 
+
+	@DataContext('vw_landtax_lgu_account_mapping')
+	def em_mapping
+
+	@DataContext('cashreceiptitem')
+	def em_receiptitem
+
+	@DataContext('cashreceipt_share')
+	def em_receipt_share
+
+	@ActiveDB(value='landtax_repost_shares_eor', adapter="eor")
+  def em_eor;
+
+	@DataContext('rptpayment_share')
+	def em_rptpayment_share
+
+
+	def rates = [
+		[sharetype: 'city', revtype: 'basic', revperiod: 'advance', rate: 1.0],
+		[sharetype: 'city', revtype: 'basic', revperiod: 'current', rate: 1.0],
+		[sharetype: 'city', revtype: 'basic', revperiod: 'previous', rate: 1.0],
+		[sharetype: 'city', revtype: 'basic', revperiod: 'prior', rate: 1.0],
+		[sharetype: 'city', revtype: 'sef', revperiod: 'advance', rate: 1.0],
+		[sharetype: 'city', revtype: 'sef', revperiod: 'current', rate: 1.0],
+		[sharetype: 'city', revtype: 'sef', revperiod: 'previous', rate: 1.0],
+		[sharetype: 'city', revtype: 'sef', revperiod: 'prior', rate: 1.0],
+
+		[sharetype: 'barangay', revtype: 'basic', revperiod: 'advance', rate: 0.30],
+		[sharetype: 'barangay', revtype: 'basic', revperiod: 'current', rate: 0.30],
+		[sharetype: 'barangay', revtype: 'basic', revperiod: 'previous', rate: 0.30],
+		[sharetype: 'barangay', revtype: 'basic', revperiod: 'prior', rate: 0.30],
+	]
+
+	def COMMON_SHARE_RATE = 0.50
+
+
+	@ProxyMethod
+	public void postShares(receipt) {
+		def ledger = em.findPaidLedger(receipt)
+		if (!ledger) ledger = em.findPaidCompromise(receipt)
+		if (!ledger) throw new Exception('Unable to load ledger. Check cashreceipt_rpt_share_forposting entry.')
+		ledger.receipttype = receipt.receipttype
+		buildShares(receipt, ledger)
+		saveShares(ledger)
+	}
+
+	@ProxyMethod
+	public def generateShares( param ) { 
+		def filter = [ receiptid: param.receiptid.toString() ]; 
+		def ledger = em.findPaidLedgerByReceipt( filter ); 
+		if ( !ledger ) ledger = em.findPaidCompromiseByReceipt( filter ); 
+		if ( !ledger ) return [:]; 
+
+		buildShares(filter, ledger); 
+		return ledger; 
+	}
+
+	void buildShares(receipt, ledger) {
+		def mappings = em_mapping.select('org.class,org.objid,parent.objid,item.objid,item.tag').where('1=1').list()
+		ledger.mainshares = []
+		ledger.brgyshares = []
+		ledger.commonshares = []
+
+		em.getPaidItems(ledger).each{paiditem ->
+			def share = buildLedgerShare(ledger, paiditem, mappings)
+			if (paiditem.revtype == 'basic') {
+				// compensate for rounding, paiditem.amount must be equal to totalshare 
+				def total = paiditem.amount + paiditem.interest - paiditem.discount 
+				def sharetotal = calcShareTotal(paiditem, share)
+				def diff = total - sharetotal 
+				share.brgyshares.find{!it.main && !it.common && it.revtype == paiditem.revtype && it.revperiod == paiditem.revperiod}.amount += diff 
+			}
+			ledger.mainshares += share.mainshares
+			ledger.brgyshares += share.brgyshares
+			ledger.commonshares += share.commonshares
+		}
+	}
+
+	def calcShareTotal(paiditem, share) {
+		def revtype = 'basic.*'
+		def items = []
+		items += share.mainshares.findAll{it.revtype.matches(revtype) && it.revperiod == paiditem.revperiod}
+		items += share.brgyshares.findAll{it.revtype.matches(revtype) && it.revperiod == paiditem.revperiod}
+		items += share.commonshares.findAll{it.revtype.matches(revtype) && it.revperiod == paiditem.revperiod}
+		if (!items) {
+			return 0.0
+		}
+		return items.amount.sum()
+	}
+
+	void saveShares(ledger) {
+		ledger.mainshares.each {ms ->
+			em_rptpayment_share.create(ms)
+		}
+
+		ledger.brgyshares.each {bs ->
+			bs.payableitem = [objid: bs.item.objid]
+			em_rptpayment_share.create(bs)
+			if ('EOR'.equalsIgnoreCase(ledger.receipttype)) {
+				def eorshare = createEorShare(bs);
+				em_eor.insertEorShare(eorshare)
+			} else {
+				em_receipt_share.create(bs)
+			}
+		}
+
+		ledger.commonshares.each {cs ->
+			cs.payableitem = [objid: cs.item.objid]
+			em_rptpayment_share.create(cs)
+			if ('EOR'.equalsIgnoreCase(ledger.receipttype)) {
+				def eorshare = createEorShare(cs);
+				em_eor.insertEorShare(eorshare)
+			} else {
+				em_receipt_share.create(cs)
+			}
+		}
+	}
+
+	def createEorShare(share) {
+		def eorshare = [:]
+		eorshare.objid = 'EOI' + new java.rmi.server.UID();
+		eorshare.parentid = share.receiptid;
+
+		def refitem = em_mapping.find([item_objid: share.item.objid]).first()?.item;
+		eorshare.refitemid = refitem.objid;
+		eorshare.refitemcode = refitem.code;
+		eorshare.refitemtitle = refitem.title;
+		eorshare.refitemfundid = refitem.fund.objid;
+		
+		def payableitem = em_mapping.find([item_objid: share.payableitem.objid]).first()?.item;
+		eorshare.payableitemid = payableitem.objid;
+		eorshare.payableitemcode = payableitem.code;
+		eorshare.payableitemtitle = payableitem.title;
+		eorshare.payableitemfundid = payableitem.fund.objid;
+
+		eorshare.amount = share.amount;
+		eorshare.share = share.amount;
+		eorshare.receiptitemid = share.refitem.objid;
+		return eorshare;
+	}
+
+	def buildLedgerShare(ledger, item, mappings) {
+		def mainshares = []
+		def brgyshares = []
+		def commonshares = []
+
+		//process main lgu shares
+		def sharetype = 'city'
+		rates.findAll{it.sharetype == sharetype && it.revtype == item.revtype && it.revperiod == item.revperiod}.each {rate ->
+			mainshares << createShare(mappings, item, sharetype, item.lguid, item.revtype, item.amount, item.discount, rate.rate, true)
+			if (item.interest > 0) {
+				mainshares << createShare(mappings, item, sharetype, item.lguid, item.revtype + 'int', item.interest, 0.0, rate.rate, true)
+			}
+		}
+
+		//process brgy lgu shares
+		sharetype = 'barangay'
+		rates.findAll{it.sharetype == sharetype && it.revtype == item.revtype && it.revperiod == item.revperiod}.each {rate ->
+			brgyshares << createShare(mappings, item, sharetype, item.barangayid, item.revtype, item.amount, item.discount, rate.rate, false)
+			if (item.interest > 0) {
+				brgyshares << createShare(mappings, item, sharetype, item.barangayid, item.revtype + 'int', item.interest, 0.0, rate.rate, false)
+			}
+		}
+
+		//deduct brgy shares to city shares
+		brgyshares.each {bs ->
+			def ms = mainshares.find{it.revtype == bs.revtype && it.revperiod == bs.revperiod }
+			ms.amount -= bs.amount 
+			ms.discount -= bs.discount
+			bs.refitem = ms.item 
+			if (var.landtax_realty_tax_post_common_shares) {
+				commonshares += createCommonShares(mappings, bs)
+			}
+		}
+
+		return  [mainshares: mainshares, brgyshares: brgyshares, commonshares: commonshares]
+	}
+
+	def createCommonShares(mappings, brgyshare) {
+		def commonshares = []
+
+		def amount = brgyshare.amount 
+		def discount = brgyshare.discount 
+		def mainshare = numSvc.roundA( amount * COMMON_SHARE_RATE, 4 )
+		def maindisc = numSvc.roundA( discount * COMMON_SHARE_RATE, 4 )
+		brgyshare.amount = mainshare
+		brgyshare.discount = maindisc
+		brgyshare.actualamt = mainshare
+		
+		//find all brgy accounts and create share for each
+		def brgys = mappings.findAll {'barangay'.equalsIgnoreCase(it.org?.class?.toString()) && it.item.tag == brgyshare.tag }
+
+		def commonshare = amount - mainshare
+		def commondisc = discount - maindisc
+		def brgycommonshare = numSvc.roundA(commonshare / brgys.size(), 4) 
+		def brgycommondisc = numSvc.roundA(commondisc / brgys.size(), 4) 
+		def runningshare = commonshare
+		def runningdisc = commondisc
+
+		brgys.each{ brgy -> 
+			def cs = [:]
+			cs.putAll(brgyshare)
+			cs.objid = 'RPI' + new java.rmi.server.UID()
+			cs.amount = brgycommonshare
+			cs.discount = brgycommondisc
+			cs.actualamt = cs.amount
+			runningshare -= cs.amount
+			runningdisc -= cs.discount
+			cs.item = brgy.item 
+			cs.iscommon = true 
+			commonshares << cs 
+		}
+
+		return commonshares
+	}
+
+	def createShare(mappings, item, sharetype, lguid, revtype, amount, discount, rate, main) {
+		def tag = 'rpt_' + revtype + '_' + item.revperiod
+
+		def share = [:]
+		share.objid = 'RPI' + new java.rmi.server.UID()
+		share.parentid = item.paymentid
+		share.receiptid = item.receiptid
+		share.revtype = revtype
+		share.revperiod = item.revperiod
+		share.year = item.year 
+		share.sharetype = sharetype
+		share.item = mappings.find{sharetype.equalsIgnoreCase(it.org?.class?.toString()) && it.org.objid == lguid && it.item.tag == tag }?.item
+		if (!share.item) {
+			println 'lguid: ' + lguid
+			println 'tag  : ' + tag 
+			println 'share: ' + share 
+			throw new Exception('Account mapping does not exist')
+		}
+		share.actualamt = amount 
+		share.amount = numSvc.roundA( (amount - discount) * rate, 4)
+		share.discount = numSvc.roundA( discount * rate, 4)
+		share.main = main 
+		share.tag = tag 
+		share.iscommon = false
+		return share
+	}
+}

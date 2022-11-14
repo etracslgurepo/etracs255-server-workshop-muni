@@ -1,0 +1,143 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.services.extended.*;
+
+public class UpdateQtrGrossForNewApplicationInterceptor {
+
+	@Env
+	def env;
+
+	@ActiveDB("business_application")
+	def busApp;
+
+	@Service("DateService")
+	def dateSvc;
+
+	@Service("BusinessMasterService")
+	def bizSvc;
+
+	@Service("BusinessInfoService")
+	def infoSvc;
+
+	@Service("BusinessLobService")
+	def lobSvc;
+
+	@Service("BusinessReceivableService")
+	def receivableSvc;
+
+	@Service("BPExpiryDateService")
+	def expiryDateSvc;
+
+	//This index needs to be high because we need to have the renew interceptor fire first
+	@After(pattern="BusinessApplicationService.initNew", eval="#{args[0].apptype=='RENEW' && args[0].txnmode == 'ONLINE' }", index=1000)
+	public void checkRenew(def evt) { 
+		def app = evt.result;
+		def b = app.business;
+		if(b==null) 
+			throw new Exception("UpdateQtrGrossInterceptor error. Make sure index is higher than renew interceptor");
+		if(b.apptype == 'NEW') {
+			//check if expiry date is last day of year. 
+			if( b.expirydate ) {
+				def m = dateSvc.parseDate( b.expirydate, null );	
+				if( !(m.month == 12 && m.day == 31 ) ) {
+					throw new Exception("You cannot renew at this time because there is qtr gross unpaid. Please go to assessor's office");
+				}
+			}
+		}
+	}
+
+	@After(pattern="BusinessApplicationService.initNew", eval="#{args[0].apptype=='UPDATEQTRGROSS'  }")
+	public void initNew(def evt) { 
+		def app = evt.result;
+		if(!app.business.objid) throw new Exception("Please specify a business");
+
+		//retrieve business first
+        def b = bizSvc.open(app.business);
+        
+		if( b.state == 'CANCELLED') 
+			throw new Exception("Business already cancelled");	
+
+		if( b.state == 'RETIRED') 
+			throw new Exception("Business already retired");	
+
+		//search the latest application by businessid and activeyear
+		def parentList = busApp.getInfosByBusinessIdAndYear([businessid: b.objid, appyear: b.activeyear, apptype: 'NEW']);
+		if(!parentList)
+			throw new Exception("Main application not found. This is applicable only for new applications");				
+		def parent = parentList[0];	
+		if(parent.state!='COMPLETED')
+			throw new Exception("Application " + parent.appno + " is still not completed. Please check if it is paid and released");
+
+		//do not use server date as basis. use whatever active year 
+		def appyear = parent.appyear;
+
+		def today = dateSvc.getServerDate();
+		def pDate = dateSvc.parseDate( today, null );
+		def maxQtr = ( appyear < pDate.year) ? 4 : pDate.qtr;
+		
+		//search other update business gross applications so we know the current qtr to apply. Start at Qtr 2
+		def others = busApp.getInfosByBusinessIdAndYear([businessid: b.objid, appyear: b.activeyear, apptype: 'UPDATEQTRGROSS']);		
+		int startQtr = 2;
+		if(others) {
+			int q = others*.appqtr.max();
+			if(q==4) {
+				throw new Exception("This business has already completed qtr gross assessment for the year");	
+			}
+			if( q != startQtr) startQtr = q + 1;
+		}
+		
+		//throw new Exception("This business is not yet due for assessment");
+		int yr = b.activeyear;
+		def qtrs = [];
+		(startQtr..(maxQtr+1)).each {
+			qtrs << it;
+		}
+		app.qtrs = qtrs;
+
+		//determine how many qtrs we need to process
+		app.parentapplicationid = parent.objid; 	
+		app.business =  b;
+		app.appyear = parent.appyear;
+		app.appqtr = startQtr;
+        app.lobs = lobSvc.getActiveLobs([businessid: b.objid]);
+        app.appinfos = infoSvc.getActiveAppInfos([businessid:b.objid]);
+        app.assessmentinfos = [];		
+        app.ownername = b.owner.name;
+        app.owneraddress = b.owner.address.text;
+        app.tradename = b.tradename;
+        app.businessaddress = b.address.text;
+		app.lobs.each {
+			it.assessmenttype = 'RENEW';
+		}	
+	}
+
+	@Before(pattern="BusinessApplicationService.create", eval="#{args[0].apptype=='UPDATEQTRGROSS'  }")
+	public void beforeCreate(def evt) { 
+		def app = evt.args[0];
+		if(!app.parentapplicationid)
+			throw new Exception("Parent applicationid must not be null");
+		if(app.appqtr==null) throw new Exception("App qtr is required");	
+		def b = bizSvc.open(app.business);
+		app.appno = b.bin +  "-" + app.appqtr + "Q";
+		bizSvc.updateOnApply( b );
+		app.state = 'COMPLETED';
+		app.objid = "BAUQG"+ new UID();
+		b.activeqtr = app.appqtr;
+		bizSvc.update(b);
+	}
+	
+	@After(pattern="BusinessApplicationService.create", eval="#{args[0].apptype=='UPDATEQTRGROSS' }")
+	public void afterCreate(def evt) { 
+		def o = evt.result;
+		def b = [businessid: o.business.objid, activeyear: o.appyear, applicationid: o.objid];
+		b.lobs = o.lobs;
+		b.assessmentinfos = o.assessmentinfos;
+		b.entries = o.taxfees;
+		infoSvc.addAssessmentInfos( b );
+		receivableSvc.addReceivables( b );
+	}
+
+
+
+}

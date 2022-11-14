@@ -1,0 +1,27 @@
+<schema>
+
+	<element tablename="form60setup">
+		<field name="objid" primary="true"/>
+		<field name="type"/>
+		<field name="code"/>
+		<field name="title"/>
+		<field name="parentid"/>
+		<field name="nationalrate"/>
+		<field name="provgenrate"/>
+		<field name="provsefrate"/>
+		<field name="provtrustrate"/>
+		<field name="munigenrate"/>
+		<field name="munisefrate"/>
+		<field name="munitrustrate"/>
+		<field name="barangayrate"/>
+	</element>
+
+	<element name="form60account" tablename="form60account" >
+		<field name="objid" primary="true"/>
+		<field name="parentid"/>
+		<field name="revenueitemid"/>
+	</element>
+
+</schema>
+
+

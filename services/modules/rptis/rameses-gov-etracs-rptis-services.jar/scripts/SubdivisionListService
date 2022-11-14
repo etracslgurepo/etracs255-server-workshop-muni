@@ -1,0 +1,102 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class SubdivisionListService extends ActiveListService
+{
+    @Env 
+    def env 
+    
+	@ActiveDB('subdivision')
+	def em
+	
+	@Service('ListUtilService')
+	def listSvc 
+
+
+    @Service('NumberService')
+    def numSvc
+	
+    @ProxyMethod
+    public def getColumns(params) {
+        return [
+            [name:"state", caption:"State", width:100],
+            [name:"txnno", caption:"Txn No.", width:100],
+            [name:"txndate", caption:"Txn Date", width:100],
+            [name:"ry", caption:"RY", width:50, type:'integer', format:'0000'],
+            [name:"mothertdnos", caption:"Mother TD No(s)", width:250],
+            [name:"motherpins", caption:"Mother PINS", width:250],
+            [name:"effectivityyear", caption:"Effectivity Year", width:50, type:'integer', format:'0000'],
+            [name:"effectivityqtr", caption:"Effectivity Qtr", width:50, type:'integer', format:'0'],
+        ]
+    }
+
+    @ProxyMethod
+    public def getNodes(o) {
+        def nodes = []
+        nodes << [name:'all', caption:'All']
+        nodes += em.getNodes();
+        nodes << [name:'mytask', caption:'My Tasks']
+        nodes << [name:'unassigned', caption:'Unassigned Tasks']
+
+        nodes.each{
+            it.leaf = true
+            it.folder = true 
+            it.allowSearch = true 
+        }
+        return nodes
+    }  
+
+    void beforeList( params ) {
+        params.state = (params.state ? params.state : '%')
+        params.lguid = (params.lgu ? params.lgu.objid : '%')
+        params.barangayid = (params.barangay ? params.barangay.objid : '%')
+ 		params.searchtext = (params.searchtext ? params.searchtext : '%')
+ 		params._pagingKeys = ' s.objid '
+ 		params.filters = '';
+
+        if (params.barangay){
+            params.filters = '''
+                and s.objid in(
+                        select max(m.subdivisionid) as objid from subdivision_motherland m, faas f, realproperty rp 
+                        where m.subdivisionid = s.objid and m.landfaasid = f.objid and f.realpropertyid = rp.objid and rp.barangayid LIKE $P{barangayid}
+                    )
+            '''
+        }
+
+		def whereclause = ''
+
+        switch(params.name) {
+            case 'all':
+                break;
+            case 'mytask':
+                params.userid = env.USERID 
+                if (whereclause) whereclause += ' AND ' 
+                whereclause += ' tsk.assignee_objid = $P{userid} '
+                break;
+            case 'unassigned':
+                if (whereclause) whereclause += ' AND ' 
+                whereclause += " tsk.state like 'assign%'"
+                break;
+            default:
+                params.taskstate = params.name
+                if (whereclause) whereclause += ' AND ' 
+                whereclause += ' tsk.state = $P{taskstate} AND tsk.enddate IS NULL  '
+        }
+
+        if (whereclause) {
+            params.filters = ' AND ' + whereclause
+        }
+    }   
+
+    void afterList(params, list) {
+        list.each{
+            if (it.classification?.code?.matches('A|AGR|a|agr'))
+                it.totalarea = numSvc.format('#,##0.0000', it.totalareaha) + ' ha'
+            else
+                it.totalarea = numSvc.format('#,##0.00', it.totalareasqm) + ' sqm'
+        } 
+    }    
+
+}
+

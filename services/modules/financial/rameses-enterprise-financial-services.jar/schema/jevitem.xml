@@ -1,0 +1,15 @@
+<schema>
+
+	<element tablename="jevitem">
+		<field name="objid" primary="true"/>
+		<field name="jevid" required="true"/>
+		<field name="acctid" required="true"/>
+		<field name="acctcode" />
+		<field name="acctname" required="true"/>
+		<field name="dr" type="decimal" required="true"/>
+		<field name="cr" type="decimal" required="true"/>
+		<field name="itemrefid" /> 
+	</element>
+
+
+</schema>

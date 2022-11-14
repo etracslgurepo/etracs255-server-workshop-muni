@@ -1,0 +1,11 @@
+<schema>
+	<element tablename="faas_restriction_type">
+		<field name="objid" primary="true"/>
+		<field name="name" required="true" caption="Restriction" searchable="true" indexed="true"/>
+		<field name="idx" required="true" />
+		<field name="isother" required="true" />
+	</element>
+</schema>
+
+
+

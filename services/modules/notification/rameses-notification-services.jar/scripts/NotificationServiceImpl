@@ -1,0 +1,188 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.UID;
+
+class NotificationServiceImpl {
+	
+	@DataContext('sys_notification') 
+    def em; 
+
+    @Service 
+    def self; 
+
+    @Service( dynamic=true ) 
+    def dynaSvc; 
+
+    @Service('DateService')
+    def dateSvc; 
+
+    @Env 
+    def env; 
+
+    @ProxyMethod(local=true) 
+    public def getList( params ) { 
+        if ( params.recipients ) { 
+            params.recipientid = params.recipients.collect{ "'"+ it +"'" }.join(","); 
+            return em.getAllMessages( params ); 
+        } 
+
+        def fmap = [ recipientid: params.recipientid ];
+        if ( params.recipienttype=='group' ) {
+        	fmap.recipienttype = params.recipienttype; 
+        } else {
+        	fmap.recipienttype = 'user'; 
+        } 
+        return em.find( fmap ).list();  
+    } 
+
+    @ProxyMethod(local=true)  
+    public def addMessage( params ) { 
+        if (!params.recipienttype.toString().toLowerCase().matches('user|group')) {
+            throw new Exception('recipient type must be a "user" or "group"'); 
+        } 
+
+        params.notificationid = 'MSG' + new UID(); 
+        params.dtfiled = dateSvc.serverDate.toString(); 
+
+        if (!params.objid) params.objid = params.notificationid; 
+        if (!params.sender) params.sender = (env.FULLNAME? env.FULLNAME: env.NAME); 
+        if (!params.senderid) params.senderid = env.USERID; 
+
+        def userObj = (params.data? params.data: [:]); 
+        params.data = new Base64Cipher().encode(userObj); 
+        em.create( params ); 
+
+        params.data = userObj;
+        self.notifySend( params ); 
+        return params; 
+    } 
+
+    @ProxyMethod(local=true) 
+    public void removeMessage( params ) { 
+        def list = []; 
+        if ( params.notificationid ) {  
+            def info = em.find([ notificationid: params.notificationid ]).first(); 
+            if ( info ) list << info; 
+        } else { 
+            list = em.find([ objid: params.objid ]).list(); 
+        } 
+
+        list.each{ 
+            it.data = null;         	
+            em.find([ objid: it.objid ]).delete(); 
+            self.notifyRemove( it ); 
+        } 
+    } 
+
+    @ProxyMethod(local=true)  
+    public void importMessage( params ) {
+        if ( !params.notificationid ) params.notificationid = params.objid; 
+
+        def old = em.find([ notificationid: params.notificationid ]).first(); 
+        if ( old ) return; 
+
+        params.dtfiled = dateSvc.serverDate.toString(); 
+
+        def userObj = (params.data? params.data: [:]); 
+        params.data = new Base64Cipher().encode(userObj); 
+        params.recipientid = params.groupid; 
+        params.recipienttype = 'group'; 
+        em.create( params ); 
+
+        params.data = userObj; 
+        self.notifySend( params ); 
+    } 
+
+
+    @ProxyMethod(local=true) 
+    public def getCount( params ) { 
+        def fmap = [ tag: params.tag ];
+        def r1 = em.select('icount:{COUNT(*)}').find( fmap ).where('recipientid is null').val(); 
+        def r2 = em.select('icount:{COUNT(*)}').find( fmap ).where('recipientid=:recipientid',[recipientid: env.USERID]).val();
+        return (r1? r1: 0)+(r2? r2: 0); 
+    } 
+
+    @ProxyMethod(local=true) 
+    public void updateRecipient( params ) {
+        if ( !params.recipientid ) throw new Exception('recipientid parameter is required'); 
+
+        def map = [:];
+
+        if ( params.notificationid ) { 
+            map = [ notitificationid: params.notificationid ]; 
+        } else { 
+            map = [ objid : params.objid ];
+        } 
+        em.find( map ).update([ recipientid: params.recipientid ]);  
+    } 
+
+    @Async 
+    @ProxyMethod(local=true) 
+    public void notifyGroups( params ) { 
+		if ( !params.groups ) return;
+
+		def fmap = [ recipienttype:'group' ]; 
+        params.groups.each { 
+        	fmap.recipientid = it; 
+        	em.find( fmap ).list().each { o-> 
+        		notifySend( o ); 
+        	} 
+        } 
+    } 
+
+    @Async 
+    @ProxyMethod(local=true) 
+    public void notifyUser( params ) { 
+		if ( !params ) return;
+
+		def fmap = [ recipienttype:'user', recipientid: params.recipientid ];
+		em.find( fmap ).list().each{
+			notifySend( it ); 
+		} 
+    } 
+
+    @Async
+    @ProxyMethod(local=true)
+    public void notifySend( msg ) { 
+    	packMessage( msg );
+        msg.data = resolveData( msg.data ); 
+        sendMessage( msg ); 
+    } 
+
+    @Async
+    @ProxyMethod(local=true)
+    public void notifyRemove( msg ) { 
+    	packMessage( msg );
+        msg.status = 'REMOVED'; 
+        sendMessage( msg ); 
+    }     
+
+
+    /*
+        helper and supporting methods 
+    */
+    private void packMessage( data ) {
+    	def channel = data.recipienttype.toString().toLowerCase(); 
+        if (channel == 'group') { 
+        	data.groupid = data.recipientid; 
+        } 
+        data.status  = 'PENDING';        
+        data.channel = channel;
+        data.group   = channel;
+    }
+    private void sendMessage( msg ) { 
+        def channelSvc = dynaSvc.lookup('NotificationChannelService');         
+    	channelSvc.send([ 
+            channel : msg.channel, 
+            group   : msg.group, 
+            data    : msg 
+        ]); 
+    } 
+    private def resolveData( data ) {
+        try {
+            return new Base64Cipher().decode( data ); 
+        } catch(Throwable t) {
+            return data; 
+        } 
+    } 
+} 

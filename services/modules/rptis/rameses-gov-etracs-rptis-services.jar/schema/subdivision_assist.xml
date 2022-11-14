@@ -1,0 +1,13 @@
+<schema>
+    <element tablename="subdivision_assist">
+        <field name="objid" primary="true" prefix="SA" />
+        <field name="parent_objid" required="true" />
+        <field name="taskstate" required="true" />
+        <field name="assignee_objid" required="true" />
+        <complex name="assignee" ref="sys_user" jointype="many-to-one"
+        	includefields="fullname,jobtitle">
+			<key field="assignee_objid" target="objid" />
+		</complex>
+    </element>
+</schema>
+

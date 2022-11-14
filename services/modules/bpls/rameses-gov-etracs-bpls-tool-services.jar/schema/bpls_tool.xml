@@ -1,0 +1,5 @@
+<schema>	
+	<element tablename="bpls_tool">
+		<field name="objid" primary="true"/>
+	</element>
+</schema>

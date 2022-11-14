@@ -1,0 +1,14 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+
+
+class UserInfoService 
+{		
+    @ProxyMethod
+    public Map getInfo( username ) {
+    	if (!username) throw new Exception('Please specify username'); 
+
+        return [:]; 
+    } 
+	
+}

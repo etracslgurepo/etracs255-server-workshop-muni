@@ -1,0 +1,30 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+import com.rameses.util.*;
+
+class PagingService { 
+
+	@XConnection("queue-notification-server")
+	def paging_poll;
+
+	@Service 
+	def self; 
+
+	@ProxyMethod 
+	public def send( params ) { 
+		if ( params.msg ) { 
+			self.notify( params ); 
+			return [status: 'success', message:'Message sent']; 
+		} else {
+			return [status: 'failed', message:'msg parameter is required']; 
+		}
+	} 
+
+	@Async 
+	@ProxyMethod(local=true) 
+	public void notify( data ) { 
+		if ( data ) { 
+			paging_poll.send('message', data); 
+		} 
+	} 
+} 

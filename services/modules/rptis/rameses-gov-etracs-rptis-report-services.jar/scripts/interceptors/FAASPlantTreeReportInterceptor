@@ -1,0 +1,68 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.util.*;
+import com.rameses.services.extended.*;
+
+class FAASPlantTreeReportInterceptor
+{
+	@ActiveDB('faasreport_planttree')
+	def em
+
+	@Service('Var')
+	def var
+	
+	@Service('RPTUtil')
+	def util 
+
+	@Service('NumberService')
+	def numberSvc
+
+	@After(pattern="FAASReportService.getReportData", eval="#{result.rpu.rputype=='planttree'}")
+	public void buildReport(evt){
+		def faas = evt.result
+		def rpu = em.findInfoById(faas.rpu)
+		if (rpu) {
+			faas.rpu.putAll(rpu)
+		}
+		buildPlantTreeAppraisals(faas)
+		buildAdjustments(faas)
+		buildAssessments(faas)
+	}
+
+	void buildPlantTreeAppraisals(faas){
+		faas.landappraisals = [[taxable:true],[taxable:true], [taxable:true]]
+    	def filter = 'WHERE planttreerpuid = $P{objid}'
+    	faas.planttreesappraisals = em.getPlantTreeAppraisals([objid:faas.rpu.objid, filter:filter]).each{
+    				  		it.planttreename = it.planttreename + ' - ' + it.subname
+    				  	}
+		util.buildEmptyRows(faas.planttreesappraisals, 5)
+	}
+
+
+	def buildAdjustments( faas ) {
+		faas.landadjustments = em.getLandAdjustments([objid:faas.rpu.landrpuid])
+		faas.landadjustments.each{adj ->
+			adj.params = em.getAdjustmentParameters(adj)
+			def dkm = adj.params.find{it.param.name == 'DISTANCE_KM'}
+			def sdkm = (dkm ? '  (' + dkm.value.toString() + ' km)' : '')
+			adj.adjtypename = adj.adjtypename + sdkm
+		}
+
+		if (faas.landadjustments){
+			def adj = em.findTotalAdjustment(faas.rpu)
+			if (adj){
+				def first = faas.landadjustments.first();
+				first.basemarketvalue = adj.basemarketvalue
+				first.adjustment = adj.adjustment
+				first.marketvalue = adj.marketvalue
+			}
+		}
+		faas.landadjustments << [:]
+		faas.landadjustments << [:]
+	}
+
+	void buildAssessments(faas){
+		faas.propertyassessments = em.getAssessments( faas.rpu )
+		util.buildEmptyRows(faas.propertyassessments, 3)
+	}
+}

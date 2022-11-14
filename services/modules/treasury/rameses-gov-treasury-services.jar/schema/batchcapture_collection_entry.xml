@@ -1,0 +1,21 @@
+<schema>
+	
+	<element tablename="batchcapture_collection_entry" >
+		<field name="objid" primary="true"/>
+		<field name="parentid" required="true"/>
+		<field name="receiptno" required="true"/>
+		<field name="receiptdate" required="true"/>
+		<field name="paidby" />
+		<field name="paidbyaddress" />
+		<field name="amount" required="true"/>
+		<field name="totalcash" required="true"/>
+		<field name="totalnoncash" required="true"/>
+		<field name="series" required="true"/>
+		<field name="collectiontype_objid" required="true"/>
+		<field name="collectiontype_name" required="true"/>
+		<field name="remarks" />
+		<field name="voided" />
+		<complex name="paymentitems" required="false" serializer="default" type="list"/>
+	</element>
+	
+</schema>

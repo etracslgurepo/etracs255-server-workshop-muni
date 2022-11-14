@@ -1,0 +1,12 @@
+<schema>
+	<element tablename="bldgrpu_land">
+		<field name="objid" primary="true" />
+		<field name="rpu_objid" required="true" />
+		<field name="landfaas_objid" required="true" />
+		<field name="landrpumaster_objid" />
+		<complex name="landfaas" ref="faas" jointype="many-to-one"
+			includefields="tdno,fullpin,owner.name">
+			<key field="landfaas_objid" target="objid" />
+		</complex>
+	</element>
+</schema>

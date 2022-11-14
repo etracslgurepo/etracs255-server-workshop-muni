@@ -1,0 +1,10 @@
+<schema>
+	<element tablename="machassesslevelrange">
+		<field name="objid" primary="true"/>
+		<field name="machassesslevelid" required="true"/>
+		<field name="machrysettingid" required="true"/>
+		<field name="mvfrom" required="true" type="decimal"/>
+		<field name="mvto" required="true" type="decimal"/>
+		<field name="rate" required="true" type="decimal" />
+	</element>
+</schema>

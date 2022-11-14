@@ -1,0 +1,73 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*
+import com.rameses.util.*;
+
+class JevValidationService  {
+
+	
+	@DataContext("jevitem")
+	def jevitem_db;
+
+	@DataContext("jev")
+	def jev_db;
+
+
+	private def buildEntries( def amt, def items, def side ) {
+		def list = [];
+		list.addAll( items.findAll{ it[(side)] > 0 } );
+
+		def iamt = 0;
+		if( !list ) {
+			list = [];
+		}	
+		else {
+			iamt = list.sum{ it[(side)]};
+		}
+
+		if(amt == null ) throw new Exception("amount is null");
+		if(iamt==null) iamt = 0;
+
+		if( amt != iamt ) {
+			def m = [:];
+			m.account = [title: "unmapped"];
+			m.put( side, (amt - iamt) );
+			list << m;
+		}
+		return list;
+	}
+
+	@ProxyMethod
+	public void validate( def o  ) {
+		
+		//select total jevitem sum(dr) = sum(cr) = total jev
+		def jlist = jev_db.find( o ).list();
+		if(!jlist)
+			throw new Exception("Jev not found for finder " + o );	
+
+		boolean hasErr = false;
+		def list = [];
+		jlist.each {
+			def jv = jev_db.find( [objid: it.objid] ).first();
+			list << jv;
+
+			def jvitems = jevitem_db.find( [jevid: it.objid] ).list();
+
+			jv.dr = buildEntries( jv.amount, jvitems, 'dr');
+			
+			jv.cr = buildEntries( jv.amount, jvitems, 'cr');
+			
+			
+
+			if(!hasErr && (jv.dr + jv.cr).findAll{ it.account.title == 'unmapped' }.size() > 0  ) {
+				hasErr = true;
+			}
+		}
+
+		if(hasErr ) {
+			def str = "jev_exception";
+			def info = [ items:list  ];
+			throw new Warning( str, info );
+		}	
+	}
+
+}

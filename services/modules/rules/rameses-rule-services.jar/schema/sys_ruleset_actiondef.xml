@@ -1,0 +1,13 @@
+<schema>
+
+	<element tablename="sys_ruleset_actiondef">
+		<field name="ruleset" primary="true"/>
+		<field name="actiondef" primary="true"/>
+
+		<complex name="action" ref="sys_rule_actiondef" jointype="many-to-one" includefields="name,title,actionclass" required="false"> 
+			<key field="actiondef" target="objid" />
+		</complex>
+	</element>	
+
+</schema>	
+

@@ -1,0 +1,20 @@
+<schema>
+	
+	<element tablename="business_permit">
+		<field name="objid" primary="true"/>
+		<field name="businessid" required="true"/>
+		<field name="applicationid" required="true"/>
+		<field name="state" required="true"/>
+		<field name="permitno" required="true"/>
+		<field name="activeyear" required="true"/>
+		<field name="version" required="true"/>
+		<field name="permittype" required="true"/>
+		<field name="dtissued" required="true" />
+		<field name="issuedby_objid" required="true"/>
+		<field name="issuedby_name" required="true"/>
+		<field name="expirydate" required="true" />
+		<field name="plateno"  />
+		<field name="remarks"  />
+	</element>	
+
+</schema>

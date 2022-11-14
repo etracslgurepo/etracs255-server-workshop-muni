@@ -1,0 +1,142 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import com.rameses.services.extended.*
+import com.rameses.util.*;
+
+class RPTNotificationService 
+{
+    @Env 
+    def env
+
+    @Service(value="GroupNotificationService", connection="notification_proxy")
+    def groupNotificationSvc 
+
+    @Service(value="UserNotificationService", connection="notification_proxy")
+    def userNotificationSvc
+
+
+    @Service(value='CloudNotificationService', connection='notification_proxy')
+    def cloudNotificationSvc;
+    
+    @XConnection('async_remote') 
+    def asyncConn;
+
+
+    @Context
+    def appContext 
+
+    @Service('RPTUtil')
+    def util 
+
+    @DataContext('sys_org')
+    def em_org 
+
+    @ProxyMethod
+    public def createAsyncMessage(asyncreq){
+        if (!env.ORGID) {
+            def org = em_org.find([root:1]).first()
+            env.ORGID = org.objid 
+            env.ORGCODE = org.code 
+        }
+        return [
+            sender   : (env.FULLNAME ? env.FULLNAME : 'system'), 
+            senderid : (env.USERID ? env.USERID : 'system'),
+            origin   : env.ORGID.replaceAll('-.*?',''),
+            data     : asyncreq, 
+            filetype : null,
+            groupid  : 'async',
+            channel  : (appContext.conf.cloud_channel ? appContext.conf.cloud_channel : 'etracs'),
+            channelgroup : util.getParentCode(),
+        ]
+    }   
+
+    @ProxyMethod
+    public def createAsyncRequest(servicename, methodname, data, envmap){
+        def args = [data] as Object[];
+        def asyncreq = new AsyncRequest(servicename, methodname, args, envmap); 
+        asyncreq.contextName = 'etracs25';      
+        return [asyncreq]
+    }    
+
+    @ProxyMethod
+    public void sendAsyncMessage(msg){
+        if (!msg.data)
+            throw new Exception('Message data is required.')
+        try{
+            def asyncreq = msg.data 
+            cloudNotificationSvc.addMessage(msg)
+            asyncConn.register(asyncreq.id)
+        }            
+        catch(e){
+            println 'sendAsyncMessage [ERROR]: ' + e.message 
+            e.printStackTrace();
+        }
+    }
+
+    @ProxyMethod
+    public def buildEnvMap(env){
+        def envmap = [:]
+        envmap.putAll(env);
+        envmap.remove('prevtask')
+        envmap.remove('action')
+        envmap.remove('data')
+        return envmap 
+    }
+
+
+
+
+
+    @ProxyMethod
+    public def notifyAssignee( task ) {
+        println 'notifyAssignee ...'
+        def msg = [
+            objid     : task.objid,
+            senderid  : (task.assignee.objid ? task.assignee.objid : '-'),
+            sender    : task.assignee.name,
+            recipientid : (task.assignee.objid ? task.assignee.objid : '-'),
+            message   : task.docname + ' No. ' + task.refno + ' was sent back to you by ' + task.actor.name + '.',
+            filetype  : task.filetype+'resent',
+        ]
+        try{
+            userNotificationSvc?.addMessage(msg)
+        }
+        catch(e){
+            println 'notifyAssignee Error ===================================================='
+            println e.printStackTrace()
+        }
+    }
+
+    @ProxyMethod
+    public def notifyGroup( task ) {
+        println 'notifyGroup...'
+        try{
+            def msg = [
+                objid     : task.objid,
+                senderid  : (task.actor.objid ? task.actor.objid : '-'),
+                sender    : task.actor.name,
+                groupid   : task.state,
+                message   : task.docname + ' No. ' + task.refno + '    (' + task.state + ')',
+                filetype  : task.filetype,
+            ]
+            groupNotificationSvc ?.addMessage(msg)
+        }
+        catch(e){
+            println 'notifyGroup Error ===================================================='
+            e.printStackTrace()
+        }
+    }
+
+
+    @ProxyMethod
+    public void closeUserNotification( objid ) {
+        try{
+            userNotificationSvc?.removeMessage([objid:objid])
+        }
+        catch(e){
+            println 'closeUserNotification Error ==============================================='
+            println e.printStackTrace
+        }
+    }
+
+}

@@ -1,0 +1,53 @@
+import com.rameses.annotations.*;
+
+class PaymentOrderVoidService {
+
+	@DataContext( dynamic=true ) 
+	def dynaEm; 
+
+	@Service(dynamic=true)
+	def dynaSvc;
+
+	@Service
+	def self;
+
+	@Env
+	def env;
+
+	@ProxyMethod
+	public void post( param ) {
+		def poid = param?.objid; 
+		if ( !poid ) return; 
+
+		def em = dynaEm.lookup('paymentorder_paid'); 
+
+		def poFindBy = [ objid: poid ]; 
+		def po = em.find( poFindBy ).first(); 
+		if ( !po ) return; 
+
+		def data = param.data; 
+		def txndate = data?.txndate; 
+		if ( !txndate ) { 
+			txndate = dynaSvc.lookup('DateService').getServerDate(); 
+		} 
+
+		def postedby = data?.postedby;
+		if ( postedby == null ) postedby = [:]; 
+		if ( !postedby.objid ) postedby.objid = env.USERID;
+		if ( !postedby.name ) postedby.objid = env.FULLNAME;
+
+		def reason = data.reason;
+
+		em.find( poFindBy ).delete(); 
+		
+		def logSvc = dynaSvc.lookup('LogService'); 
+		logSvc.logA( 'voidpayment', 'paymentorder_paid', poid, 'Void CashReceipt payment ('+ po.receiptno +')');
+
+		po.state = 'CANCELLED'; 
+		po.dtcancelled = txndate;
+		po.cancelledby = postedby; 
+		po.remarks = reason;
+		em = dynaEm.lookup('paymentorder_cancelled'); 
+		em.create( po ); 
+	}
+}

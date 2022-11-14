@@ -1,0 +1,18 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+
+class CloudNotificationListService
+{   
+    @Service(value='CloudNotificationListService', connection="notification_proxy")
+    def proxy; 
+
+    @ProxyMethod 
+    public def getColumns( params ) { 
+        return proxy.getColumns( params ); 
+    } 
+
+    @ProxyMethod 
+    public def getList( params ) { 
+        return proxy.getList( params ); 
+    } 
+} 

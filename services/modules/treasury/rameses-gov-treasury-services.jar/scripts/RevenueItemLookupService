@@ -1,0 +1,67 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.common.*
+import com.rameses.services.extended.*
+
+class RevenueItemLookupService  {
+
+	@ActiveDB("revenueitem")
+	def em;
+
+	@ActiveDB("collectiontype")
+	def collectiontype_adb;
+
+	@Env
+	def env;
+
+	@ProxyMethod
+	public def getColumns( def o ) {
+		return [ 
+			[name:'code', caption:'Item Code', width:80, resizable:false ],
+			[name:'title', caption:'Item Title' ],
+			[name:'fund.title', caption:'Fund Title', maxWidth:150 ],
+		]; 
+	} 
+	
+	@ProxyMethod
+	public def getList( Map m ) { 
+		if(m.searchtext == null ) m.searchtext = "";
+		m.code  = "%"+ m.searchtext.trim() +"%";
+		m.title = "%"+ m.searchtext.trim() +"%";
+		m._pagingKeys = "r.objid";
+		m._limit = 50;
+
+		m.orgid = env.ORGID 
+		m.filter = ''
+		
+		if ( m.fund && m.fund?.objid ) {
+			m.fundid = m.fund.objid 
+			m.filter += ' and r.fund_objid=$P{fundid} ' 
+		} 
+
+		//check if there are accounst being tagged
+		//else check first if there are collection type items 
+		if ( m.tag ) { 
+			m._pagingKeys = "a.objid"; 
+			return em.getAccountsByTag( m ); 
+
+		} else if ( m.collectiontype?.objid ) { 
+			m.collectiontypeid = m.collectiontype.objid; 
+
+			//check first if there are entries in collection type 
+			int c = em.findHasCollectionTypeAccount( m ).count; 
+			if ( c > 0 ) { 
+				return em.getLookupByCollectionType( m ); 
+			} 
+
+			def cta = collectiontype_adb.read( m.collectiontype ); 
+			if ( cta.org?.objid ) { 
+				m.orgid = cta.org.objid; 
+				m.filter += ' and r.org_objid=$P{orgid} '; 
+			} 
+		} 
+
+		return em.getLookup( m ); 
+	} 
+}

@@ -1,0 +1,140 @@
+import com.rameses.annotations.*;
+import com.rameses.rules.common.*;
+import com.rameses.util.*;
+
+import rptis.facts.*;
+import rptis.actions.*;
+import rptis.planttree.facts.*;
+import rptis.planttree.actions.*;
+
+public class PlantAssessmentRuleService  
+{
+	@Env 
+	def env
+
+	@ActiveDB('planttreerpu')
+	def em
+
+	@Resource("RuleService")	
+	def ruleSvc
+
+	@ActiveDB("rule")
+	def ruleDB
+
+	@Service('NumberService')
+	def numSvc
+
+	 @Service('LandRPUService')
+    def landRpuSvc
+
+	@Service('DateService')
+	def dtSvc
+
+	@Service('RPTUtil')
+	def util
+
+
+	
+
+	String RULESET = "planttreeassessment";
+
+	@ProxyMethod
+	public def execute(rpu) throws Exception {
+		rpu.assessments = []
+		def request = [rpu:rpu, facts:[], variables:[], assessments:[]]; 
+
+		request.facts = createFacts(request);
+		request.actions = buildActions( request );
+
+		def ptdruleset = 'planttreeassessment';
+		def grps = ruleDB.getRulegroups( [ruleset: ptdruleset] );
+		grps.each{g ->
+			ruleSvc.execute(ptdruleset, request.facts, request.actions, g.name);
+		}
+		rpu.assessments.each{
+			it.actualuse = em.findActualUseInfo(it.actualuse)
+		}
+		
+		rpu.productive 		= util.sum(rpu.planttrees, 'productive')
+    	rpu.nonproductive 	= util.sum(rpu.planttrees, 'nonproductive')
+
+		rpu.totalbmv = util.sum(rpu.planttrees, 'basemarketvalue')
+        rpu.totalmv  = util.sum(rpu.assessments, 'marketvalue')
+        if (rpu.totalav == 0){
+        	rpu.totalav  = util.sum(rpu.assessments, 'assessedvalue')
+        }
+
+		return rpu;
+	}
+
+	def createFacts(request){
+		def rpu = request.rpu
+		def facts = []
+
+		/*-------------------------------------
+		* DATE FACTS
+		-------------------------------------*/
+		def currDate = dtSvc.serverDate;
+		def dt = currDate;
+		if (rpu.issuedate){
+			dt = java.sql.Date.valueOf( rpu.issuedate );
+		}
+		facts << new EffectiveDate( dt );
+		facts << new CurrentDate(currDate);
+
+		/*-------------------------------------
+		* RPU
+		-------------------------------------*/
+		def rpufact = new rptis.facts.RPU(rpu)
+		facts << rpufact
+		request.rpufact = rpufact
+
+
+		rpu.planttrees.each{
+			it.adjustmentrate = calcAdjustmentRate(rpu)
+			def ptd = new PlantTreeDetail(request.rpufact, it)
+			facts << ptd
+		}
+		return facts
+	}	
+
+
+	def calcAdjustmentRate(rpu){
+		//calculate adjustment 
+		def landdetails = landRpuSvc.getLandDetails([objid:rpu.landrpuid])
+		def adjustmentrate = 0.0
+	    
+		// get total basemarketvalue for agrilands only 
+		def agrilands 		  = landdetails.findAll{ 
+															(it.specificclass.classification.code.matches('A|AA|AGR') || 
+															it.specificclass.classification.name.matches('AGRICULTURAL')) &&
+															it.adjustment != 0
+													}
+		def totallandbmv 	  = agrilands.basemarketvalue.sum()
+		def totalvalueadj     = 0.0 
+		def totalactualuseadj = 0.0 
+		
+		totallandbmv 		= ( totallandbmv ? totallandbmv : 0.0 )
+		def totallandadj  	= agrilands.landvalueadjustment.sum() + agrilands.actualuseadjustment.sum() 
+
+		if( totallandbmv > 0.0 && totallandadj != 0.0 ){
+			adjustmentrate = ( totallandadj / totallandbmv ) * 100;
+		}
+		return numSvc.roundA(adjustmentrate,0)
+	}
+
+
+	def buildActions(request) {
+		def actions = new RuleAction();
+		actions.addCommand( "calc-planttree-bmv", new CalcPlantTreeBaseMarketValue( request:request, NS:numSvc ));
+		actions.addCommand( "calc-planttree-mv", new CalcPlantTreeMarketValue( request:request));
+		actions.addCommand( "calc-planttree-adjustment", new CalcPlantTreeAdjustment( request:request, , NS:numSvc ));
+		actions.addCommand( "calc-planttree-av", new CalcPlantTreeAssessValue( request:request));
+		actions.addCommand( "add-planttree-assessment-info", new AddPlantTreeAssessmentInfo( request:request, NS:numSvc));
+		actions.addCommand( "recalc-rpuassessment", new CalcRPUAssessValue( request:request, NS:numSvc));
+		actions.addCommand( "recalc-rpu-totalav", new CalcTotalRPUAssessValue( request:request, NS:numSvc));
+		actions.addCommand( "add-derive-var", new AddDeriveVariable( request:request));
+		return actions;
+	}
+}
+

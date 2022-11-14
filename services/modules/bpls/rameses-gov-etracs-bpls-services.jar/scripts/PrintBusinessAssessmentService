@@ -1,0 +1,40 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.services.extended.*
+
+public class PrintBusinessAssessmentService  {
+
+	@Service("BusinessApplicationService")
+	def service;
+
+	@Service("BPBillingRuleService")
+	def billingSvc;
+
+	@Env
+	def env;
+
+	@ProxyMethod
+	public def getReport(def o) {
+		env.exclude_info = true;
+		def app = service.open( o );
+		def z = service.openAssessment( [applicationid: o.objid ] );
+		app.taxfees = z.taxfees;
+		def result = billingSvc.execute( app );	
+
+		def m = [:];
+		m.business = app.business;
+		m.appno = app.appno;
+		m.barcode = app.barcode;
+		m.dtfiled = app.dtfiled;
+		m.apptype = app.apptype;
+		m.activeyear = app.activeyear;
+		m.assessor = app.assessor;
+		m.approver = app.approver;
+		m.totals = app.totals;
+		m.items = result.accounts.findAll{ it.receivableid };
+		return m;
+	}
+
+
+}

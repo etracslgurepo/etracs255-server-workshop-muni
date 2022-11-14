@@ -1,0 +1,30 @@
+import com.rameses.common.*
+import com.rameses.annotations.*
+import com.rameses.services.extended.*
+import java.rmi.server.UID;
+
+class ReconcileEntityService  {
+
+	@Service("EntityService")
+	def entitySvc;
+
+	@ActiveDB(value='entity_reconciled', em='entity')
+	def em;
+
+	/**
+	* at this point the appropriate interceptors should already apply the selected items
+	*/
+	@ProxyMethod
+	public void reconcile( def m ) {
+		if( !m.entity ) throw new Exception("entity is required in ReconcileEntityService");
+		if( !m.old ) throw new Exception("old is required in ReconcileEntityService");
+		def newEntity = m.entity;
+		def oldEntity = m.old;
+
+		def en = entitySvc.open( [objid: oldEntity.objid ] );
+		em.backup( [ objid:en.objid, info: em.serializer.write(en), masterid: newEntity.objid ] );	
+		entitySvc.removeEntity( [objid: oldEntity.objid ] );		
+	}
+
+
+}

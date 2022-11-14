@@ -1,0 +1,190 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import com.rameses.util.*
+import com.rameses.services.extended.*
+
+
+class SubdivisionWorkflowService extends ActiveWorkflowService
+{
+	@ActiveDB('subdivision')
+    def em
+
+	@ActiveDB('subdivision_task')
+	def taskDB;
+
+	@DataContext('subdivision_task')
+	def em_task
+
+	@Service('NotificationService')
+	def notificationService
+
+	String processname = 'subdivision'
+
+	@Service('SubdivisionService')
+	def subdivisionSvc 
+
+
+	@ProxyMethod
+	public def findReturnToInfo( param ) {
+		return taskDB.findReturnToInfo(param)	
+	}
+
+
+	public void beforeSignal(param) {
+		if (param.action?.matches('send.*')) {
+			def task = em_task.select('returnedby').find([objid: param.taskid]).first()
+			if (!task) throw new Exception('Task ' + param.taskid + ' does not exist or has been deleted.')
+			env.task = [returnedby: task.returnedby]
+		}
+	}	
+
+
+	public void beforeCreateTask(task) {
+		def assignee = [objid:env.USERID, name:env.FULLNAME, title:env.JOBTITLE]
+		if (task.assignee) {
+			assignee = task.assignee
+			env.target = [
+				assignee: assignee,
+				refid: task.refid,
+				sender: task.assignee
+			] 
+		}
+
+		if ( env.action?.matches('return.*')){
+			def returnto = findReturnToInfo(task)
+			if (!returnto) 
+				throw new Exception('This document did not pass from ' + task.state + '.\nReturn task to another personnel.')
+
+			env.returnto = returnto.assignee
+			task.assignee = assignee
+			task.returnedby = env.prevtask.state
+		}
+		else if ( ! task.state.toLowerCase().matches('assign.*')){
+			task.assignee = assignee
+		}
+	}
+
+	public void afterCreateTask(task){
+		def msg = '';
+		if (task.state.matches('assign.*'))
+			msg = 'Subdivision is already submitted ' + task.title + '.'
+		else
+			msg = 'Subdivision is currently for ' + task.title + ' by ' + task.assignee.name + '.'
+
+		if (env.target) {
+			env.target.taskid = task.objid 
+			env.target.txnno = env.data.txnno
+		}
+	}
+
+	public void afterOpenTask(task) {
+		if (task.state.matches('assign.*'))
+			task.owner = true 
+
+		removeUserNotification(task)
+	}
+
+	public void afterLoadTask(Object newTask) {
+		newTask.transitions.findAll{ it.action.toString().matches('submit.*|send.*')}.each{t ->
+			if (t.properties?.targetrole) {
+				def params = [role: t.properties.targetrole]
+				t.assignees = taskDB.getTargetAssignees(params)
+			}
+		}
+	}	
+
+	public void beforeCloseTask(task) {
+		if (env.data.manualapprover){
+			task.enddate = env.data.manualapprover.dtsigned
+			task.actor = env.data.manualapprover
+		}
+	}
+
+	public void afterCloseTask(task) {
+		if (!task.state.matches('assign.*')){
+			env.data._taskid = task.objid
+        	subdivisionSvc.insertFaasSignatories(env.data)
+		}
+		subdivisionSvc.updateSignatories(task)
+	}
+
+
+	void removeUserNotification(task){
+		if (task.assignee?.objid == env.USERID )
+			removeNotification(task)
+	}
+
+	void removeNotification(task) {
+        notificationService.removeMessage([objid:task.refid])
+	}
+
+
+	def getNotificationMessage(task){
+		if (task?.state?.matches('assign.*')){
+			return notifyGroup(task)
+		}
+		else if (env.action?.matches('return.*')){
+			return notifyAssignee(task)
+		}
+		else if (env.prevtask?.state.matches('assign.*')){
+			removeNotification(task)
+		}
+		else if (env.target) {
+			return notifyTargetAssignee()	
+		}
+	}
+
+
+
+
+	def notifyGroup(task){
+		def subdivision = env.data 
+        return [
+            objid     		: task.refid,
+            senderid  		: env.prevtask?.actor?.objid,
+            sender    		: env.prevtask?.actor?.name,
+            recipientid   	: task.state,
+            recipienttype 	: 'group',
+            message   		: 'Subdivision No. ' + subdivision.txnno + '    (' + task.state + ')',
+            filetype  		: subdivision.filetype,
+            data 	  		: [taskid: task.objid],
+        ]
+	}
+
+	def notifyAssignee( task ) {
+		def subdivision = env.data 
+		taskDB.updateTaskAssignee([
+			objid 			: task.objid, 
+			assigneeid 		: env.returnto.objid,
+			assigneename 	: env.returnto.name,
+			assigneetitle 	: env.returnto.title
+		])
+
+        return [
+            objid     : task.refid,
+            recipientid : (env.returnto ? env.returnto.objid : task.assignee.objid),
+            recipienttype : 'user',
+            senderid  : task.assignee.objid,
+            sender    : task.assignee.name,
+            message   : 'Subdivision No. ' + ( subdivision.tdno ? subdivision.tdno : subdivision.utdno ) + '   was resent by ' + env.prevtask?.actor?.name,
+            filetype  : subdivision.filetype,
+            data 	  : [taskid: task.objid],
+        ]
+	}
+
+	def notifyTargetAssignee() {
+		def target = env.target 
+        return [
+            objid     : target.refid,
+            recipientid : target.assignee?.objid,
+            recipienttype : 'user',
+            senderid  : env.prevtask?.actor?.objid,
+            sender    : env.prevtask?.actor?.name,
+            message   : 'Subdivision No. ' + target.txnno + '   was submitted by ' + env.prevtask?.actor?.name,
+            filetype  : 'subdivision',
+            data 	  : [taskid: target.taskid],
+        ]
+	}
+
+}
+

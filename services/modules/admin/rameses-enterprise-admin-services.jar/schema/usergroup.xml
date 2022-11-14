@@ -1,0 +1,45 @@
+<schema>
+
+	<element name="usergroup" tablename="sys_usergroup">
+		<field name="objid" primary="true"/>	
+		<field name="title" />
+		<field name="domain" />
+		<field name="userclass"/>
+		<field name="orgclass"/>
+		<field name="role"/>
+	</element>
+	
+	<element name="permission" tablename="sys_usergroup_permission">
+		<field name="objid" primary="true"/>	
+		<field name="usergroup_objid" />
+		<field name="object" />
+		<field name="permission"/>
+		<field name="title"/>
+	</element>
+
+	<element name="admin" tablename="sys_usergroup_admin">
+		<field name="objid" primary="true"/>	
+		<field name="usergroupid" />
+		<field name="user_objid" required="true"/>
+		<field name="user_username" required="true"/>
+		<field name="user_firstname" required="true"/>
+		<field name="user_lastname" required="true"/>
+		<field name="exclude"/>
+	</element>
+
+	<element name="member" tablename="sys_usergroup_member">
+		<field name="objid" primary="true"/>	
+		<field name="usergroup_objid" />
+		<field name="user_objid" />
+		<field name="user_username" />
+		<field name="user_firstname" />
+		<field name="user_lastname" />
+		<field name="org_objid" />
+		<field name="org_name" />
+		<field name="org_orgclass" />
+		<field name="securitygroup_objid"/>
+		<field name="exclude" />
+		<field name="displayname" />
+	</element>
+
+</schema>

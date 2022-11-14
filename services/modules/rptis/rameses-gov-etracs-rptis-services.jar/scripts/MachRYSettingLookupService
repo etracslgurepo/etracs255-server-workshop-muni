@@ -1,0 +1,101 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import com.rameses.services.extended.*
+
+public class MachRYSettingLookupService
+{
+	@PersistenceContext('main')
+	def em
+
+    @Service('RPTParameterService')
+    def paramSvc
+
+    @ActiveDB('machrysettinglookup')
+    def em_db
+
+    @DataContext('rysetting_mach_smv')
+    def em_mach_smv
+
+     
+
+    @ProxyMethod
+    public def lookupAssessLevels(params) {
+        params.searchtext = (params.searchtext ? params.searchtext : '') + '%'
+        def list = em.sqlContext.createNamedQuery('machrysettinglookup:lookupAssessLevels')
+                    .setParameters(params).resultList   
+        return filterByBarangay(params, list)   
+    }
+
+    @ProxyMethod
+    public def lookupAssessLevelByPrevId(previd) {
+        return em.sqlContext.createNamedQuery('machrysettinglookup:lookupAssessLevelByPrevId')
+                .setParameter('previd', previd).singleResult
+    }
+
+     @ProxyMethod
+    public def lookupMachineSmvs(params) {
+        params.searchtext = (params.searchtext ? params.searchtext : '') + '%'
+        def filters = []
+        if (params.ry) {
+            filters << '(rs.ry = $P{ry} or rs.ry is null)'
+        }
+        if (params.lguid) {
+            filters << '(l.lguid = $P{lguid} or l.lguid is null)'
+        }
+
+        params.filters = ''
+        if (filters) {
+            params.filters = ' AND ' + filters.join(' AND ')
+        }
+        println "params => " + params;
+
+        def list = em_db.getMachineSmvs(params)
+        return filterByBarangay(params, list)   
+    }
+
+
+
+    @ProxyMethod
+    public def lookupAssessLevelByRange( machassesslevelid, mv ) {
+        return em.sqlContext.createNamedQuery('machrysettinglookup:lookupAssessLevelByRange')
+                    .setParameter('machassesslevelid', machassesslevelid)
+                    .setParameter('mv', mv)
+                    .singleResult   
+    }
+
+	@ProxyMethod
+    public def lookupMachRySettingById(objid){
+        return em.sqlContext.createNamedQuery('machrysettinglookup:lookupMachRySettingById')
+                .setParameter('objid', objid).singleResult
+    }
+
+
+    @ProxyMethod
+    public def lookupForex(params){
+        return em.sqlContext.createNamedQuery('machrysettinglookup:lookupForex')
+                .setParameters(params).singleResult
+    }
+
+    @ProxyMethod
+    public def lookupForexByPrevId(previd){
+        return em.sqlContext.createNamedQuery('machrysettinglookup:lookupForexByPrevId')
+                .setParameter('previd', previd).singleResult
+    }
+
+    @ProxyMethod
+    public def lookupMachineSmvsByPrevId(previd){
+        return em_mach_smv.find([previd: previd]).first()
+    }
+
+    def filterByBarangay(params, list){
+        def res = list.findAll{it.barangayid == params.barangayid}
+        if ( res )
+            return res 
+        return list.findAll{it.barangayid == null} 
+    }
+
+    @ProxyMethod
+    public def getVariables() {
+        return paramSvc.getRPTParameters([:])    
+    }
+}

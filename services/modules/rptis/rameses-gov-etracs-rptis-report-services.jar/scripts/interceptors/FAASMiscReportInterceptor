@@ -1,0 +1,129 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.util.*;
+import com.rameses.services.extended.*;
+
+class FaasMiscReportInterceptor
+{
+	@ActiveDB('faasreport_misc')
+	def em
+
+	@Service('Var')
+	def var
+	
+	@Service('RPTUtil')
+	def util 
+
+	@Service('NumberService')
+	def numberSvc
+
+	@Service('FAASReportService')
+	def faasReportSvc 
+
+	def MAX_ITEM_ROWS = 15
+
+
+	@After(pattern="FAASReportService.getReportData", eval="#{result.rpu.rputype=='misc'}")
+	public void buildReport(evt){
+		def faas = evt.result
+		faas.rpu += em.findMiscRpuInfo(faas.rpu)
+
+		faasReportSvc.buildLandReference(faas)
+		buildAppraisals(faas)
+		buildAdjustments(faas)
+		buildAssessments(faas)
+	}
+
+	void buildAdjustments(faas){
+		faas.adjustments = []
+		def firstitem = true
+		
+		for (int i=0; i< faas.appraisals.size(); i++){
+			def appraisal = faas.appraisals[i]
+			if (appraisal.depreciation != null && appraisal.depreciation != 0.0){
+				def depreciationrate = numberSvc.format("#,##0", appraisal.depreciation) + ' %'
+				def item = [
+					actualuse		: faas.rpu.actualuse.name,
+					basemarketvalue	: appraisal.basemarketvalue,
+					adjtypename		: 'DEPRECIATION',
+					depreciationrate: depreciationrate,
+					depreciatedvalue: appraisal.depreciatedvalue,
+					marketvalue		: appraisal.marketvalue
+				]
+				if (util.isTrue(faas.rpu.useswornamount) && firstitem){
+					item.depreciatedvalue = numberSvc.round(faas.rpu.swornamount * appraisal.depreciation / 100.0)
+					item.marketvalue = faas.rpu.totalmv 
+					firstitem = false
+					faas.adjustments << item
+					break;
+				}
+				else{
+					faas.adjustments << item
+				}
+			}
+		}
+		
+		util.buildEmptyRows( faas.adjustments, 5)
+	}
+
+	void buildAppraisals(faas) {
+		def firstitem = true 
+		faas.appraisals = em.getItems(faas.rpu).each{
+			it.params = em.getItemParams(it)
+			def binding = buildFieldBindings(it)
+			binding += buildParamBindings( it.params )
+			def expr = replaceExpr( it.expr, binding )
+			it.classification	= faas.rpu.classification.name
+			it.actualuse		= faas.rpu.actualuse.name
+			it.miscitemname		= it.miscitem.name
+			it.expr				= expr
+			it.basemarketvalue	= it.basemarketvalue
+
+			if (util.isTrue(faas.rpu.useswornamount)){
+				if (firstitem){
+					it.expr = 'SWORN AMOUNT'
+					it.basemarketvalue = faas.rpu.swornamount 
+					firstitem = false
+				}
+				else {
+					it.expr = ''
+					it.basemarketvalue = null
+				}
+			}
+		}
+		util.buildEmptyRows( faas.appraisals, MAX_ITEM_ROWS)
+	}
+
+	void buildAssessments(faas){
+		faas.propertyassessments = em.getAssessments(faas.rpu)
+		util.buildEmptyRows( faas.propertyassessments, 5)
+	}
+
+
+	def buildFieldBindings(item) {
+		return [
+			SYS_BASE_MARKET_VALUE       : item.basemarketvalue,
+			SYS_MARKET_VALUE            : item.marketvalue,
+			SYS_DEPRECIATED_VALUE		: item.depreciatedvalue,
+			SYS_ASSESSED_VALUE          : item.assessedvalue
+		]
+	}
+
+	private def buildParamBindings( params ) {
+		def binding = [:]
+        params.each {
+            binding[it.param.name] = it.decimalvalue ? it.decimalvalue : it.intvalue 
+        }
+		
+        return binding
+	}
+	
+	private def replaceExpr( expr, binding ) {
+		binding.keySet().each { key ->
+			expr = expr.replace( key, numberSvc.format( "#,##0.00", binding[key] ) )
+		}
+		
+		return expr
+	}	
+
+}

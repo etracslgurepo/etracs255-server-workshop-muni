@@ -1,0 +1,28 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+
+
+class SysWorkflowService  {		
+
+	@DataContext
+	def db;
+
+	@Service("DateService")
+	def dateSvc;
+
+
+    @ProxyMethod
+	public def start( def r ) {
+		if( !r.refid ) throw new Exception("refid is required in WorkflowService.start");
+		if( !r.processname ) throw new Exception("processname is required  in SysWorkflowService.start");
+		r.nodename = 'start';
+		def list = [];
+		findNextTransition(r, list);
+		return list;
+    }
+
+
+    
+
+
+}

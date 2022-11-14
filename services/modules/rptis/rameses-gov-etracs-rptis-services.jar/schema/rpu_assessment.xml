@@ -1,0 +1,15 @@
+<schema>
+    <element tablename="rpu_assessment">
+        <field name="objid" primary="true" />
+        <field name="rpuid" required="true" />
+        <field name="rputype" required="true" />
+        <field name="classification_objid" />
+        <field name="actualuse_objid" />
+        <field name="areasqm" required="true" type="decimal" />
+        <field name="areaha" required="true" type="decimal" />
+        <field name="marketvalue" required="true" type="decimal" />
+        <field name="assesslevel" required="true" type="decimal" />
+        <field name="assessedvalue" required="true" type="decimal" />
+        <field name="taxable" type="boolean" />
+    </element>
+</schema>

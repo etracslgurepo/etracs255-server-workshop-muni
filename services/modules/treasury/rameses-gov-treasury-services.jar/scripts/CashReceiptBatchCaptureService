@@ -1,0 +1,31 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.services.extended.*;
+
+class CashReceiptBatchCaptureService extends ActiveCrudService  {
+
+	@ActiveDB("cashreceipt_batchcapture")
+	def em;
+
+	@Service("DateService")
+	def dateSvc;
+
+	public void beforeCreate(def o) {
+		o.objid = "BATCHCAPTURE"+new UID();
+	}
+
+	public void afterCreate(def o) {
+		def txndate = dateSvc.serverDate;
+		o.items.each {
+			it.objid = "RCT"+new UID();
+			it.parentid = o.objid;
+			it.collectiontype = o.collectiontype;
+			it.txndate = txndate;
+			it.totalcash = it.amount;
+			it.totalnoncash = 0;
+			em.save( it, "entry");
+		}
+	}
+
+}

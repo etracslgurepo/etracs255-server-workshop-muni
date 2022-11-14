@@ -1,0 +1,16 @@
+<schema>
+	<element tablename="vw_entityindividual_lookup">
+		<field name="objid" primary="true"/>
+		<field name="entityno" caption="EntityNo"/>
+		<field name="name" caption="Name" hidden="true"/>
+		<field name="addresstext" caption="Address"  />
+		<field name="type" caption="Type" />
+		<field name="lastname" caption="LastName" hidden="true" visible="false" selectable="false" indexed="true" searchable="true"/>
+		<field name="firstname" caption="FirstName" hidden="true" visible="false" selectable="false" indexed="true" searchable="true"/>
+		<field name="middlename" caption="MiddleName" hidden="true" visible="false" selectable="false" />
+		<field name="birthdate" caption="BirthDate" hidden="true" visible="false" selectable="false" />
+		<field name="gender" caption="Gender" hidden="true" visible="false" selectable="false" />
+		<field name="mobileno" caption="MobileNo" hidden="true" visible="false" selectable="false" />
+		<field name="phoneno" caption="PhoneNo" hidden="true" visible="false" selectable="false" />
+	</element>	
+</schema>

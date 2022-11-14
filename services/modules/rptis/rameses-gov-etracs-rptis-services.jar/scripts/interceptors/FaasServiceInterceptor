@@ -1,0 +1,144 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class FaasServiceInterceptor
+{
+	@DataContext('faas')
+	def em 
+
+	@Service('RPTLedgerService')
+	def ledgerSvc
+
+	@Service('RPTUtil')
+	def util
+
+	@Service('Var')
+	def var
+
+	@Service('LogService')
+	def logSvc 
+
+	@Service('FAASAnnotationService')
+	def annotationSvc 
+
+
+	@After(pattern="FAASService.(createFaas|updateFaas|submitForApproval|disapproveFaas|approveFaas)") 
+	public void logActions( evt ) {
+		def faas = evt.result 
+		logSvc.log( evt.methodName, 'FAAS', faas.objid)
+	}
+
+	@Before(pattern="FAASService.(updateFaas)") 
+	public void validateFaasData( evt ) {
+		def faas = evt.args[0]
+
+		//validate change administrator 
+		if ('CA'.equalsIgnoreCase(faas.txntype.objid)) {
+			util.required('Administrator', faas.administrator)
+			util.required('Administrator', faas.administrator.name)
+			util.required('Administrator Address', faas.administrator.address)
+			if (faas.administrator.name.equalsIgnoreCase(faas.prevadministrator))
+				throw new Exception('New Administrator must not be equal to previous Administrator ' + faas.prevadministrator + '.')
+		}
+
+	}
+
+
+	@Before(pattern="FAASService.approveFaas")
+	public void beforeApproveFaas( evt ) {
+		def faas = evt.args[0]
+		util.required('Property Owner', faas.taxpayer)
+		util.required('Property Owner', faas.taxpayer.objid)
+		util.required('Memoranda', faas.memoranda)
+	}
+
+
+	@Before(pattern="FAASService.initTransaction")  
+	public void interceptInitFaasTransaction( evt ) {
+		def info = evt.args[0]
+		def assessorInitiatedTxn = info._assessorInitiated ? info._assessorInitiated  : false
+		if (info.faas && info.faas.objid){
+			ledgerSvc.checkLedgerApprovedState(info.faas.objid)
+			if (!assessorInitiatedTxn && (info.txntype.checkbalance == null  || util.isTrue(info.txntype.checkbalance))) {
+				if ( util.toBoolean(var.allow_faas_transaction_with_balance, false) == false ){
+					ledgerSvc.checkLedgerBalance(info.faas.objid)
+				}
+			}
+			
+			annotationSvc.checkActiveAnnotations(info.txntype, info.faas)
+		}
+	}
+
+	@After(pattern="FAASService.initTransaction", eval="#{result.txntype.objid.matches('TR|TRE|TRC')}", index=10) 
+	public void initTransfer( evt ) {
+		def faas = evt.result 
+		clearInfo(faas)
+	}
+
+	@Before(pattern="FAASService.submitForApproval", eval="#{args[0].txntype.objid.matches('TR|TRE|TRC')}", index=11) 
+	public void validateTransfer( evt ) {
+		def faas = evt.args[0]
+		//new owner should not be equal to previous owner
+		if (faas.previousfaases){
+			def prevfaas = em.find([objid: faas.previousfaases[0].prevfaasid]).first()
+			if (prevfaas && faas.taxpayer.objid == prevfaas.taxpayer.objid){
+				throw new Exception('New owner should not be equal to previous owner.')
+			}
+		}
+
+	}
+
+
+	@After(pattern="FAASService.initTransaction", eval="#{result.txntype.objid == 'CD'}", index=10) 
+	public void initChangeDepreciation( evt ) {
+		def faas = evt.result 
+		if (faas.rpu.rputype == 'land') {
+			throw new Exception('Cannot depreciate Land property.')
+		}
+	}
+
+	@After(pattern="FAASService.initTransaction", eval="#{result.txntype.objid == 'UK'}", index=10) 
+	public void initUknownToKnown( evt ) {
+		def faas = evt.result 
+		if (!faas.owner || !faas.owner.name || !faas.owner.name.toLowerCase().matches('.*unknown.*')){
+			throw new Exception('Unable to process this property. Property owner must be UNKNOWN.')
+		}
+	}
+
+	
+	@After(pattern="FAASService.initTransaction", eval="#{result.txntype.objid == 'MC'}", index=10) 
+	public void initMultipleClaim( evt ) {
+		def info = evt.args[0]
+		def faas = evt.result 
+		faas.rp.claimno = info.claimno 
+		faas.prevtdno = null
+		faas.prevpin = null
+		faas.prevowner = null
+		faas.prevav = 0.0
+		faas.prevmv = 0.0
+		faas.rpu.previd = null
+		faas.rp.previd = null
+		clearInfo(faas)
+		faas.previousfaases = []
+	}
+
+	/*---------------------------------------------------
+	*
+	* Clear info related to transfer
+	*
+	*--------------------------------------------------*/	
+	void clearInfo(faas){
+		faas.tdno 					= null
+		faas.titletype				= null
+		faas.titleno				= null
+		faas.titledate				= null
+		faas.taxpayer				= [:]
+		faas.owner					= [:]
+		faas.administrator 			= [:]
+		faas.beneficiary 			= [:]
+		faas.memoranda				= null
+	}
+
+}
+

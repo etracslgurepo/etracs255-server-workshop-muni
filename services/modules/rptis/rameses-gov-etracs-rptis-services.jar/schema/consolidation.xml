@@ -1,0 +1,34 @@
+<schema>
+    <element name="consolidation" tablename="consolidation">
+        <field name="objid" primary="true" />
+        <field name="state" required="true" />
+        <field name="ry" required="true" type="integer" />
+        <field name="txnno" required="true" />
+        <field name="txndate" required="true" />
+        <field name="memoranda" required="true" />
+        <field name="newrpid" />
+        <field name="newrpuid"  />
+        <field name="newfaasid" />
+        <field name="lguid" />
+        <field name="originlguid" />
+    </element>
+
+    <element name="consolidatedland" tablename="consolidatedland">
+        <field name="objid" primary="true" />
+        <field name="consolidationid" required="true" />
+        <field name="landfaasid" required="true" />
+        <field name="rpuid" required="true" />
+        <field name="rpid" required="true" />
+    </element>
+
+    <element name="affectedrpu" tablename="consolidationaffectedrpu">
+        <field name="objid" primary="true" />
+        <field name="consolidationid" required="true" />
+        <field name="landfaasid" required="true" />
+        <field name="prevfaasid" required="true" />
+        <field name="newrpid" required="true" />
+        <field name="newrpuid" required="true" />
+        <field name="newfaasid" />
+        <field name="newsuffix" />
+    </element>
+</schema>

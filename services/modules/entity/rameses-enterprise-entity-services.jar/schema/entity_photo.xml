@@ -1,0 +1,13 @@
+<schema adapter="main">
+	
+	<element tablename="entity_photo">
+		<field name="objid" primary="true" prefix="EPH"/>
+		<field name="entityid" required="true"/>
+		<field name="dtfiled" required="true"/>
+		<field name="createdby_objid" required="true"/>
+		<field name="createdby_name" required="true"/>
+		<field name="image" required="true"/>
+		<field name="thumbnail" required="true"/>
+	</element>
+
+</schema>

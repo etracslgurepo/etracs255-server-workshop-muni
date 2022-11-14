@@ -1,0 +1,165 @@
+import com.rameses.annotations.*
+import com.rameses.eserver.*;
+import com.rameses.common.*;
+
+class FAASWorkflowInterceptor
+{
+	@Env 
+	def env 
+
+
+	@ActiveDB('faas_task')
+	def em
+
+
+	@Service('FAASWorkflowService')
+	def workflowSvc
+
+
+	@Service('FAASService')
+	def faasSvc
+
+	@Service('RealPropertyService')
+	def rpSvc 
+
+	@Service('RPUService')
+	def rpuSvc 
+
+	@Service('RPTUtil')
+	def util
+
+	@Service('RPTRequirementService')
+	def reqSvc
+
+	@Service('ExaminationService')
+	def examinationSvc
+
+	@Service('DateService')
+	def dtSvc 
+
+	@DataContext('faas_previous')
+	def em_faas_previous 
+
+	@After(pattern="GeneralRevisionService.initOnlineGeneralRevision") 
+	public void handleGRStartWorkflow( evt ) {
+		handleCreate(evt)
+	}
+
+
+	@After(pattern='FAASService.(initOnlineTransaction|initNewDiscovery)', eval="#{result.datacapture == 0 || result.datacapture == false}")
+	public void handleCreate(evt){
+		startWorkflow(evt)
+	}
+
+	@After(pattern='FAASStewardshipService.initStewardship')
+	public void handleStewardCreate(evt){
+		startWorkflow(evt)
+	}
+
+	@After(pattern='FAASRevisionService.createFaasRevision')
+	public void handleCreateRevision(evt){
+		startWorkflow(evt)
+	}
+
+	void startWorkflow(evt){
+		def faas = evt.result 
+		faas.task = workflowSvc.start([refid:faas.objid, data:faas])[0]
+		faas.taskid = faas.task.objid 
+		faasSvc.saveSignatory(faas)
+	}
+
+	@After(pattern="FAASWorkflowService.signal", eval="#{args[0].state == 'receiver' && args[0].action == 'delete'}", index=10) 
+	public void deleteRecord( evt ) {
+		def faas = evt.args[0].data
+		faasSvc.deleteFaas(faas)
+	}
+
+	@After(pattern="FAASWorkflowService.signal", eval="#{args[0].state == 'receiver' && args[0].action == 'canceltxn'}", index=10) 
+	public void cancelTransaction( evt ) {
+		def faas = evt.args[0].data
+		faasSvc.cancelTransaction(faas)
+	}
+
+	@Before(pattern="FAASWorkflowService.signal", eval="#{args[0].state == 'receiver' && args[0].action != 'delete'}", index=10) 
+	public void validateReceiveInfo( evt ) {
+		def faas = evt.args[0].data
+		reqSvc.checkCompliance(faas.objid)
+	}
+
+
+	@Before(pattern="FAASWorkflowService.signal", eval="#{args[0].state == 'examiner' && args[0].action == 'submit' }", index=10) 
+	public void validateExaminationInfo( evt ) {
+		def faas = evt.args[0].data
+		def findings = examinationSvc.getFindings(faas.objid)
+		if (!findings )
+			throw new Exception('Examination Finding is required.')
+	}
+
+
+	@Before(pattern="FAASWorkflowService.signal", eval="#{args[0].state.equalsIgnoreCase('taxmapper')}", index=10) 
+	public void validateTaxmappingInfo( evt ) {
+		def faas = evt.args[0].data
+	}
+
+
+	@Before(pattern="FAASWorkflowService.signal", eval="#{args[0].state.equalsIgnoreCase('taxmapper') && args[0].data.txntype.objid.matches('ND')}", index=11) 
+	public void validateNewDiscoveryTaxmappingInfo( evt ) {
+		def faas = evt.args[0].data
+		def rp = rpSvc.open(faas.rp)
+		if (!rp) throw new Exception('Real Property does not exist or has already been deleted.')
+
+		util.required('Section No.', rp.section)
+		util.required('Parcel No.', rp.parcel)
+	}
+
+
+	@Before(pattern="FAASWorkflowService.signal", eval="#{args[0].state.equalsIgnoreCase('appraiser') && !args[0].action?.matches('return.*')}", index=15) 
+	public void validateAppraisalInfo( evt ) {
+		println 'validateAppraisalInfo....'
+		def faas = evt.args[0].data
+		util.required('Memoranda', faas.memoranda)
+	}
+
+
+	@Before(pattern="FAASWorkflowService.signal", eval="#{args[0].state.equalsIgnoreCase('appraiser') && args[0].data.txntype.objid.matches('TR|TRC|TRE')}", index=10) 
+	public void validateTransferAppraisalInfo( evt ) {
+		println 'validateTransferAppraisalInfo...'
+		def faas = evt.args[0].data
+		util.required('Owner', faas.taxpayer.objid)
+		util.required('Declared Owner', faas.owner.name)
+
+		def prevowner = null;
+		def prevlist = em_faas_previous.find([faasid:faas.objid]).list();
+		if (prevlist){
+			prevowner = prevlist.prevowner.join('/')
+		}
+		if(faas.owner.name.equalsIgnoreCase(prevowner)){
+			throw new Exception('Current Owner must not be equal to previous owner.')
+		}
+	}
+
+
+	@Before(pattern="FAASWorkflowService.signal", eval="#{args[0].state.equalsIgnoreCase('appraiser') && args[0].data.txntype.objid.matches('CT')}", index=10) 
+	public void validateChangeTaxabilityInfo( evt ) {
+		def faas = evt.args[0].data
+		def rpu = rpuSvc.findRpuInfoById(faas.rpu.objid)
+		def prevrpu = rpuSvc.findRpuInfoById(rpu.previd)
+
+		if (rpu.taxable == 0 && (rpu.exemptiontype == null || rpu.exemptiontype.objid == null))
+			throw new Exception('Exemption Type is required.')
+		
+		if (prevrpu){
+			def invalid = false 
+			if ( prevrpu.taxable == 1 && prevrpu.taxable == rpu.taxable ) 
+				invalid = true
+			else if (prevrpu.taxable != 1 && prevrpu.exemptiontype.objid == rpu.exemptiontype.objid)
+				invalid = true 
+
+			if (invalid)
+				throw new Exception('Current Taxability must not be equal to previous taxability.')
+		}
+	}
+
+	
+}
+

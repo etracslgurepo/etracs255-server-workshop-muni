@@ -1,0 +1,24 @@
+<schema>
+	<element tablename="batchgr_item">
+		<field name="objid" primary="true" />
+		<field name="parent_objid" required="true" />
+		<field name="state" required="true" />
+		<field name="rputype" required="true" />
+		<field name="tdno" required="true" />
+		<field name="fullpin" required="true" />
+		<field name="pin" required="true" />
+		<field name="suffix" required="true" />
+		<field name="subsuffix" />
+		<field name="newfaasid" />
+		<field name="error" />
+		<field name="modified" expr="case when newfaasid is null then 0 when fullpin = newfaas.fullpin then 0 else 1 end" />
+		<complex name="faas" ref="faas_list" jointype="many-to-one" 
+			required="false" includefields="state,totalmv,totalav,effectivityyear" >
+				<key field="objid" target="objid" />
+		</complex>
+		<complex name="newfaas" ref="faas" jointype="many-to-one" 
+			required="false" includefields="objid,tdno,fullpin" >
+				<key field="newfaasid" target="objid" />
+		</complex>
+	</element>
+</schema>

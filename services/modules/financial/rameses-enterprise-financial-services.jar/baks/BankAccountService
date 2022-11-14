@@ -1,0 +1,65 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import com.rameses.services.extended.*
+
+class BankAccountService extends ActiveCrudListService {
+
+	@ActiveDB('bankaccount')
+	def em
+	
+	String pagingKeys='ba.objid'
+
+	@ProxyMethod
+	public def getColumns(def m) {
+		return [
+			[name:"code", caption:"Account No."],
+			[name:"title", caption:"Account Title"],
+			[name:"fund.code", caption:"Fund Code", width:80, alignment:'CENTER'],
+			[name:"fund.title", caption:"Fund Title"],
+			[name:"bank.name", caption:"Bank Name"],
+			[name:"branchname", caption:"Branch Name"],
+			[name:"totaldr", caption:"Total Dr", type:"decimal"],
+			[name:"totalcr", caption:"Total Cr", type:"decimal"],
+			[name:"endbalance", caption:"End Bal.", type:"decimal"],
+		];
+	}
+
+	public def getList(params ){
+		params._pagingKeys = 'ba.objid'
+		if(! params.searchtext)	return em.getList(params);
+
+		params.searchtext = params.searchtext + '%'
+		def list = em.getListByBankAccountCode(params)
+		if(!list) list = em.getListByBankCode(params)
+		if(!list) list = em.getListByBankName(params)
+		return list;
+	}
+	
+	public void beforeList( params ) {
+		params.code = params.searchtext
+		params.bank_code = params.searchtext
+		params.bank_name = params.searchtext
+		
+	}
+	
+	@ProxyMethod
+	public List getAccountTypeList() {
+		return ["CHECKING", "SAVINGS", "TIME DEPOSIT", "HYSA"]
+	}
+
+
+	public void beforeCreate( def o ) {
+		o.beginbalance = 0;
+		o.forwardbalance = 0;
+		o.totaldr = 0;
+		o.totalcr = 0;
+		o.endbalance = 0;
+		o.currentlineno = 1;
+	}
+
+	@ProxyMethod
+	public def getEntries( o ) {
+		return em.getEntries(o);
+	}
+	
+}

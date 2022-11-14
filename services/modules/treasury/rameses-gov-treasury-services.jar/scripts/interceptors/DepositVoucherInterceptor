@@ -1,0 +1,67 @@
+import com.rameses.annotations.*;
+
+class DepositVoucherInterceptor {
+
+	@DataContext("depositvoucher")
+	def dvEm;
+
+	@DataContext("depositvoucher_fund")
+	def dvfEm;
+
+	@DataContext("depositslip")
+	def dsEm;
+
+	@DataContext("collectionvoucher")
+	def cvEm;
+
+	@DataContext("checkpayment")
+	def checkEm;
+
+
+	@Before(pattern="PersistenceService.removeEntity", eval="#{ args[0]._schemaname == 'depositvoucher' }" )
+	public void beforeRemove( evt ) {
+		def param = evt.args[0]; 
+		def dv = dvEm.find([ objid: param.objid ]).select('objid,state').first(); 
+		if ( !dv ) return; 
+
+		if ( dv.state.toString().toUpperCase() == 'POSTED' ) 
+			throw new Exception('Delete action is not allowed. Transaction is already posted.'); 
+
+		def uu = [ depositvoucherid: '{NULL}', fundid: '{NULL}', depositslipid: '{NULL}' ]; 
+		def findby = [ depositvoucherid: param.objid ]; 
+		checkEm.find( findby ).update( uu ); 
+
+		uu.remove('fundid'); 
+		uu.remove('depositslipid');
+		cvEm.find( findby ).update( uu ); 
+
+		uu.clear(); 
+		uu.state = 'CANCELLED'; 
+		dvEm.find([ objid: param.objid ]).update( uu ); 
+		dvfEm.find([ parentid: param.objid ]).update( uu ); 
+		dvfEm.cancelDepositSlips([ depositvoucherid: param.objid ]); 
+
+		// inject a temporary findBy data, so that the transaction will not be deleted 
+		// we will only marked the transction as CANCELLED  
+		param.findBy = [ objid: 'CANCELLED-'+ new java.rmi.server.UID() ]; 
+	}
+
+	@After(pattern="DepositVoucherService.post")
+	public void afterPost( evt ) {
+		def param = evt.args[0]; 
+
+		def dv = dvEm.find([ objid: param.objid ]).select('objid,controlno,state').first(); 
+		if ( !dv ) return; 
+
+		if ( dv.state.toString().toUpperCase() != 'POSTED' ) {
+			throw new Exception('Deposit Voucher must be posted first'); 
+		}
+
+		def slip = dvfEm.findPendingDepositSlip([ depositvoucherid: param.objid ]); 
+		if ( slip ) { 
+			throw new Exception('There are still deposit slips for '+ slip.fund.title +' that needs to be validated'); 
+		} 
+
+		dvfEm.find([ parentid: dv.objid ]).update([ state: dv.state ]); 
+	} 
+}

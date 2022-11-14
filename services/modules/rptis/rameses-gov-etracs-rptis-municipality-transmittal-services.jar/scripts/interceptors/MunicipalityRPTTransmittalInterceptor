@@ -1,0 +1,27 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class MunicipalityRPTTransmittalInterceptor
+{
+	@Env 
+	def env 
+
+	@DataContext('rpttransmittal_item')
+	def db_rpttransmittal_item
+
+
+	@After(pattern='RPTRedFlagService.resolveRedFlag', index=100000)
+	public void resolveRedFlagTransmittalItem(evt){
+		def redflag = evt.result 
+
+		def updateditem = [:]
+		updateditem.remarks = 'RESOLVED BY ' + redflag.resolvedby.name 
+		updateditem.status = 'RESOLVED'
+		
+		db_rpttransmittal_item
+				.where("refid = :refid and state <> 'RESOLVED'", [refid:redflag.objid])
+				.update(updateditem)
+	}
+}
+

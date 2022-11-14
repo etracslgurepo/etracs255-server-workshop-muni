@@ -1,0 +1,104 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.services.extended.*;
+
+public class CancelledFAASListService extends ActiveCrudListService {
+
+    @Env
+    def env 
+
+    @ActiveDB("cancelledfaas")
+    def em;
+
+    @Service("DateService")
+    def dateSvc;
+
+    @Service('NumberService')
+    def numSvc
+
+    @ProxyMethod
+    public def getColumns(params) {
+        return [
+            [name:"state", caption:"State"],
+            [name:"txnno", caption:"Txn No."],
+            [name:"faas.tdno", caption:"TD No."],
+            [name:"faas.fullpin", caption:"PIN"],
+            [name:"faas.owner.name", caption:"Owner Name"],
+            [name:"faas.totalareasqm", caption:"Area (sqm)"],
+            [name:"faas.totalmv", caption:"Market Value"],
+            [name:"faas.totalav", caption:"Assessed Value"],
+        ]
+    }
+
+    @ProxyMethod
+    public def getNodes(o) {
+        def nodes = []
+        nodes << [name:'all', caption:'All Records']
+        nodes += em.getNodes();
+        nodes << [name:'approved', caption:'Approved']
+        nodes << [name:'mytask', caption:'My Tasks']
+        nodes << [name:'unassigned', caption:'Unassigned Tasks']
+
+        nodes.each{
+            it.leaf = true
+            it.folder = true 
+            it.allowSearch = true 
+        }
+        return nodes
+    }   
+
+
+    void beforeList( params ) {
+        params.filters = ''
+        params.orderby = ''
+        params._pagingKeys = 'f.objid'
+
+        def whereclause = ''
+
+        if (params.lgu){
+            params.lguid = params.lgu.objid 
+            whereclause += ' cf.lguid = $P{lguid} '
+        }
+
+        if (params.barangay){
+            params.barangayid = params.barangay.objid 
+            if (whereclause) whereclause += ' AND ' 
+            whereclause += ' rp.barangayid = $P{barangayid} '
+        }        
+
+        if (params.state){
+            if (whereclause) whereclause += ' AND ' 
+            whereclause += ' cf.state = $P{state} '
+        }
+        
+        switch(params.name) {
+            case 'all':
+                break;
+            case 'approved':
+                params.state = 'APPROVED'
+                if (whereclause) whereclause += ' AND ' 
+                whereclause += ' cf.state = $P{state}  '
+                break;
+            case 'mytask':
+                params.userid = env.USERID 
+                if (whereclause) whereclause += ' AND ' 
+                whereclause += ' tsk.assignee_objid = $P{userid} AND tsk.enddate IS NULL  '
+                break;
+            case 'unassigned':
+                if (whereclause) whereclause += ' AND ' 
+                whereclause += " tsk.state like 'assign%' "
+                break;
+            default:
+                params.taskstate = params.name
+                if (whereclause) whereclause += ' AND ' 
+                whereclause += ' tsk.state = $P{taskstate} AND tsk.enddate IS NULL  '
+        }
+
+        if (whereclause) {
+            params.filters = ' AND ' + whereclause
+            params.orderby = ' ORDER BY f.tdno, rp.pin, rpu.suffix  '
+        }
+    }   
+
+}

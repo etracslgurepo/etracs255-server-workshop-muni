@@ -1,0 +1,14 @@
+package rptrequirement;
+
+declare RPTTxnInfoFact
+    txntype                 : String
+    txntypemode             : String
+    planRequired            : Boolean
+    rputype 				: String 
+    classificationid 		: String 
+end
+
+declare TxnAttributeFact
+	txntype 		: String 
+	attribute 		: String 
+end

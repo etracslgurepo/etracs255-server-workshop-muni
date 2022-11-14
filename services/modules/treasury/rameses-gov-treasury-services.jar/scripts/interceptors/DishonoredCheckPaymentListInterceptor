@@ -1,0 +1,21 @@
+import com.rameses.annotations.*;
+
+class DishonoredCheckPaymentListInterceptor {
+
+	@Env
+	def env;
+
+	@After(pattern="QueryService.getNodeList", eval="#{ args[0]._schemaname == 'checkpayment_dishonored' }")
+	public void getNodes( evt ) { 
+		def x = evt.args[0];
+		def result = evt.result; 
+		result << [ id:'all', title: 'All'];
+	}
+
+	@Before(pattern="PersistenceService.removeEntity", eval="#{ args[0]._schemaname == 'checkpayment_dishonored' }")
+	public void removeRecord( evt ) { 
+		def x = evt.args[0];
+		throw new Exception('stop');
+	}
+
+}

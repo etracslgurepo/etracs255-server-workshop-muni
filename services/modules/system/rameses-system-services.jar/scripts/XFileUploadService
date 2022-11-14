@@ -1,0 +1,25 @@
+import com.rameses.annotations.*;
+
+class FileUploadService {
+
+	@ProxyMethod 
+	public def register( params ) { 
+		return params; 
+	} 
+
+	@ProxyMethod 
+	public void addItem( params ) { 
+		if ( !params.fileid ) throw new Exception('fileid parameter is required'); 
+	} 
+	
+	@ProxyMethod 
+	public void addItems( params ) { 
+		if ( !params.fileid ) throw new Exception('fileid parameter is required'); 
+		if ( !params.items ) throw new Exception('items parameter is required'); 
+	} 
+
+	@ProxyMethod 
+	public void removeFile( params ) { 
+		//do nothing 
+	} 
+} 

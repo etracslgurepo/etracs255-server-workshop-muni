@@ -1,0 +1,146 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.services.extended.*;
+
+/***********************************************************************
+* This is a generic workflow service. 
+* The em is a dynamic active db. pass the name of the workflow instance
+* workflow instance must have the standard field names
+************************************************************************/
+class WorkflowService extends ActiveWorkflowService {		
+
+	@ActiveDB(dynamic=true)
+	def em;
+
+	@Service("DateService")
+	def dateSvc;
+
+	@Env
+	def env;
+
+    @ProxyMethod
+	public def start( def r ) {
+		if( !r.refid ) throw new Exception("refid is required in WorkflowService.start");
+		if( !r.processname ) throw new Exception("processname is required  in WorkflowService.start");
+		if( !r.source ) throw new Exception("source is required  in WorkflowService.start");
+		r.nodename = 'start';
+		def list = [];
+		findNextTransition(r, list);
+		return list;
+    }
+
+   
+
+    private def createNodeInstance(def t) {
+    	def m = [:];
+    	m.objid = 'WF'+new UID();
+    	m.refid = t.refid;
+    	m.state = t.state;
+    	m.dtstart = dateSvc.serverDate;
+    	if(t.parentprocessid) m.parentprocessid = t.parentprocessid;
+    	if(!t.adapter) t.adapter = "main";
+    	if(t.assignee) m.assignee = t.assignee;
+    	def db = em.lookup( t.adapter, t.source );
+    	db.create( m );
+    	return m;
+    }
+
+    private void findNextTransition( def r, def list ) {
+    	def transitions = wf.getTransitionList( [nodename:r.nodename, processname:r.processname] );
+		for(o in transitions) {
+			if( r.action &&  (r.action!=o.action) ) continue;
+			if(o.tonodetype == 'fork') {
+				def z = [:];
+				z.putAll(r);
+				z.state = o.to;
+				def p = createNodeInstance( z );
+				list << p;
+				def param = [:];
+				param.putAll( r );
+				param.nodename = o.to; 
+				param.parentprocessid = p.objid; 
+				findNextTransition(param, list);
+			}
+			else if(o.tonodetype == 'join') {
+				//find the process node and close it.
+				def db = em.lookup( r.adapter, r.source );
+				def pendingList = db.getOpenForkList( [parentprocessid: r.parentprocessid] );
+				if(!pendingList) {
+					def z = [:];
+					z.putAll( r );
+					z.taskid = r.parentprocessid;
+					closeNodeInstance(z);
+
+					def zz = [adapter:r.adapter, processname: r.processname, source:r.source, refid: r.refid ];	
+					zz.nodename = o.to;
+					findNextTransition( zz, list );
+				}
+			}
+			else if( o.to == 'end' ) {
+				throw new Exception("The end");
+			}
+			else {
+				def z = [:];
+				z.putAll(r);
+				z.state = o.to;
+				def p = createNodeInstance( z );
+				list << p;
+			}
+		}
+    }
+
+    private def closeNodeInstance(def r) {
+		def db = em.lookup( r.adapter, r.source );
+		def t = db.read( [objid: r.taskid] );
+		if(t.dtend) throw new Exception("Task has already ended");
+		t.dtend = dateSvc.getServerDate();
+		t.actor = [objid: env.USERID, name:env.USERNAME];
+		db.update( t );
+		return t;
+    }
+
+    @ProxyMethod
+    public def signal( def r ) {
+		if( !r.taskid ) throw new Exception("taskid is required in WorkflowService.signal");
+		if( !r.processname ) throw new Exception("processname is required  in WorkflowService.signal");
+		if( !r.source ) throw new Exception("source is required  in WorkflowService.signal");    
+		if(	!r.adapter) r.adapter = "main";
+		
+		def t = closeNodeInstance( r );
+
+		//close the existing task and find the next instance
+		def m = [:];
+		m.putAll( r );
+		m.parentprocessid = t.parentprocessid;
+		m.refid = t.refid;
+		m.nodename = t.state;
+		def list = [];
+		findNextTransition( m, list );
+		if(r.action)t.action = r.action;
+		return t;
+    }
+	
+    @ProxyMethod
+    public def getOpenTaskList( def r ) {
+		if( !r.objid ) throw new Exception("objid is required in WorkflowService.getOpenTaskList");
+		if( !r.processname ) throw new Exception("processname is required  in WorkflowService.getOpenTaskList");
+		if( !r.source ) throw new Exception("source is required  in WorkflowService.getOpenTaskList");    
+		if(	!r.adapter) r.adapter = "main";
+
+    	def db = em.lookup( r.adapter, r.source );
+		return db.getOpenTaskList( r );
+    }
+
+	@ProxyMethod
+    public def getTransitionList( def r ) {
+		if( !r.taskid ) throw new Exception("taskid is required in WorkflowService.getTransitionList");
+		if( !r.processname ) throw new Exception("processname is required  in WorkflowService.getTransitionList");
+		if( !r.source ) throw new Exception("source is required  in WorkflowService.getTransitionList");    
+		if(	!r.adapter) r.adapter = "main";
+    	def db = em.lookup( r.adapter, r.source );
+		def tsk = db.read( [objid:r.taskid] );
+		return wf.getTransitionList( [nodename:tsk.state, processname:r.processname] );
+    }
+
+}

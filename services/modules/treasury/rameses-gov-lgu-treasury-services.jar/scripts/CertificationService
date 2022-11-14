@@ -1,0 +1,103 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+import com.rameses.util.*;
+import com.rameses.services.extended.*;
+
+class CertificationService extends ActiveCrudListService
+{
+	@ActiveDB('certification')
+	def em
+
+	@Service('SequenceService')
+	def seqSvc
+
+	@Service('DateService')
+	def dtSvc 
+
+	@Env 
+	def env 
+
+	@Service('ReportParameterService')
+	def paramSvc 
+
+
+	@ProxyMethod
+	public def init( office, type ) {
+		return [
+			objid				: 'C' + new java.rmi.server.UID(),
+			type 				: type,
+			purpose				: 'for whatever purpose it may serve.',
+			certifiedby 		: paramSvc.standardParameter.TREASURERNAME,
+			certifiedbytitle	: paramSvc.standardParameter.TREASURERTITLE,
+			official			: false,
+			createdbyid 		: env.USERID,
+			createdby 			: env.NAME,
+			createdbytitle 		: env.JOBTITLE,
+			office 				: office,
+			oramount			: 0.0,
+			stampamount 		: 0.0,
+			info 				: [:]
+		]	
+	}
+ 
+
+	public void beforeCreate(entity){
+		def cy = dtSvc.serverYear
+		def key = 'CERTIFICATION-' + cy
+		entity.txnno = cy + '-' + seqSvc.getNextFormattedSeries(key)
+		entity.txndate = dtSvc.serverDate
+		entity.ordate = dtSvc.parse('yyyy-MM-dd', entity.ordate)
+		entity.givenday = formalizeDate(entity.txndate, 'd' )
+		entity.givenmonth = formalizeDate(entity.txndate, 'MMMMM' )
+		entity.givenyear = formalizeDate(entity.txndate, 'yyyy' )
+		entity.givenat  = paramSvc.standardParameter.LGUADDRESS 
+
+		def info = [:]; 
+		entity.each{k,v-> info[k]=v } 
+		entity.info = info; 
+	} 
+
+	public void afterOpen( data ) {
+		def info = data.remove('info'); 
+		if ( info ) {
+			info.putAll( data );  
+			data.clear(); 
+			data.putAll( info );  
+		} 
+	} 
+
+    def formalizeDate( date,  format ){
+        def dt = new java.text.SimpleDateFormat( format ).format(dtSvc.parse('yyyy-MM-dd', date)).toString();
+        
+        if( 'd'.equals(format) || 'dd'.equals(format)){
+            if( dt.matches('01|1|21|31') )
+                return dt + 'st';
+            else if( dt.matches('02|2|22') )
+                return dt + 'nd';
+            else if(dt.matches('03|3|23')) 
+                return dt + 'rd';
+            else return dt + 'th';
+        }
+        return dt;
+    } 
+
+	/*============================================================
+	**
+	** LIST SUPPORT
+	**
+	============================================================*/
+	public void beforeList(param){
+		param.searchtext = (param.searchtext ? param.searchtext : '') + '%'
+	}
+
+	public def getColumns(param){
+		return [
+			[name:'txnno', caption:'Txn No.'],
+			[name:'txndate', caption:'Txn Date'],
+			[name:'type', caption:'Type'],
+			[name:'requestedby', caption:'Requested By'],
+			[name:'requestedbyaddress', caption:'Address']
+		]
+	}
+
+}

@@ -1,0 +1,276 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+import com.rameses.util.*
+
+
+class SubdivisionSupportService
+{
+    @Env
+    def env
+    
+    @Service('SubdivisionService')
+    def svc 
+
+    @ActiveDB('subdivision')
+    def em
+
+    @ActiveDB('subdivision_task')
+    def taskEm 
+
+    @ActiveDB('faas_task')
+    def faastaskEm
+
+    @Service('ExaminationService')
+    def examinationSvc
+
+    @Service('RPTRequirementService')
+    def reqSvc 
+
+    @Service('FAASService')
+    def faasSvc
+
+    @Service('DBImageService')
+    def imageSvc
+
+    @Service('EntityService')
+    def entitySvc 
+
+    @Service('TxnRefService')
+    def txnRef
+
+    @Service('SubdivisionService')
+    def subdivisionSvc
+
+    @DataContext('subdivision_cancelledimprovement')
+    def cancelledimprovementDb 
+
+    @ProxyMethod
+    public def buildSubdivisionData(subdivision){
+        def data = [:]
+        data.putAll(subdivisionSvc.open(subdivision))
+
+        buildExaminationFindings(data)
+        data.requirements = reqSvc.getRequirements(subdivision.objid)
+        data.subdividedlands = subdivisionSvc.getSubdividedLands(subdivision.objid)
+        data.motherlands = subdivisionSvc.getMotherLands(subdivision)
+        data.affectedrpus = subdivisionSvc.getAffectedRpus(subdivision.objid)
+        data.cancelledimprovements = subdivisionSvc.getCancelledImprovements(subdivision.objid)
+        
+        data.faases = []
+        data.tasks = []
+        def faas = null;
+
+
+        data.subdividedlands.each{
+            faas = [objid:it.newfaasid]
+            data.faases << faasSvc.openFaas(faas)
+            data.tasks << [type:'faas', tasks:faasSvc.getTasks(faas)]
+        }
+
+        data.affectedrpus.each{
+            faas = [objid:it.newfaasid]
+            data.faases << faasSvc.openFaas(faas)
+            data.tasks << [type:'faas', tasks:faasSvc.getTasks(faas)]
+        }
+
+        data.faases.each{
+            it.taxpayer = entitySvc.open(it.taxpayer)
+        }
+        data.tasks << [type:'subdivision', tasks:em.getTasks(subdivision)]
+        data.image = getImageData(data)
+        return data 
+    }
+
+    @ProxyMethod
+    public void buildExaminationFindings(subdivision){
+        subdivision.examinationfindings = examinationSvc.getFindings( subdivision.objid ).each{
+            it.putAll(examinationSvc.open(it))
+        }
+    }
+
+    @ProxyMethod
+    public def buildFaasesData(subdivision){
+        if (!subdivision.faases)
+            subdivision.faases = []
+        
+        def faas = null;
+
+        subdivisionSvc.getSubdividedLands(subdivision.objid).each{
+            faas = [objid:it.newfaasid]
+            subdivision.faases << faasSvc.openFaas(faas)
+        }
+
+        subdivisionSvc.getAffectedRpus(subdivision.objid).each{
+            faas = [objid:it.newfaasid]
+            subdivision.faases << faasSvc.openFaas(faas)
+        }
+
+        subdivision.faases.each{
+            it.taxpayer = entitySvc.open(it.taxpayer)
+        }
+        subdivision.tasks = taskEm.getTasks(subdivision)
+        return subdivision
+    }
+
+
+    @ProxyMethod
+    public def postSubdivisionData(subdivision){
+        println 'Saving subdivision'
+        def oldsub = em.findSubdivisionById(subdivision)
+        if (!subdivision._resubmitted || !oldsub){
+            txnRef.delete(subdivision.objid)
+            em.save(subdivision)
+        }
+
+        println 'processing examinationfindings'
+        subdivision.examinationfindings.each{
+            examinationSvc.save(it)
+        }
+
+        println 'processing subdivision.requirements'
+        subdivision.requirements.each{
+            reqSvc.save(it)
+        }
+
+        println 'processing subdivision.motherlands'
+        subdivision.motherlands.each{
+            txnRef.delete(it.landfaasid)
+            em.save(it, 'motherland')
+            txnRef.insertRef(it.landfaasid, subdivision.objid, 'FAAS is currently referenced by Subdivision No. ' + subdivision.txnno +'.')
+        }
+
+        println 'processing subdivision.faases'
+        saveFaases(subdivision)
+
+        println 'processing subdivision.subdividedlands'
+        subdivision.subdividedlands.each{
+            em.save(it, 'subdividedland')
+        }
+
+        println 'processing subdivision.affectedrpus'
+        subdivision.affectedrpus.each{
+            em.save(it, 'affectedrpu')
+        }
+
+        println 'processing subdivision.cancelledimprovements'
+        subdivision.cancelledimprovements.each{
+            def ci = cancelledimprovementDb
+                            .select('objid')
+                            .find([objid:it.objid])
+                            .first()
+            if (ci)
+                cancelledimprovementDb.update(it)
+            else
+                cancelledimprovementDb.create(it)
+        }
+
+        subdivision.tasks.each{item ->
+            if (item.type == 'subdivision'){
+                item.tasks.each{ 
+                    if (it.refid && it.enddate)
+                        taskEm.save(it)
+                }
+            }
+            else if (item.type == 'faas'){
+                item.tasks.each{ 
+                    if (it.refid && it.enddate)
+                        faastaskEm.save(it)
+                }
+            }
+        }
+
+        saveImageData(subdivision.image)
+    }
+
+
+    @ProxyMethod
+    public void updateFaasesData( subdivision ) {
+        saveFaases(subdivision)
+
+        subdivision.tasks.each{item ->
+            if (item.type == 'faas'){
+                item.tasks.each{ 
+                    faastaskEm.save(it)
+                }
+            }
+        }
+    }
+
+    @ProxyMethod
+    public def buildRequirementsData(subdivision){
+        def data = [:]
+        data.requirements = reqSvc.getRequirements(subdivision.objid)
+
+        def headers = []
+        data.requirements.each{
+            headers += imageSvc.getImages([refid:it.objid])
+        }
+
+        def chunks = []
+        headers.each{
+            chunks += imageSvc.getImageItems(it)
+        }       
+        data.image = [headers:headers, chunks:chunks]
+        return data 
+    }
+
+
+    @ProxyMethod
+    public void repostSubdivisionRequirements(reqdata){
+        reqdata.requirements.each{
+            reqSvc.save(it)
+        }
+        saveImageData(reqdata.image)
+        println 'Subdivision requirements have been successfully reposted.'
+    }
+    
+
+    void saveImageData(image){
+        if (!image) return
+        
+        image.headers.each{
+            imageSvc.saveHeader(it)
+        }
+        image.chunks.each{
+            imageSvc.saveItem(it)
+        }
+    }
+
+    def getImageData(subdivision){
+        def headers = imageSvc.getImages([refid:subdivision.objid])
+        subdivision.examinationfindings.each{
+            headers += imageSvc.getImages([refid:it.objid])
+        }
+        subdivision.subdividedlands.each{
+            headers += imageSvc.getImages([refid:it.newfaasid])
+        }
+        reqSvc.getRequirements(subdivision.objid).each{
+            headers += imageSvc.getImages([refid:it.objid])
+        }
+
+        def chunks = []
+        headers.each{
+            chunks += imageSvc.getImageItems(it)
+        }       
+        return [headers:headers, chunks:chunks]
+    }
+
+    boolean existFaas(faas){
+        return faasSvc.findFaasById(faas.objid) != null
+    }
+
+    void saveFaases(subdivision){
+        subdivision.faases.each{
+            entitySvc.save(it.taxpayer)
+            it.taxpayer.address = it.taxpayer.address?.text
+            it._checkTxnRef = false;
+            if (faasSvc.faasExist(it))
+                faasSvc.updateFaas(it)
+            else
+                faasSvc.createFaas(it)
+        }
+    }
+}
+
+

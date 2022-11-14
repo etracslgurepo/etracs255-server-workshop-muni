@@ -1,0 +1,14 @@
+import com.rameses.annotations.*;
+
+class NotificationChannelService {
+
+    @ProxyMethod 
+    public void register( params ) {
+        //do nothing 
+    } 
+
+    @ProxyMethod 
+    public void send( msg ) { 
+        //do nothing 
+    } 
+} 

@@ -1,0 +1,139 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class GeneralRevisionPinRenumberService
+{
+	@ActiveDB('generalrevision')
+	def em
+
+	@DataContext('rysetting_land')
+	def em_setting_land
+
+	@DataContext('realproperty')
+	def em_realproperty
+
+	@DataContext('rpu')
+	def em_rpu
+
+	@DataContext('faas')
+	def em_faas
+
+	@DataContext('faas_list')
+	def em_faas_list
+
+	@DataContext('rptledger')
+	def em_ledger
+
+	@Service('FAASService')
+	def faasSvc 
+
+
+
+	@ProxyMethod
+	public def getCurrentRevisionYear( ) {
+		return em_setting_land.where('1=1 and ry < 2999').orderBy('ry DESC').first().ry 
+	}
+
+
+	@ProxyMethod
+	public def getLandsForRepinning( entity ) {
+		entity.barangayid = entity.barangay.objid 
+
+		def noncurrent = em.findNonCurrentCount(entity)
+		if (noncurrent.size() > 0 ){
+			entity.state = 'CURRENT'
+			entity.orderby = ' order by f.tdno '
+		}
+		else {
+			entity.state = 'FORAPPROVAL'
+			entity.orderby = ' order by convert(rp.parcel, signed) '	
+		}
+		return em.getLandsForRepinning(entity)
+	}
+
+
+	@ProxyMethod
+	public void repinLand(faas){
+		def option = faas.numberingoption
+		def barangaypin = faas.barangay.pin
+
+		//build new parcel from idx and update new pin 
+		def newrp = em_realproperty.find([objid:faas.realpropertyid]).first()
+		if (!newrp) throw new Exception('Real Property does not exist or has already been deleted.')
+		def oldpin = newrp.pin 
+
+		def sectionlen = (faas.pintype == 'new' ? 3 : 2)
+		def parcellen = (faas.pintype == 'new' ? 2 : 3)
+
+		if ('RESET'.equalsIgnoreCase(option.code)){
+			newrp.barangaypin = barangaypin
+			newrp.parcel = padLeft(faas.idx.toString(), parcellen)
+		}
+		else if ('NEWPIN'.equalsIgnoreCase(option.code)){
+			newrp.barangaypin = barangaypin
+			newrp.section = padLeft(newrp.section.toString(), 3)
+			newrp.parcel = padLeft(newrp.parcel.toString(), 2)
+		}
+
+		newrp.pin = barangaypin + '-' + newrp.section + '-' + newrp.parcel 
+
+		// throw new Exception('test ')
+		em_realproperty.find([objid:newrp.objid]).update([pin:newrp.pin, parcel:newrp.parcel])
+		em_rpu.find([objid:faas.rpuid]).update([fullpin:newrp.pin])
+		em_faas.find([objid:faas.objid]).update([fullpin:newrp.pin])
+		em_faas_list.find([objid:faas.objid]).update([pin:newrp.pin, displaypin:newrp.pin])
+		em_ledger.find([faasid:faas.objid]).update([fullpin:newrp.pin])
+
+
+		//update improvements pin 
+		updateImprovementPins(newrp, em.getImprovementsForRepinning([rpid:newrp.objid, rputype:'bldg']), 1001)
+		updateImprovementPins(newrp, em.getImprovementsForRepinning([rpid:newrp.objid, rputype:'mach']), 2001)
+		updateImprovementPins(newrp, em.getImprovementsForRepinning([rpid:newrp.objid, rputype:'planttree']), 3001)
+		updateImprovementPins(newrp, em.getImprovementsForRepinning([rpid:newrp.objid, rputype:'misc']), 5001)
+		updateImprovementPins(newrp, em.getImprovementsForRepinning([rpid:newrp.objid, rputype:'misc']), 7001)
+	}
+
+	def padLeft(String sval, padlen){
+		 try {
+		 	return Integer.parseInt(sval).toString().padLeft(padlen, '0')
+		 }
+		 catch(e){
+		 	return sval 
+		 }
+	}
+
+	void updateImprovementPins(newrp, improvements, basesuffix){
+		improvements.eachWithIndex{faas, idx ->
+			def suffix = (basesuffix + idx)
+			def fullpin = newrp.pin + '-' + suffix  
+			def displaypin = fullpin 
+			if (faas.fullpin.indexOf('(') >= 0){
+				fullpin = newrp.barangaypin + '-' + newrp.section + '-(' + newrp.parcel + ')-' + suffix 
+			}
+
+			em_rpu.find([objid:faas.rpuid]).update([fullpin:fullpin, suffix:suffix])
+			em_faas.find([objid:faas.objid]).update([fullpin:fullpin])
+			em_faas_list.find([objid:faas.objid]).update([pin:fullpin, displaypin:displaypin])
+			em_ledger.find([faasid:faas.objid]).update([fullpin:fullpin])
+		}
+	}
+
+
+
+
+
+	@ProxyMethod
+	public def getFaasForApproval(entity) {
+		entity.barangayid = entity.barangay.objid 
+		return em.getFaasForApproval(entity)
+	}
+
+
+	@ProxyMethod
+	public void approveFaas(faas){
+		def f = faasSvc.openFaas(faas)		
+		faasSvc.approveFaas(f)
+	}
+}
+

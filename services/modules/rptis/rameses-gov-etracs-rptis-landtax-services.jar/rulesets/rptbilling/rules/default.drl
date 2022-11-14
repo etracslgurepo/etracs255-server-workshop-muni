@@ -1,0 +1,51 @@
+package rptbilling;
+
+import rptis.landtax.facts.*;
+import java.util.*;
+import com.rameses.rules.common.*;
+
+
+global RuleAction action;
+
+rule "SPLIT_QUARTERLY_BILLED_ITEMS"
+	agenda-group "BEFORE_SUMMARY"
+	salience 1000000
+	no-loop
+	when
+		BILL: rptis.landtax.facts.Bill (  BILLYR:billtoyear,BILLQTR:billtoqtr < 4 ) 
+		RLI: rptis.landtax.facts.RPTLedgerItemFact (  year == BILLYR,qtrly == false  ) 
+	then
+		Map bindings = new HashMap();
+		bindings.put("BILL", BILL );
+		bindings.put("BILLYR", BILLYR );
+		bindings.put("RLI", RLI );
+		bindings.put("BILLQTR", BILLQTR );
+		
+		Map params = new HashMap();
+		params.put( "rptledgeritem", RLI );
+		action.execute( "split-bill-item",params,drools);
+end
+
+
+rule "REMOVE_UNBILLED_ITEMS"
+	agenda-group "BEFORE_SUMMARY"
+	salience 900000
+	no-loop
+
+	when
+		BILL: rptis.landtax.facts.Bill (  BILLYR:billtoyear,BILLQTR:billtoqtr != 4 ) 
+		RLI: rptis.landtax.facts.RPTLedgerItemFact (  year == BILLYR,qtr > BILLQTR ) 
+	then
+		Map bindings = new HashMap();
+		bindings.put("BILL", BILL );
+		bindings.put("BILLYR", BILLYR );
+		bindings.put("RLI", RLI );
+		bindings.put("BILLQTR", BILLQTR );
+		
+		Map params = new HashMap();
+		params.put( "rptledgeritem", RLI );
+		action.execute( "remove-bill-item", params, drools);
+end
+
+
+	

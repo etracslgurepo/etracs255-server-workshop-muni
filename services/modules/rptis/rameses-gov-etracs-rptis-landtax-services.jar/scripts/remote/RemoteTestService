@@ -1,0 +1,13 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+
+
+class RemoteTestService
+{
+	@ProxyMethod
+	public def ping(params){ 
+		println 'ping .... ' + params 
+		params.msg = 'pong'
+		return params
+	}
+}

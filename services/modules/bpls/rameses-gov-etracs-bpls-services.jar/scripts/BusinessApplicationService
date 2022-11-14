@@ -1,0 +1,217 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+
+public class BusinessApplicationService  {
+
+	@ActiveDB("business_application")
+	def em;
+
+	@ActiveDB("business_permit")
+	def permitEm;
+
+	@Service("DateService")
+	def dateSvc;
+
+	@Service("BusinessMasterService")
+	def bizSvc;
+
+	@Service("BusinessLobService")
+	def lobSvc;
+
+	@Service("BusinessInfoService")
+	def infoSvc;
+
+	@Service("BusinessRequirementService")
+	def reqSvc;
+
+	@Service("BusinessReceivableService")
+	def receivableSvc;
+
+	@Service("BusinessUserRoleService")
+	def userRoleSvc;
+
+	@Service 
+	def self; 
+
+	@Env
+	def env;
+
+	/**********************************************************
+	* called when creating new,renew,amend,retire applications
+	***********************************************************/ 
+	@ProxyMethod
+	public def initNew(o) {
+		if(!o.txnmode) o.txnmode = 'ONLINE';
+
+		def entity = [:];
+		entity.apptype = o.apptype;
+		entity.txnmode = o.txnmode;
+		if(!o.appyear) o.appyear = dateSvc.getServerYear();
+		entity.appyear = o.appyear;
+		if(entity.appqtr==null)
+		entity.dtfiled = dateSvc.format( 'yyyy-MM-dd', dateSvc.getServerDate());
+        entity.requirements = [];
+        entity.appinfos = [];
+        entity.assessmentinfos = [];
+        entity.taxfees = [];
+    	entity.totals = [tax:0,othercharge:0,regfee:0,total:0];
+    	entity.business = [objid: o.businessid];
+        return entity;
+	}
+
+	@ProxyMethod
+	public def create(def o) {
+		if( !o.apptype ) {
+			throw new Exception("apptype must be provided"); 
+		} 
+		if( !o.objid ) {
+			throw new Exception("app objid must be provided. Please check the interceptor providers in initNew");
+		}
+		if( !o.appno ) {
+			throw new Exception("appno must be provided. Please check the interceptor providers for "+o.apptype);
+		}
+
+		o.txndate = dateSvc.getServerDate();
+		if(!o.dtfiled) o.dtfiled = o.txndate;
+		if(!o.state) o.state = 'INFO';
+		if(!o.appqtr) o.appqtr = 0;
+		o.createdby = [objid:env.USERID,name:env.FULLNAME];
+		o.ownername = o.business.owner.name;
+		o.owneraddress = o.business.owner?.address?.text;
+		o.tradename = o.business.tradename;
+		o.businessaddress = o.business.address?.text;
+		em.create(o);
+		return o;
+	}
+
+	@ProxyMethod
+	public def open( def o ) {
+		o = em.read( o );
+		o.business = bizSvc.open( [objid: o.business.objid] );
+		if(!o.exclude_lob) o.lobs = lobSvc.getAppLobs([applicationid: o.objid]);
+		if(!o.exclude_info) o.appinfos = infoSvc.getAppInfos( [applicationid: o.objid] );
+		if(!o.exclude_requirement) o.requirements = reqSvc.getList( [applicationid: o.objid, businessid: o.business.objid] );
+		o.barcode = '51005:'+o.appno;
+
+		//check if there is permit. include it.
+		o.permit = permitEm.findPermitByApplication([applicationid: o.objid]);
+
+		if (o.assessor?.objid) { 
+			def uinfo = userRoleSvc.findUser([objid: o.assessor.objid]); 
+			if (uinfo) o.assessor.name = uinfo.name; 
+		} 
+		return o;
+	}
+
+	/**
+	* Update must be overridden by the interceptors
+	*/
+	@ProxyMethod
+	public def update(o) {
+		throw new Exception("stop updates!");
+		boolean hasUpdates = true;
+		if( o.update_assessor ) {
+
+		}
+		if(o.update_approver) {
+			hasUpdates = true;
+		}
+		if(hasUpdates) em.update(o);
+		return o;
+	}
+
+
+	@ProxyMethod
+	public def cancel(def o) {
+		o.state = 'CANCELLED';
+		em.update( o );
+	}
+
+	
+
+	@ProxyMethod
+	public def checkReleaseStatus(def o) {
+		return [:];
+	}
+
+	/**
+	* The application's state must be set by the interceptors to flag if this can be released or not
+	*/
+	@ProxyMethod
+	public def release(def o) {
+		o.state = 'COMPLETED'
+		em.update( o );
+		return o;
+	}
+
+	@ProxyMethod
+	public def findIdByAppno(o) {
+		return em.findIdByAppno(o);
+	}
+
+	@ProxyMethod
+	public def openByAppno(o) {
+		def id = em.findIdByAppno(o)?.objid;
+		if(!id) throw new Exception("App No " + o.appno + " does not exist!");
+		return self.open([ objid: id ]); 
+	}
+
+	@ProxyMethod
+	public def updateInfos( b ) {
+		lobSvc.addAppLobs( b );
+		infoSvc.addAppInfos( b );
+		reqSvc.addRequirements( b );
+		receivableSvc.removeReceivables( b );
+	}
+
+	
+	@ProxyMethod
+	public void updatePermit( def o ) {
+		if( !o.applicationid ) throw new Exception("applicationid is required in BusinessApplicationService.issuePermit");
+		if( !o.permitid ) throw new Exception("permitid is required in BusinessApplicationService.issuePermit");
+		o.dtreleased = dateSvc.getServerDate();
+		em.updatePermit( o );
+	}
+
+	@ProxyMethod 
+	public void saveAssessment( o ) {
+		/*
+			1. persist application nextbilldate
+			2. persist assessment infos 
+			3. persist receivables 
+			4. persist bill items 
+		*/
+		em.updateNextBillDate([ applicationid: o.objid, nextbilldate: o.nextbilldate ]);
+		def b = [businessid: o.businessid, 
+			activeyear: o.appyear, 
+			applicationid: o.objid, 
+			assessmentinfos: o.assessmentinfos, 
+			entries: o.taxfees, 
+			lobs: o.lobs 
+		];
+		infoSvc.addAssessmentInfos(b);				
+		receivableSvc.addReceivables(b); 
+	}
+
+	@ProxyMethod 
+	public def getStatus( params ) { 
+		def info = em.read([objid: params.objid]); 
+		return info?.state; 
+	}
+
+	@ProxyMethod 
+	public void revert( params ) {
+		/* interceptors will handle other revert routines */
+	} 
+
+
+
+
+	@ActiveDB("business_application_task")
+	def apptaskdb;
+
+	@ProxyMethod 
+	public def findLastTask( params ) { 
+		return apptaskdb.findLastTask([ refid: params.applicationid ]); 
+	}
+}

@@ -1,0 +1,37 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+
+public class EntityServiceInterceptor
+{
+	@ActiveDB(dynamic=true)
+	def adb;
+
+	@Env
+	def env
+
+	@Before(pattern="PersistenceService.create", eval="#{args[0]._schemaname.toString().matches('entity(individual|juridical|multiple)')==true}", index=100)	
+	public void beforeCreateEntity( evt ) { 
+		def params = evt.args[0];
+		def em = null; 
+
+		def orgclass = env?.ORGCLASS.toString().toLowerCase(); 
+		if ( orgclass == 'province' ) {
+			em = adb.lookup( 'main', 'province' );
+		} else if ( orgclass == 'city' ) {
+			em = adb.lookup( 'main', 'city' );
+		} else if ( orgclass == 'municipality' ) {
+			em = adb.lookup( 'main', 'municipality' );			
+		} else if ( orgclass == 'barangay' ) {
+			em = adb.lookup( 'main', 'barangay' );			
+		} else {
+			//do nothing
+			return; 
+		}
+
+		def orginfo = em.read([ objid: env.ORGID ]);  
+		if ( orginfo?.pin ) {
+			def pin = orginfo.pin.toString(); 
+			params.prefix = pin.replaceAll('-|_', ''); 
+		} 
+	} 
+} 

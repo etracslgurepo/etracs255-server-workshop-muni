@@ -1,0 +1,95 @@
+import com.rameses.annotations.*;
+
+class CheckPaymentListInterceptor {
+
+	@DataContext("checkpayment")
+	def pmtChk;
+
+	@Env
+	def env;
+
+	@After(pattern="QueryService.getNodeList", eval="#{ args[0]._schemaname == 'checkpayment' }")
+	public void getNodes( evt ) { 
+		def x = evt.args[0];
+		def result = evt.result; 
+		result << [ id:'unused', title: 'Unused Checks'];
+		result << [ id:'partial', title: 'Partial Used Checks'];
+		result << [ id:'undeposited', title: 'Undeposited Checks'];
+		result << [ id:'fordeposit', title: 'For deposit'];
+		result << [ id:'deposited', title: 'Deposited Checks' ];
+		result << [ id:'all', title: 'View All Checks Issued'];		
+	}
+
+	@Before(pattern="QueryService.getList", eval="#{ args[0]._schemaname == 'checkpayment' }")
+	public void beforeGetList(def evt) {
+		def o = evt.args[0];
+
+		//o.debug = true;
+		if( !o.node?.id ) return;
+		
+		def qarr = []; 
+		def m = [:]
+
+		//display only checks issued by this collector
+		if( o._tag == "COLLECTOR") {
+			m.userid = env.USERID;
+			qarr << "collector.objid = :userid";
+		}
+		else if( o._tag == "SUBCOLLECTOR") {
+			m.userid = env.USERID;
+			qarr << "subcollector.objid = :userid";
+		}
+
+		switch(o.node.id) {
+			case "all":
+				break;
+
+			case "unused":
+				qarr << " amtused = 0 ";
+				break;
+
+			case "partial":
+				qarr << " (amtused > 0 and amtused <> amount) ";
+				break;	
+
+			case "fordeposit":
+				qarr << " state = 'FOR-DEPOSIT' ";
+				break;	
+
+			case "undeposited":
+				qarr << " (amtused = amount AND depositslipid IS NULL) ";
+				break;
+
+			case "deposited":
+				qarr << " depositslipid IS NOT NULL ";
+				break;
+		}
+
+		
+		def str = qarr.join(' AND '); 
+		if( o.where ) {
+			o.where[0] = str + " AND " + o.where[0];	
+			o.where[1].putAll( m );
+		}
+		else {
+			o.where = [str, m];
+		}
+	}	
+
+	@Before(pattern="PersistenceService.removeEntity", eval="#{ args[0]._schemaname == 'checkpayment' }")
+	public void removeRecord( evt ) { 
+		def x = evt.args[0];
+		def m = pmtChk.find( [objid: x.objid ] ).first();
+		if(!m) throw new Exception("Check payment does not exist " + o.objid);
+		if( m.external ==  1) {
+			if( m.fundid ) throw new Exception("Cannot delete this check because it is associated with a fund");
+			if( m.depositslipid ) throw new Exception("Cannot delete this check because there is already a deposit slip issiued");
+		}
+		else {
+			if( m.amtused  > 0 ) throw new Exception("Cannot remove this check. Only external checks can be removed");
+			if( m.depositvoucherid  ) throw new Exception("Cannot remove this check. There is an associated depositvoucher");
+			if( m.depositslipid  ) throw new Exception("Cannot remove this check. There is an associated depositslip");
+		}
+	}
+
+}

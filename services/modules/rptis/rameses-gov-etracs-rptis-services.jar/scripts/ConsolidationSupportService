@@ -1,0 +1,337 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+import com.rameses.util.*
+
+
+class ConsolidationSupportService
+{
+    @Env
+    def env
+    
+    @Service('ConsolidationService')
+    def svc 
+
+    @ActiveDB('consolidation')
+    def em
+
+    @Service('ExaminationService')
+    def examinationSvc
+
+    @Service('RPTRequirementService')
+    def reqSvc 
+
+    @Service('FAASService')
+    def faasSvc
+
+    @Service('DBImageService')
+    def imageSvc
+
+    @Service('EntityService')
+    def entitySvc 
+
+    @Service('TxnRefService')
+    def txnRef
+
+    @Service('ConsolidationWorkflowService')
+    def workflowSvc
+
+    @DataContext('consolidation')
+    def em_consolidation
+
+    @DataContext('consolidation_task')
+    def em_task 
+
+    @DataContext('faas_task')
+    def em_faas_task
+
+    @DataContext('faas')
+    def em_faas 
+
+
+    /*===================================================
+    * new sync support 
+    ===================================================*/
+
+    @ProxyMethod
+    public def getForApproval(consolidation) {
+        def data = svc.open(consolidation)
+        data.consolidatedlands = svc.getConsolidatedLands(consolidation.objid)
+        data.affectedrpus = svc.getAffectedRpus(consolidation.objid)
+        data.tasks = em_task.where('refid = :objid and enddate is not null', consolidation).list() 
+        return data 
+    }
+
+    @ProxyMethod
+    public void postForApproval(consolidation){
+        em.save(consolidation)
+
+        consolidation.consolidatedlands.each{
+            em.save(it, 'consolidatedland')
+            txnRef.insertRef(it.landfaasid, consolidation.objid, 'FAAS is currently referenced by Consolidation No. ' + consolidation.txnno +'.')
+        }
+
+        consolidation.affectedrpus.each{
+            em.save(it, 'affectedrpu')
+        }
+
+        consolidation.tasks.each {
+            em_task.save(it)
+        }
+    }
+
+    @ProxyMethod
+    public def getApprovedFaas(faas) {
+        def data = faasSvc.openFaas(faas)
+        data.taxpayer = entitySvc.open(data.taxpayer)
+        faas.tasks = em_faas_task.where('refid = :refid AND enddate IS NOT NULL', [refid: faas.objid]).list()
+        return data
+    }
+
+    @ProxyMethod
+    public void postApprovedFaas(faas) {
+        def oldfaas = faasSvc.findFaasById(faas.objid)
+        if (oldfaas && oldfaas.state == 'CURRENT'){
+            saveFaasTask(faas)
+            return
+        }
+        faas.state = 'PENDING'
+        saveFaas(faas)
+        saveFaasTask(faas)
+    }
+
+    void saveFaasTask(faas) {
+        faas.tasks.each{
+            em_faas_task.save(it)
+        }
+    }    
+
+    @ProxyMethod
+    public def getApprovedConsolidation(consolidation) {
+        def data = svc.open(consolidation)
+        data.tasks = em_task.where('refid = :objid and enddate is not null', consolidation).list()
+        return data 
+    }
+
+    @ProxyMethod
+    public void postApprovedConsolidation(consolidation) {
+        def state = em_consolidation.select('state').find([objid: consolidation.objid]).first()?.state;
+        if (!state) {
+            postConsolidationData(consolidation)
+        } else if (!"APPROVED".equalsIgnoreCase(state)) {
+            svc.approveConsolidatedLandFaas(consolidation)
+            svc.getAffectedRpus(consolidation.objid).each{
+                svc.approveAffectedRpuFaasRecord(consolidation, it)
+            }
+            svc.approve(consolidation)
+            consolidation.tasks.each{
+                it.data = consolidation
+                em_task.save(it)
+                svc.updateSignatories(it)
+            }
+            em_task.where('refid = :objid and enddate is null', consolidation).delete() 
+            svc.insertFaasSignatories(consolidation)
+        }
+    }
+
+    @ProxyMethod
+    public def buildConsolidationData(consolidation){
+        def data = [:]
+        data.putAll(svc.open(consolidation))
+
+        data.consolidatedlands = svc.getConsolidatedLands(consolidation.objid)
+        data.affectedrpus = svc.getAffectedRpus(consolidation.objid)
+        data.requirements = reqSvc.getRequirements(consolidation.objid)
+
+        data.examinationfindings = examinationSvc.getFindings( consolidation.objid ).each{
+            it.putAll(examinationSvc.open(it))
+        }
+
+        data.faases = []
+        data.tasks = []
+
+        def faas = [objid:consolidation.newfaasid]
+        data.faases << faasSvc.openFaas(faas)
+        data.tasks << [type:'faas', tasks:faasSvc.getTasks(faas)]
+
+        data.affectedrpus.each{
+            faas = [objid:it.newfaasid]
+            data.faases << faasSvc.openFaas(faas)
+            data.tasks << [type:'faas', tasks:faasSvc.getTasks(faas)]
+        }
+
+        data.faases.each{
+            it.taxpayer = entitySvc.open(it.taxpayer)
+        }
+
+        data.tasks << [type:'consolidation', tasks:em_task.getTasks(consolidation)]
+        data.image = getImageData(data)
+        return data 
+    }
+
+    @ProxyMethod
+    public def buildFaasesData( consolidation ) {
+        if (!consolidation.faases)
+            consolidation.faases = []
+
+        consolidation.faases << getFaasInfo([objid:consolidation.newfaasid])
+
+        svc.getAffectedRpus(consolidation.objid).each{
+            consolidation.faases << getFaasInfo([objid:it.newfaasid])
+        }
+        consolidation.tasks = em_task.getTasks(consolidation)
+        return consolidation
+    }
+
+    @ProxyMethod
+    public void updateFaasesData( consolidation ) {
+        consolidation.faases.each{
+            def oldfaas = faasSvc.findFaasById(it.objid)
+            if (oldfaas && oldfaas.state != 'CURRENT'){
+                it.state = 'PENDING'
+                saveFaas(it)
+            }
+        }
+    }    
+
+    
+    @ProxyMethod
+    public def postConsolidationData(consolidation){
+        
+        println 'processing consolidation.faases'
+        consolidation.faases.each{
+            saveFaas(it)
+        }
+
+        println 'Saving consolidation'
+        em.save(consolidation)
+
+        consolidation.consolidatedlands.each{
+            em.save(it, 'consolidatedland')
+            txnRef.insertRef(it.landfaasid, consolidation.objid, 'FAAS is currently referenced by Consolidation No. ' + consolidation.txnno +'.')
+        }
+
+        println 'processing examinationfindings'
+        consolidation.examinationfindings.each{
+            examinationSvc.save(it)
+        }
+
+        println 'processing consolidation requirements'
+        consolidation.requirements.each{
+            reqSvc.save(it)
+        }
+
+        println 'processing consolidation.affectedrpus'
+        consolidation.affectedrpus.each{
+            em.save(it, 'affectedrpu')
+        }
+
+        consolidation.tasks.each{item ->
+        
+            if (item.type == 'consolidation'){
+                item.tasks.each{ 
+                    if (it.refid && it.enddate)
+                        em_task.save(it)
+                }
+            }
+            else if (item.type == 'faas'){
+                item.tasks.each{ 
+                    if (it.refid && it.enddate)
+                        em_faas_task.save(it)
+                }
+            }
+        }
+
+        saveImageData(consolidation.image)
+    }
+
+
+    @ProxyMethod
+    public void saveFaas(faas){
+        entitySvc.save(faas.taxpayer)
+        def address = faas.taxpayer.address 
+        faas.taxpayer.address = address.text 
+        if (existFaas(faas))
+            faasSvc.updateFaas(faas)
+        else
+            faasSvc.createFaas(faas)
+    }    
+
+
+    @ProxyMethod
+    public def buildRequirementsData(consolidation){
+        def data = [:]
+        data.requirements = reqSvc.getRequirements(consolidation.objid)
+
+        def headers = []
+        data.requirements.each{
+            headers += imageSvc.getImages([refid:it.objid])
+        }
+
+        def chunks = []
+        headers.each{
+            chunks += imageSvc.getImageItems(it)
+        }       
+        data.image = [headers:headers, chunks:chunks]
+        return data 
+    }
+
+
+    @ProxyMethod
+    public void repostConsolidationRequirements(reqdata){
+        reqdata.requirements.each{
+            reqSvc.save(it)
+        }
+        saveImageData(reqdata.image)
+        println 'Consolidation requirements have been successfully reposted.'
+    }    
+
+    void saveImageData(image){
+        if (!image) return
+        
+        image.headers.each{
+            imageSvc.saveHeader(it)
+        }
+        image.chunks.each{
+            imageSvc.saveItem(it)
+        }
+    }
+
+    def getImageData(consolidation){
+        def headers = imageSvc.getImages([refid:consolidation.objid])
+        
+        headers += imageSvc.getImages([refid:consolidation.newfaasid])
+
+        consolidation.examinationfindings.each{
+            headers += imageSvc.getImages([refid:it.objid])
+        }
+
+        consolidation.affectedrpus.each{
+            headers += imageSvc.getImages([refid:it.newfaasid])
+        }
+
+        reqSvc.getRequirements(consolidation.objid).each{
+            headers += imageSvc.getImages([refid:it.objid])
+        }
+
+        def chunks = []
+        headers.each{
+            chunks += imageSvc.getImageItems(it)
+        }       
+        return [headers:headers, chunks:chunks]
+    }
+
+    boolean existFaas(faas){
+        return em_faas.find([objid:faas.objid]).first() != null 
+    }
+
+    def getFaasInfo(faas){
+        faas = faasSvc.openFaas(faas)
+        faas.taxpayer = entitySvc.open(faas.taxpayer)
+        return faas
+    }
+
+
+}
+
+

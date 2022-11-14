@@ -1,0 +1,34 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class RPTSmsInterceptor
+{
+    @Service('RPTSmsService')
+    def smsSvc
+
+    @Service('Var')
+    def var
+
+
+	@After(pattern="FAASService.testApprove", index=100000)
+	public void afterTestApproveFaas( evt ) {
+        def faas = evt.result
+        def workflowAction = evt.args[0].action;
+        def action = var.sms_notify_client_on_workflow_action
+
+        if (!action || !workflowAction || !workflowAction.equalsIgnoreCase(action)) return;
+        smsSvc.notifyClient(faas)
+	}
+	
+	@After(pattern="FAASWorkflowService.signal", index=100) 
+	public void notifyClient( evt ) {
+        def workflowAction = evt.args[0].state;
+        def action = var.sms_notify_client_on_workflow_action
+        if (!action || !workflowAction || !workflowAction.equalsIgnoreCase(action)) return;
+
+        def faas = evt.args[0].data
+        smsSvc.notifyClient(faas)
+	}
+}
+

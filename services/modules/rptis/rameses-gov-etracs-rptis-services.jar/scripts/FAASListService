@@ -1,0 +1,249 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.services.extended.*;
+
+public class FAASListService extends ActiveCrudListService {
+
+    @Env
+    def env 
+
+    @ActiveDB("faas")
+    def em;    
+
+    @ActiveDB('faas_list')
+    def faasListEm;
+
+    @Service("DateService")
+    def dateSvc;
+
+    @Service('NumberService')
+    def numSvc
+
+    @Service('FAASService')
+    def faasSvc
+
+    @Service('RPUService')
+    def rpuSvc 
+
+    @DataContext('propertyclassification')
+    def em_classification
+
+
+
+    @ProxyMethod
+    public def getColumns(params) {
+        return [
+            [name:"state", caption:"State", minWidth:120, width:120],
+            [name:"ry", caption:"Revision", minWidth:80, width:80],
+            [name:"txntype.objid", caption:"Txn", minWidth:40, width:40],
+            [name:"tdno", caption:"TD No.", minWidth:150, width:150],
+            [name:"prevtdno", caption:"Prev. TD No.", minWidth:150, width:150],
+            [name:"displaypin", caption:"PIN", minWidth:190, width:190],
+            [name:"owner.name", caption:"Owner", minWidth:250, width:250],
+            [name:"rputype", caption:"Type", minWidth:50, width:50],
+            [name:"barangay", caption:"Barangay", minWidth:120, width:120],
+            [name:"classcode", caption:"Class", minWidth:40, width:40],
+            [name:"cadastrallotno", caption:"Lot No.", minWidth:120, width:120],
+            [name:"blockno", caption:"Block No.", minWidth:120, width:120],
+            [name:"surveyno", caption:"Survey", minWidth:120, width:120],
+            [name:"titleno", caption:"Title No.", minWidth:120, width:120],
+            [name:"totalarea", caption:"Area", minWidth:80, width:80, alignment:'center'],
+            [name:"totalmv", caption:"M.V.", type:'decimal', minWidth:100, width:100],
+            [name:"totalav", caption:"A.V.", type:'decimal', minWidth:100, width:100],
+            [name:"effectivityyear", caption:"Effective Yr", type:'integer', minWidth:100, width:100],
+            [name:"effectivityqtr", caption:"Effective Qtr", type:'integer', minWidth:100, width:100],
+            [name:"yearissued", caption:"Year Issued", type:'integer', minWidth:100, width:100],
+            [name:"taskstate", caption:"Task", minWidth:100, width:100],
+            [name:"publicland", caption:"Public Land", type:'boolean', width:50],
+        ]
+    }
+
+    @ProxyMethod
+    public def getNodes(o) {
+        def nodes = []
+        nodes << [name:'all', caption:'All Records']
+        nodes << [name:'mytask', caption:'My Tasks']
+        nodes += faasListEm.getNodes();
+        nodes << [name:'unassigned', caption:'Unassigned Tasks']
+        nodes << [name:'publiclands', caption:'Public Lands']
+
+        nodes.each{
+            it.leaf = true
+            it.folder = true 
+            it.allowSearch = true 
+        }
+        return nodes
+    }   
+
+
+    void beforeList( params ) {
+        params.filters = ''
+        params.orderby = ''
+        params._pagingKeys = 'f.objid'
+
+        def whereclause = ''
+        
+        if (params.state ) {
+            if (whereclause) whereclause += ' AND '
+            whereclause += ' f.state = $P{state} '
+        }
+        if (params.ry != null ) {
+            if (whereclause) whereclause += ' AND '
+            whereclause += ' f.ry = $P{ry} '
+        }
+        if (params.ownername) {
+            params.ownername += '%' 
+            if (whereclause) whereclause += ' AND '
+            whereclause += ' f.owner_name LIKE $P{ownername} '
+        }
+        if (params.administrator) {
+            params.administrator += '%' 
+            if (whereclause) whereclause += ' AND '
+            whereclause += ' f.administrator_name LIKE $P{administrator} '
+        }
+        if (params.fullpin) {
+            params.fullpin += '%'
+            if (whereclause) whereclause += ' AND '
+            whereclause += ' f.pin LIKE $P{fullpin} '
+        }
+        if (params.tdno ) {
+            params.tdno += '%'
+            if (whereclause) whereclause += ' AND '
+            whereclause += ' f.tdno like $P{tdno} '
+        }
+        if (params.prevtdno ) {
+            params.prevtdno += '%'
+            if (whereclause) whereclause += ' AND '
+            whereclause += ' f.prevtdno like $P{prevtdno} '
+        }
+        if (params.lgu){
+            params.lguid = params.lgu.objid
+            if (whereclause) whereclause += ' AND '
+            whereclause += ' f.lguid = $P{lguid} '
+        }
+        if (params.barangay){
+            params.barangayid = params.barangay.objid
+            if (whereclause) whereclause += ' AND '
+            whereclause += ' f.barangayid = $P{barangayid} '
+        }
+        if (params.rputype){
+            if (whereclause) whereclause += ' AND '
+            whereclause += ' f.rputype = $P{rputype} '
+        }
+        if (params.surveyno){ 
+            if (whereclause) whereclause += ' AND '
+            whereclause += ' f.surveyno = $P{surveyno} '
+        }
+        if (params.blockno){ 
+            if (whereclause) whereclause += ' AND '
+            whereclause += ' f.blockno = $P{blockno} '
+        }
+        if (params.cadastrallotno){
+            params.cadastrallotno += '%'
+            if (whereclause) whereclause += ' AND '
+            whereclause += ' f.cadastrallotno like $P{cadastrallotno} '
+        }
+        if (params.trackingno){
+            if (whereclause) whereclause += ' AND '
+            whereclause += ' f.trackingno = $P{trackingno} '
+        }
+        if (params.utdno){
+            if (whereclause) whereclause += ' AND '
+            whereclause += ' f.utdno = $P{utdno} '
+        }
+        if (params.titleno){
+            params.titleno += '%'
+            if (whereclause) whereclause += ' AND ' 
+            whereclause += ' f.titleno LIKE $P{titleno} '
+        }
+        if (params.taxpayer){
+            params.taxpayerid = params.taxpayer.objid 
+            if (whereclause) whereclause += ' AND ' 
+            whereclause += ' f.taxpayer_objid LIKE $P{taxpayerid} '
+        }
+        if (params.classification){
+            params.classificationid = params.classification.objid 
+            if (whereclause) whereclause += ' AND ' 
+            whereclause += ' f.classification_objid = $P{classificationid} '
+        }
+        if (params.txntype){
+            params.txntypeid = params.txntype.objid 
+            if (whereclause) whereclause += ' AND ' 
+            whereclause += ' f.txntype_objid = $P{txntypeid} '
+        }
+
+        switch(params.name) {
+            case 'all':
+                break;
+            case 'current':
+                params.state = 'CURRENT'
+                if (whereclause) whereclause += ' AND ' 
+                whereclause += ' f.state = $P{state}  '
+                break;
+            case 'cancelled':
+                params.state = 'CANCELLED'
+                if (whereclause) whereclause += ' AND ' 
+                whereclause += ' f.state = $P{state}  '
+                break;
+            case 'mytask':
+                params.userid = env.USERID 
+                if (whereclause) whereclause += ' AND ' 
+                whereclause += ' f.assignee_objid = $P{userid} '
+                break;
+            case 'unassigned':
+                if (whereclause) whereclause += ' AND ' 
+                whereclause += " f.taskstate like 'assign%'"
+                break;
+            case 'publiclands':
+                if (whereclause) whereclause += ' AND ' 
+                whereclause += " f.publicland = 1 "
+                break;
+            default:
+                params.taskstate = params.name
+                if (whereclause) whereclause += ' AND ' 
+                whereclause += ' f.taskstate = $P{taskstate} '
+        }
+
+        if (whereclause) {
+            params.filters = ' AND ' + whereclause
+            params.orderby = ' ORDER BY f.tdno, f.pin '
+        }
+    }   
+
+    void afterList(params, list) {
+        //TODO: temporary and ugly hack: codes must not be hardcoded 
+        list.each{
+            if (it.classcode?.toLowerCase()?.matches('a|agr'))
+                it.totalarea = numSvc.roundA(it.totalareaha, 4) + ' ha'
+            else
+                it.totalarea = numSvc.roundA(it.totalareasqm, 2) + ' sqm'
+        } 
+    }
+
+    @ProxyMethod
+    public def getStates(  ) {
+        return [
+            'INTERIM',
+            'FORAPPROVAL',
+            'CURRENT',
+            'CANCELLED',
+        ]
+    }    
+
+    @ProxyMethod
+    public def getClassifications(  ) {
+        return em_classification.find([state:'APPROVED']).orderBy('orderno').list()
+    }
+
+    @ProxyMethod
+    public def getTxnTypes(){
+        return faasSvc.getTxnTypes();
+    }
+
+    @ProxyMethod
+    public def getRpuTypes(){
+        return rpuSvc.getRpuTypes()
+    }
+
+}

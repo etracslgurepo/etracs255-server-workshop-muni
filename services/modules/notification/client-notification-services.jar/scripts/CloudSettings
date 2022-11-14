@@ -1,0 +1,20 @@
+import com.rameses.annotations.*; 
+
+class CloudSettings {
+	
+	@Context
+    def appCtx; 
+
+    @ProxyMethod(local=true) 
+    public boolean isEnabled() {
+        if ( appCtx && appCtx.conf ) {
+            def sval = appCtx.conf['cloud.enabled']; 
+            if ( "false".equals(sval.toString()) ) {
+                return false; 
+            } 
+        } 
+
+        return true; 
+    } 
+
+}

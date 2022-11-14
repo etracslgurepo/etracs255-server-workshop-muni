@@ -1,0 +1,29 @@
+import com.rameses.annotations.*;
+
+class UnuseCheckPaymentQueryService {
+
+	@ActiveDB("checkpayment_query")
+	def em;
+	
+	@ProxyMethod
+	public def getColumns( m ) {
+		return [
+			[name:"refno", caption:"CheckNo."],
+			[name:"refdate", caption:"CheckDate"],
+			[name:"receivedfrom", caption:"ReceivedFrom"],
+			[name:"amount", caption:"Amount", type:"decimal"],
+			[name:"bank.name", caption:"Bank"]
+		];
+	}
+
+	public def getList( param ) { 
+		if ( !param.userid ) param.userid = ''; 
+		if ( !param.searchtext ) param.searchtext = ''; 
+
+		def filters = [];  
+		param.refno = param.searchtext+'%';
+		filters << ''' refno LIKE $P{refno} '''; 
+		param.filter = filters.join(' AND '); 
+		return em.getUnuseChecks( param ); 
+	} 
+}

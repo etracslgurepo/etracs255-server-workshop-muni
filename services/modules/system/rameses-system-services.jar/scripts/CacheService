@@ -1,0 +1,67 @@
+import com.rameses.annotations.*;
+import com.rameses.osiris3.xconnection.XConnection;
+import com.rameses.util.*;
+
+class CacheService {		
+	
+	private String DEFAULT_CONNECTION_NAME = "cache"; 
+
+	@Context 
+	def currentContext;
+
+	@ProxyMethod 
+	public void put( params ) { 
+		if ( params.key == null ) throw new Exception('key parameter is required'); 
+		if ( params.value == null ) throw new Exception('value parameter is required'); 
+
+		String connectionName = ( params.connection ? params.connection : DEFAULT_CONNECTION_NAME ); 
+		def xconn = currentContext.getResource( XConnection.class, connectionName ); 
+		if ( xconn==null ) throw new Exception(''+ connectionName + " connection file not found"); 
+
+		Number timeout = null; 
+		try { 
+			timeout = new Integer( params.timeout.toString() ); 
+		} catch(Throwable t) {;} 
+
+		if ( timeout == null ) {
+			xconn.put( params.key.toString(), params.value ); 
+		} else { 
+			xconn.put( params.key.toString(), params.value, timeout.intValue()); 
+		}
+	} 
+
+	@ProxyMethod 
+	public Object get( o ) { 
+		def params = [:]; 
+		if ( o instanceof Map ) { 
+			params = o; 
+		} else { 
+			params.key = o; 
+		} 
+
+		if ( params.key == null ) throw new Exception('key parameter is required'); 
+
+		String connectionName = ( params.connection ? params.connection : DEFAULT_CONNECTION_NAME ); 
+		def xconn = currentContext.getResource( XConnection.class, connectionName ); 
+		if ( xconn==null ) throw new Exception(''+ connectionName + " connection file not found"); 
+
+                try { 
+                    return xconn.get( params.key.toString()); 
+                } finally {
+                    if ( params.autoremove.toString() == 'true') {
+                        xconn.remove( params.key.toString()); 
+                    } 
+                } 
+	} 
+
+	@ProxyMethod 
+	public void removeCache( params ) {
+		if ( params.key == null ) throw new Exception('key parameter is required'); 
+
+		String connectionName = ( params.connection ? params.connection : DEFAULT_CONNECTION_NAME ); 
+		def xconn = currentContext.getResource( XConnection.class, connectionName ); 
+		if ( xconn==null ) throw new Exception(''+ connectionName + " connection file not found"); 
+
+		xconn.remove( params.key.toString()); 
+	} 
+}

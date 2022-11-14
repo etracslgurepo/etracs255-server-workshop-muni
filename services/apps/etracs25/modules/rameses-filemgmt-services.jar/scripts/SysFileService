@@ -1,0 +1,126 @@
+import com.rameses.annotations.*;
+
+class SysFileService {
+	
+	@DataContext('sys_file')
+	def file_db; 
+
+	@DataContext('sys_fileitem')
+	def fileitem_db; 
+
+	@DataContext('sys_fileloc')
+	def fileloc_db; 
+
+	@Service('DateService')
+	def dateSvc; 
+
+	@Env
+	def env; 
+
+	@XConnection( dynamic=true )
+	def dynamicConn;
+
+
+	@ProxyMethod 
+	public def create( param ) { 
+		def fhead = null; 
+		if ( param.appendToFileId ) {
+			fhead = file_db.find([ objid: param.appendToFileId ]).first();
+		}
+
+		if ( !fhead ) {
+			param.dtcreated = dateSvc.getServerDate(); 
+			param.createdby = [ objid: env.USERID, name:  env.FULLNAME ]; 
+			
+			fhead = file_db.create( param ); 
+		}
+		
+		def items = param.items; 
+		items.each{ o-> 
+			o.parentid = fhead.objid; 
+			o.dtcreated = fhead.dtcreated;
+			o.createdby = fhead.createdby;
+			if ( !o.filetype ) {
+				o.filetype = fhead.filetype; 
+			}
+
+			def fi = fileitem_db.create( o ); 
+			if ( fi ) o.putAll( fi );   
+		} 
+
+		param.putAll( fhead ); 
+		param.items = items; 
+		return param;  
+	}
+
+	@ProxyMethod 
+	public def read( param ) {
+		def data = file_db.find([ objid: param.objid.toString() ]).first(); 
+		if ( data ) {
+			data.items = fileitem_db.find([ parentid: data.objid ]).list(); 
+			data.items.each{ 
+				it.fileloc = fileloc_db.find([ objid: it.filelocid ]).first(); 
+				if ( it.filetype == null ) it.filetype = data.filetype; 
+			} 
+		} 
+		return data; 
+	}
+
+	@ProxyMethod 
+	public def remove( param ) {
+		if ( param.item?.objid ) {
+			def item = fileitem_db.find([ objid: param.item.objid ]).select('objid,parentid,filelocid').first(); 
+			if ( !item ) return [status: 'not-found']; 
+
+			item.fileloc = fileloc_db.find([ objid: item.filelocid ]).first(); 
+			
+			if ( !item.fileloc ) {
+				def connMap = getConnection( item.filelocid ); 
+				connMap.user = [ name: connMap.username, pwd: connMap.password ]; 
+				connMap.loctype = connMap.type; 
+				connMap.defaultloc = 0; 
+
+				item.fileloc = connMap;
+			}
+
+			if ( !item.filetype ) {
+				def head = file_db.find([ objid: item.parentid ]).select('objid,filetype').first(); 
+				item.filetype = head.filetype; 				
+			}
+
+			fileitem_db.find([ objid: item.objid ]).delete();
+
+			def res = [items: [ item ]]; 
+			res.status = 'success'; 
+			return res; 
+		}
+
+		def fileid = param.objid.toString();
+		def o = file_db.find([ objid: fileid ]).select('objid,filetype').first(); 
+		if ( o?.objid ) {
+			def res = [ objid: o.objid, items: []]; 
+			fileitem_db.find([ parentid: fileid ]).select('objid,filelocid').list().each{
+				it.fileloc = fileloc_db.find([ objid: it.filelocid ]).first(); 
+				if ( !it.filetype ) {
+					it.filetype = o.filetype; 	
+				}
+				
+				res.items << it; 
+			}
+
+			fileitem_db.find([ parentid: fileid ]).delete();
+			file_db.find([ objid: fileid ]).delete();
+			res.status = 'success';
+			return res; 
+		}
+		return [status: 'not-found'];
+	}
+
+
+
+	@ProxyMethod
+	public def getConnection( String name ) {
+		def conn = dynamicConn.lookup( name ); 
+		return (conn == null ? null : conn.getConf()); 
+	}
+}

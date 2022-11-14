@@ -1,0 +1,34 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class BatchRPTTaxCreditInterceptor
+{
+    @DataContext("batch_rpttaxcredit_ledger")
+    def em_batch_ledger;
+
+    @Service('BatchRPTTaxCreditService')
+    def svc;
+
+
+    @Before(pattern='PersistenceService.create', eval="#{args[0]._schemaname == 'batch_rpttaxcredit'}")
+	public void beforeCreate(evt) {
+		def batch = evt.args[0]
+		svc.beforeCreate(batch)
+	}
+
+    @After(pattern="PersistenceService.create", eval="#{args[0]._schemaname=='batch_rpttaxcredit'}") 
+	public void afterCreate( evt ) {
+		def entity = evt.result
+        svc.buildLedgersForCredits(entity);
+	}
+
+
+    @Before(pattern="PersistenceService.removeEntity", eval="#{args[0]._schemaname=='batch_rpttaxcredit'}") 
+	public void beforeDelete( evt ) {
+		def arg = evt.args[0]
+        em_batch_ledger.find([parentid: arg.objid]).delete();
+	}
+
+}
+

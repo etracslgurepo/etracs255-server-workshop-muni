@@ -1,0 +1,96 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class LandTaxReportNoticeOfDelinquencyService
+{
+	@Env 
+	def env
+
+	@Service('DateService')	
+	def dtSvc 
+
+	@Service('RPTBillingService')	
+	def billSvc 
+
+	@Service('RPTUtil')
+	def util
+
+	@Service('NumberService')
+	def numSvc 
+
+
+	@ProxyMethod
+	public void validateDateComputed(dtcomputed){
+		if (!dtcomputed) dtcomputed = dtSvc.serverDate 
+		def currdate = dtSvc.parse('yyyy-MM-dd', dtSvc.format('yyyy-MM-dd', dtSvc.serverDate))
+		dtcomputed = dtSvc.parse('yyyy-MM-dd', dtcomputed)
+		if (dtcomputed.before(currdate))
+			throw new Exception('Date Computed must be greater than or equal to current date.')
+	}
+
+	@ProxyMethod
+	public def generateNoticeOfDelinquency( params ) {
+		validateDateComputed(params.billdate)
+		params.billdate = dtSvc.parse('yyyy-MM-dd', params.billdate)
+		def bill = billSvc.initBill()
+		bill.billdate = params.billdate 
+		bill.taxpayer = params.taxpayer 
+		bill.rptledgerid = params.rptledgerid 
+
+		//exclude current year as per blgf manual
+		bill.billtoyear = bill.cy - 1
+		if (params.includecy == true){
+			bill.billtoyear = bill.cy
+		}
+
+		//set advancebill flag
+		def currdate = dtSvc.serverDate
+		bill.advancebill = params.billdate > currdate
+
+		bill.ledgers = billSvc.getOpenLedgers(bill)
+		bill = billSvc.generateBill(bill)
+		bill.ledgers.each{
+			it.fromyear = it.items.first().year 
+			it.fromqtr = it.items.first().qtr  ? it.items.first().qtr : 1
+			it.toyear = it.items.last().year 
+			it.toqtr = it.items.last().qtr 
+			if (it.classcode.matches('A|AGR'))
+				it.area = numSvc.format('#,##0.0000', it.totalareaha) + ' ha.'
+			else 
+				it.area = numSvc.format('#,##0.00', it.totalareasqm) + ' sqm'
+			it.amtdue = it.items.sum{it.total}
+		}
+		
+		util.buildBuildPeriod(bill.ledgers)
+
+		params.cy = bill.cy 
+		params.ledgers = bill.ledgers 
+		if (params.taxpayer.address instanceof String){
+			params.taxpayer.address = params.taxpayer.address
+		}else {
+			params.taxpayer.address = params.taxpayer.address?.text 
+		}
+		
+		//set administrator if there is only one item
+		if (params.rptledgerid){
+			params.administrator = params.ledgers.first().administrator
+		}
+
+		params.validuntil = bill.validuntil
+		
+		params.empowered = 'Municipal Treasurer'
+		params.legaloffice = 'Municipal Legal Office'
+		if (env.ORGCLASS.equalsIgnoreCase('city')){
+			params.empowered = 'City Treasurer'
+			params.legaloffice = 'City Legal Office'
+		}
+		else if (env.ORGCLASS.equalsIgnoreCase('province')){
+			params.empowered = 'Provincial Treasurer'
+			params.legaloffice = 'Province Legal Office'
+		}
+		return params 
+	}
+
+}
+

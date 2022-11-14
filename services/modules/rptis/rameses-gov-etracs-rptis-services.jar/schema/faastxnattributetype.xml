@@ -1,0 +1,5 @@
+<schema>
+	<element tablename="faas_txntype_attribute_type">
+		<field name="attribute" primary="true" caption="Attribute" searchable="true" width="300" visible="true"/>
+	</element>
+</schema>

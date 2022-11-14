@@ -1,0 +1,21 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import com.rameses.services.extended.*
+
+class RPTReceiptPostShareTask 
+{
+	@DataContext('cashreceipt_rpt_share_forposting')
+	def em 
+
+	@Service('RPTReceiptPostShareService')
+    def svc;
+
+	@Schedule(interval=5)
+	public def postShares(task) {
+		def receiptsForPosting = em.where('error = 0').limit(20).orderBy('txndate').list()
+		if (!receiptsForPosting) return
+		
+		svc.postShares(receiptsForPosting);
+	}	
+}
+

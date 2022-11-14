@@ -1,0 +1,121 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import com.rameses.util.*
+import com.rameses.services.extended.*
+
+
+class FAASNewDiscoveryService
+{
+	@Env 
+	def env
+	
+    @ActiveDB('faas')
+    def faasEm
+
+    @Service('FAASService')
+    def faasSvc
+
+    @Service('RPUService')
+    def rpuSvc 
+
+    @DataContext('faas_list')
+    def faaslistDb 
+
+
+    @ProxyMethod
+    public def createBackTaxFaas(ndfaas, lastry) {
+        ndfaas = faasSvc.openFaas(ndfaas)
+    	def faas = [:]
+        faas.putAll(ndfaas)
+    	def prevry = getPreviousRevision(faas, lastry)
+        if (prevry == null) {
+            prevry = ndfaas.rpu.ry
+        }
+
+    	initLand(faas, prevry)
+
+    	faas.objid = 'F' + new java.rmi.server.UID()
+    	faas.datacapture = true 
+    	faas.state = 'INTERIM'
+    	faasSvc.generateUniqueTdNo(faas)
+    	
+    	faas.rpu.ry = prevry 
+    	faas.rpu.state = 'INTERIM'
+        if (ndfaas.rpu.ry == prevry){
+            faas.effectivityyear = ndfaas.effectivityyear - 1 
+        }
+        else{
+            faas.effectivityyear = prevry + 1
+        }
+
+    	rpuSvc.generateNewIds(faas.rpu)
+
+    	faas.rpuid = faas.rpu.objid 
+    	faas.realpropertyid = faas.rp.objid 
+    	faas.rpu.realpropertyid = faas.rp.objid 
+
+    	return faas 
+    }
+
+    @ProxyMethod
+    public void removeBackTaxItem(item) {
+        def pf = faasEm.findPreviousFaas(item)
+        if (pf){
+            faasSvc.updateFaasPrevInfo([objid:pf.faasid])
+            faaslistDb.update([objid:item.objid, prevtdno:item.prevtdno])
+        }
+    	faasSvc.deletePreviousFaas(item)
+    	faasSvc.deleteFaasById(item.objid)
+    }
+
+    @ProxyMethod
+    public def openFaas( item ) {
+    	return faasSvc.openFaas(item)	
+    }
+
+    void initLand(faas, prevry){
+    	if ('land' != faas.rpu.rputype)
+    		return 
+
+		faas.rp.objid = 'RP' + new java.rmi.server.UID()
+    	faas.rp.ry = prevry 
+    	faas.rp.state = 'INTERIM'
+
+    	faas.rpu.landdetails.each{
+			it.subclass = [:]
+			it.actualuse = [:]
+		}
+		faas.rpu.planttrees.each{
+			it.planttreeunitvalue = [:]
+			it.actualuse = [:]
+		}
+		
+		faas.rpu.landadjustments = []
+		faas.rpu.assessments = []
+		faas.rpu.totallandbmv = 0.0
+		faas.rpu.totallandmv = 0.0
+		faas.rpu.totallandav = 0.0
+		faas.rpu.totalplanttreebmv = 0.0
+		faas.rpu.totalplanttreeadjustment = 0.0
+		faas.rpu.totalplanttreemv = 0.0
+		faas.rpu.totalplanttreeav = 0.0
+		faas.rpu.landvalueadjustment = 0.0
+    }
+
+    @DataContext('rysetting_land')
+    def landrysetting_db
+
+    def getPreviousRevision(faas, lastry){
+    	if ('land' == faas.rpu.rputype){
+    		def rys = landrysetting_db.select('ry').orderBy('ry').list()
+    		if (!rys) 
+	    		throw new Exception('There is no revision setting before year ' + lastry + '.')
+            def xrys = rys.findAll{it.ry <= lastry}
+            if (!xrys) throw new Exception('Revision year before ' + lastry + ' is not defined.' )
+	    	def ry = xrys.ry.max()
+            return ry 
+    	}
+
+    }
+}
+

@@ -1,0 +1,11 @@
+<schema>
+	<element name="rptexpiry" tablename="rptexpiry">
+		<field name="iyear" primary="true"/>
+		<field name="iqtr" primary="true"/>
+		<field name="imonth" primary="true"/>
+		<field name="expirytype" required="true"/>
+		<field name="expirydate" required="true"/>
+		<field name="validuntil" required="true"/>
+		<field name="reason" required="true"/>
+	</element>
+</schema>

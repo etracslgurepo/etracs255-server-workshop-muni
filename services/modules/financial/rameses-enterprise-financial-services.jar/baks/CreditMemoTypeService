@@ -1,0 +1,81 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.common.*
+import com.rameses.services.extended.*
+
+public class CreditMemoTypeService extends ActiveCrudListService {
+	
+	@ActiveDB("creditmemotype")
+	def em
+
+	@ActiveDB("creditmemotype_account")
+	def ctacct;
+
+	@Service("DateService")
+	def dateSvc 
+
+	@ProxyMethod
+	public def getColumns( def o ) {
+		return[
+			[name:'objid', caption:'Name' ],
+			[name:'title', caption:'Title' ],
+			[name:'handler', caption:'Handler' ],
+			[name:'fund.title', caption:'Fund' ],
+			[name:'fund.code', caption:'Fund Code' ],
+		];
+	}
+
+
+	void beforeRemoveEntity( ct ) {
+		removeAccts( ct ); 
+	} 
+
+	void afterOpen( ct ) {
+		ct.accounts = ctacct.getAccounts([ objid: ct.objid ]); 
+		
+	}
+
+	void afterCreate( ct ) {
+		insertAccts( ct ); 
+	} 
+
+	void afterUpdate( ct ) {
+		removeAccts( ct ); 
+		insertAccts( ct ); 
+	} 
+
+	void removeAccts( ct ) {
+		ctacct.removeAccounts([objid: ct.objid]); 
+	}
+	void insertAccts( ct ) {
+		ct.accounts?.each{o-> 
+			o.typeid = ct.objid; 
+			ctacct.create( o ); 
+		} 
+	}
+
+	@ProxyMethod
+	public def getAccounts( params ) {
+		return ctacct.getAccounts( params );
+	}
+
+	@ProxyMethod
+	public def addAccount(def o) {
+		def ct = em.read( [objid: o.typeid] ); 
+		return ctacct.create(o); 
+	} 
+
+	@ProxyMethod
+	public def updateAccount(def o) {
+		o.account_objid = o.account.objid;
+		return ctacct.update(o);
+	}
+
+	@ProxyMethod
+	public def removeAccount(def o) {
+		o.account_objid = o.account.objid;
+		return ctacct.delete(o);
+	}
+
+}

@@ -1,0 +1,51 @@
+import com.rameses.annotations.*;
+
+class NotificationServiceInterceptor {
+	
+	@Service('NotificationServiceImpl') 
+	def svc;
+
+	@After( pattern="NotificationService.getList", index=-9999 ) 
+	public void afterGetList( evt ) {
+		def result = evt.result;	
+		def list = svc.getList( evt.args[0] ); 
+		if ( list ) result.addAll( list );  
+	} 
+
+	@After( pattern="NotificationService.addMessage", index=-9999 ) 
+	public void afterCreateMessage( evt ) {
+		def params = evt.args[0]; 
+		svc.addMessage( params ); 
+	} 
+
+	@After( pattern="NotificationService.removeMessage", index=-9999 ) 
+	public void afterRemoveMessage( evt ) {
+		def params = evt.args[0]; 
+		svc.removeMessage( params ); 
+	} 
+
+	@After( pattern="NotificationService.getNotified", index=-9999 ) 
+	public void afterGetNotified( evt ) {
+		def params = evt.args[0]; 
+		if ( params.groups ) {
+			svc.notifyGroups( params );
+		} else {
+			svc.notifyUser( params ); 
+		}
+	} 
+
+	@After( pattern="NotificationService.importMessage", index=-9999 ) 
+	public void afterImportMessage( evt ) {
+		def params = evt.args[0]; 
+		svc.importMessage( params ); 
+	}	
+
+	@After( pattern="NotificationService.getCountImpl", index=-9999 ) 
+	public void afterGetCountImpl( evt ) { 
+		def params = evt.args[0]; 
+		def icount = svc.getCount( params ); 
+		if ( icount ) { 
+			evt.result.value = icount;  
+		} 
+	} 
+}

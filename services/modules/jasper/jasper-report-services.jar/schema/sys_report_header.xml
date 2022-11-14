@@ -1,0 +1,7 @@
+<schema>
+	<element tablename="sys_report_header">
+		<field name="name" primary="true" caption="Name" searchable="true" visible="true"/>
+		<field name="value" required="true" caption="Value"/>
+	</element>
+</schema>
+

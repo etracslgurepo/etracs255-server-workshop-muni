@@ -1,0 +1,28 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+
+class MobileTerminalService 
+{
+	@Service('TerminalService')
+    def svc; 		
+
+	@ProxyMethod 
+	public Map findTerminal( params ) { 
+		return svc.findTerminal(params); 
+	} 
+
+	@ProxyMethod 
+	public Map findMacAddress( params ) { 
+		return svc.findMacAddress(params); 
+	} 	
+
+    @ProxyMethod	
+	public Map register( params ) {
+		return svc.register(params);
+	} 
+
+    @ProxyMethod	
+	public Map recover( params ) {
+		return svc.recover(params);
+	} 
+} 

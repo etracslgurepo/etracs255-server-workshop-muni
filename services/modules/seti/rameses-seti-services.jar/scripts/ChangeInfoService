@@ -1,0 +1,53 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import java.rmi.server.UID
+import java.text.SimpleDateFormat;
+import com.rameses.services.extended.*;
+
+class ChangeInfoService  {	
+
+	@Service("PersistenceService")
+	def persistenceService;
+
+	@Service("DateService")
+	def dateSvc;
+
+	@Service("SequenceService")
+	def seqSvc;
+
+	@DataContext(dynamic=true)
+	def db;
+
+	@Env
+	def env;
+
+	@ProxyMethod
+	public def save( def o ) { 
+		if( !o._schemaname ) throw new Exception("ChangeInfoService error. Please include _schemaname");
+		if( !o._loginfo ) throw new Exception("ChangeInfoService error. Please include _loginfo");
+		
+		def logInfo = o.remove("_loginfo");
+		if(!logInfo.action ) throw new Exception("ChangeInfoService error. Please include action in loginfo");
+		if(!logInfo._schemaname) throw new Exception("There should be a _schemaname in loginfo");
+
+		//update the target schema first. 
+		if(logInfo.action=="update") {
+			persistenceService.update( o );
+		}
+
+		//save the log info
+		def dtfiled = dateSvc.getServerDate();
+		def df = new java.text.SimpleDateFormat("yyyyMM");
+		def yrmon = df.format( dtfiled );
+		if(!logInfo.controlno) {
+			logInfo.controlno = "CI-" + yrmon +  seqSvc.getNextFormattedSeriesA( "CHANGEINFO" + yrmon, 10 );
+		}
+		logInfo.dtfiled = dtfiled;
+		logInfo.filedby = [objid:env.USERID, name:env.FULLNAME];
+
+		def logEm = db.lookup( logInfo._schemaname );
+		logEm.create( logInfo ); 
+	}
+
+
+}

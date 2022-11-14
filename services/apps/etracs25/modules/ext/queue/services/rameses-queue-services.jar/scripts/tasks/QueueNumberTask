@@ -1,0 +1,31 @@
+import com.rameses.annotations.*; 
+
+class QueueNumberTask {
+
+	@Service('DateService')
+	def dateSvc; 
+
+	@DataContext('queue_section') 
+	def qs; 
+
+	@DataContext('queue_number') 
+	def qn; 
+
+	def YMD = new java.text.SimpleDateFormat('yyyy-MM-dd'); 
+
+	//@Schedule(interval=2) 
+	public void processResetCurrentSeries0( task ) {
+		def lockid = 'EXP'+ new java.rmi.server.UID(); 
+		def rundate = dateSvc.getBasicServerDate();
+		qs.where(' dtexpiry is null ').update([ lockid: lockid ]); 
+		qs.where('dtexpiry < :rundate ', [rundate: rundate]).update([ lockid: lockid ]); 
+		qs.find([ lockid: lockid ]).update([ dtexpiry: rundate ]); 
+		def list = qs.find([ lockid: lockid ]).list(); 
+		list.each{ resetSection(it) } 
+	}
+
+	void resetSection( o ) {
+		qs.resetTickets([ sectionid: o.objid ]); 
+		qs.find([ objid: o.objid ]).update([ currentseries: 0 ]); 
+	}
+}

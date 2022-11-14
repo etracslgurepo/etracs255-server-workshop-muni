@@ -1,0 +1,6 @@
+<schema adapter="queue">
+	<element tablename="queue_counter">
+		<field name="objid" primary="true"/>
+		<field name="code" required="true"/>	
+	</element> 
+</schema>

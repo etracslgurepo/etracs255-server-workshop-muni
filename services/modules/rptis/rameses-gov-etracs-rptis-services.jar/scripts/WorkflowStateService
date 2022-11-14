@@ -1,0 +1,82 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+
+class WorkflowStateService
+{
+	@PersistenceContext('main')
+	def em
+
+	@Env
+	def env 
+
+	@Service('DateService')
+	def dtSvc
+
+	@Service('RPTUtil')
+	def util
+
+
+	def STATE_INTERIM 			= 'INTERIM'
+	def STATE_FORTAXMAPPING		= 'FORTAXMAPPING'
+	def STATE_FORAPPRAISAL		= 'FORAPPRAISAL'
+	def STATE_FORAPPROVAL 		= 'FORAPPROVAL'
+	def STATE_FORPROVSUBMISSION = 'FORPROVSUBMISSION'
+	def STATE_FORPROVAPPROVAL 	= 'FORPROVAPPROVAL'
+	def STATE_CURRENT 			= 'CURRENT'
+	def STATE_CANCELLED  		= 'CANCELLED'
+
+	@ProxyMethod
+	public def insert(params) {
+		util.required('objid', params.objid)
+		util.required('state', params.state)
+		params.txndate = dtSvc.serverDate
+		params.userid = env.USERID 
+		params.username = env.NAME 
+
+		try{
+			em.sqlContext.createNamedExecutor('workflowstate:insert').setParameters(params).execute()
+		}
+		catch(e) {
+			def msg = 'Document has already been '
+			if (params.state == STATE_FORTAXMAPPING)
+				msg += ' submitted for taxmapping.'
+			else if (params.state == STATE_FORAPPRAISAL)
+				msg += ' submitted for appraisal.'
+			else if (params.state == STATE_FORAPPROVAL)
+				msg += ' submitted for approval.'
+			else if (params.state == STATE_FORPROVSUBMISSION)
+				msg += ' submitted for province submission.'
+			else if (params.state == STATE_CURRENT)
+				msg += ' approved.'
+			else if (params.state == STATE_FORPROVAPPROVAL)
+				msg += ' submitted to province.'
+			else
+				msg += 'Document is ' + params.state + '.'
+			throw new Exception(msg)
+		}
+	}
+	
+
+	@ProxyMethod
+	public def delete(params) {
+		util.required('objid', params.objid)
+		util.required('state', params.state)
+		em.sqlContext.createNamedExecutor('workflowstate:delete').setParameters(params).execute()
+	}
+
+
+	@ProxyMethod
+	public def deleteAll( objid ) {
+		em.sqlContext.createNamedExecutor('workflowstate:deleteAll').setParameter('objid', objid).execute()
+	}
+
+
+	@ProxyMethod
+	public def get( objid, state ) {
+		em.sqlContext.createNamedQuery('workflowstate:get')
+				.setParameter('objid', objid)
+				.setParameter('state', state)
+				.singleResult
+	}
+
+}

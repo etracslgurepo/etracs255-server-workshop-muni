@@ -1,0 +1,23 @@
+tblAssessment.intType values:
+1      RENEWAL
+2      RETIRED
+3      REVOKED
+4      ADDITIONAL
+5      UPDATED
+6      REASSESSED (NEW)
+7      REASSESSED (RENEW)
+8      DATA CAPTURE (NEW)
+9      DATA CAPTURE (RENEW)
+10     RETIRE BUSINESS LINE
+
+
+application status
+==================
+case a.state
+	when 1 then 'DRAFT'
+	when 2 then 'FINAL'
+	when 3 then 'PERMIT'
+	when 4 then 'RETIRED'
+	else 'CANCELLED'
+End as appstate 
+

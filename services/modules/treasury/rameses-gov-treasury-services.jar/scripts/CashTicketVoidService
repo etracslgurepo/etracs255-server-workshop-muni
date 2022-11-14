@@ -1,0 +1,76 @@
+import com.rameses.annotations.*;
+
+class CashTicketVoidService  {
+
+	@Env 
+	def env; 
+
+	@DataContext('cashreceipt') 
+	def receipt_db;
+
+	@DataContext('cashreceiptitem') 
+	def item_db;
+
+	@DataContext('cashreceipt_share') 
+	def share_db;
+
+	@DataContext('cashreceiptpayment_noncash') 
+	def noncash_db;
+
+	@DataContext('af_control') 
+	def afc_db;
+
+	@DataContext('af') 
+	def af_db;
+
+	@Service("ActionPermissionService")
+	def actionPermissionSvc;
+
+	@ProxyMethod
+	public void post( param ) { 
+		if ( !param.receipt ) throw new Exception('receipt  parameter is required'); 
+		if ( !param.receipt?.objid ) throw new Exception('receipt.objid  parameter is required'); 
+
+		def usr = null; 
+		if ( param.applysecurity == true ) {
+			usr = actionPermissionSvc.checkAllowedAction([ 
+					username: param.username, 
+					password: param.password, 
+					action: 'cashreceipt.approve_void' 
+				  ]);
+			usr.name = ''+ usr.firstname +' '+ usr.lastname; 
+		}
+		else {
+			usr = [objid: env.USERID, name: env.FULLNAME];
+		}
+		
+		def receiptid = param.receipt.objid; 
+		def rec = receipt_db.find([ objid: receiptid ]).select('objid,amount,controlid,remittanceid').first(); 
+		if ( !rec ) throw new Exception('Cash Ticket record not found'); 
+
+		if ( rec.remittanceid ) 
+			throw new Exception('Cash Ticket is already remitted'); 
+
+		def afc = afc_db.find([ objid: rec.controlid ]).select('objid,afid').first(); 
+		if ( !afc ) throw new Exception('AF Control record not found'); 
+
+		def af = af_db.find([ objid: afc.afid ]).first(); 
+		if ( af?.formtype.toString().toLowerCase() != 'cashticket' ) 
+			throw new Exception('Record not allowed for VOID transaction'); 
+
+		share_db.find([ receiptid: receiptid ]).delete(); 
+		noncash_db.find([ receiptid: receiptid ]).delete(); 
+		item_db.find([ receiptid: receiptid ]).delete(); 
+		receipt_db.find([ objid: receiptid ]).delete(); 
+
+		def qtyissued = rec.amount / af.denomination; 
+
+		// update to force the record locking 
+		// 
+		afc_db.find([ objid: rec.controlid ]).update([ lockid: new java.rmi.server.UID().toString()]); 
+
+		afc = afc_db.find([ objid: rec.controlid ]).select('objid,currentseries').first(); 
+		afc.currentseries = afc.currentseries - qtyissued; 
+		afc_db.find([ objid: rec.controlid ]).update([ currentseries: afc.currentseries ]); 
+	}	
+}

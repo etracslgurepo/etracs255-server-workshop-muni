@@ -1,0 +1,695 @@
+import com.rameses.annotations.*
+import java.rmi.server.*;
+import com.rameses.common.*
+import com.rameses.rules.common.*;
+import com.rameses.services.extended.*
+import rptis.landtax.facts.*;
+import rptis.landtax.actions.*;
+
+class RPTReceiptCompromiseService
+{
+	@Service('DateService')
+	def dtSvc
+
+	@Service('NumberService')
+	def numSvc
+
+	@Service('RPTBillingService')
+	def billingSvc
+
+	@Resource("RuleService")
+	def ruleSvc;
+
+	@Service('RPTLedgerService')
+	def ledgerSvc 
+
+	@Service('LGUService')
+	def lguSvc 
+
+	@Service('RPTReceiptService')
+	def receiptSvc
+
+	@ActiveDB('rptreceipt')
+	def em_rptreceipt 
+
+	@DataContext('cashreceipt_rpt')
+	def em_cashreceipt_rpt
+
+	@DataContext('rptledger')
+	def em_rptledger
+
+	@DataContext('rptledger_item')
+	def em_rptledger_item
+
+	@DataContext('rptcompromise')
+	def em_compromise
+
+	@DataContext('rptcompromise_item')
+	def em_compromise_item
+
+	@DataContext('rptcompromise_credit')
+	def em_compromise_credit
+
+	@DataContext('rptcompromise_installment')
+	def em_compromise_installment
+
+	@DataContext('rptpayment')
+	def em_rptpayment
+
+	@DataContext('rptpayment_item')
+	def em_rptpayment_item
+
+	@DataContext('cashreceipt_rpt_share_forposting')
+	def em_cashreceipt_forposting
+
+
+
+	@ProxyMethod
+	public def getCurrentYearDue( ledgerid ) {
+		def bill = billingSvc.initBill([_generate_barcode:false])	
+		def ledger = em_rptledger.select('objid,taxpayer.objid,taxpayer.name').find([objid:ledgerid]).first()
+		bill.ledgers = [ledger]
+		bill.taxpayer = ledger.taxpayer 
+		bill._save = false 
+		bill._forpayment = true 
+		bill = billingSvc.generateBill(bill)
+		bill.rptledger = bill.remove('ledgers')[0]
+		if (bill.totals.total <= 0 ) throw new Exception('Ledger has already been fully paid.')
+		return bill 
+	}
+
+
+	@ProxyMethod
+	public def create(receipt){
+		def pdate = dtSvc.parseDate(receipt.txndate, null)
+		receipt.year = pdate.year
+		receipt.qtr = pdate.qtr
+		receipt.month = pdate.month
+		receipt.day = pdate.day
+		em_cashreceipt_rpt.create(receipt)
+
+		if (!receipt.requiredpayment){
+			postInstallmentPayments(receipt)
+			postRptPayment(receipt)
+			postPaidItems(receipt)
+			updateCompromisePayment(receipt)
+		}
+		else if (receipt.requiredpayment.type == 'downpayment'){
+			receipt.remarks = (receipt.remarks ? receipt.remarks : 'Downpayment')
+			postRequiredPayment(receipt)
+			postRptPayment(receipt)
+			postPaidItems(receipt)
+			updateCompromisePayment(receipt)
+		}
+		else {
+			receipt.remarks = (receipt.remarks ? receipt.remarks : 'Current year payment')
+			postRequiredPayment(receipt)
+			postRptPayment(receipt)
+			updateLedgerPaidYearQtr(receipt)
+		}
+	}
+
+	void updateLedgerPaidYearQtr(receipt) {
+		def lastitem = receipt.bill.rptledger.postingitems.last()
+
+		def params = [:]
+		params.objid = receipt.bill.rptledger.objid 
+		params.lastyearpaid = lastitem.year 
+		params.lastqtrpaid = (lastitem.qtr ? lastitem.qtr : 4)
+		em_rptledger.find([objid:params.objid]).update(params)
+		em_rptledger_item.find([parentid: params.objid, year: params.lastyearpaid]).delete()
+	}
+
+	@ProxyMethod
+	public def open(receipt  ) {
+		def r = em_cashreceipt_rpt.read(receipt)
+		if (r){
+			receipt.putAll(r)
+			if (receipt.txntype == 'compromise'){
+				receipt.compromise = findCompromiseByReceipt(receipt)
+				if (receipt.objid == receipt.compromise.cypaymentreceiptid || 
+					receipt.objid == receipt.compromise.downpaymentreceiptid){
+					receipt.requiredpayment = [:]
+					if (receipt.objid == receipt.compromise.downpaymentreceiptid)
+						receipt.requiredpayment.type = 'downpayment'
+					else 
+						receipt.requiredpayment.type = 'cypayment'
+				}
+			}
+		}
+
+	}	
+
+
+	/*====================================================
+	*  receipt
+	*     - items 
+	*     - postingitems 
+	*     - shares 
+	* 	  - credits
+	*====================================================*/
+	@ProxyMethod
+	public def buildPostingItems(receipt){
+		def rptledger = em_rptledger.find([objid:receipt.compromise.rptledgerid]).first() 
+		if (!rptledger) throw new Exception('Ledger does not exist or has already been deleted.')
+
+		def bill = [:]
+
+		if (receipt.requiredpayment == null || receipt.requiredpayment.type == 'downpayment'){
+			rptledger.postingitems = em_compromise.getUnpaidItems([objid:receipt.compromise.objid])
+			bill = [billdate: receipt.receiptdate, rptledger: rptledger, cy: dtSvc.serverYear]
+			bill.partial = [amount:receipt.amount]
+			bill.rptledger = rptledger
+			receiptSvc.applyPartialPayment(bill)
+		}
+		else {
+			bill = billingSvc.generateBillByLedger(rptledger)
+			bill.rptledger = bill.remove('ledgers')[0]
+			bill.billitems = bill.rptledger.billitems
+		}
+		receipt.bill = bill
+		receipt.items = []
+		def item = null 
+
+		bill.billitems.each{
+			item = createReceiptItem(receipt, it.item)
+			item.amount = numSvc.roundA(it.amount, 4)
+			item.discount = numSvc.roundA(it.discount, 4)
+			receipt.items << item
+		}
+		return receipt 
+	}
+
+	@ProxyMethod
+	public def getReceiptItems(receipt){
+		def rct = buildPostingItems(receipt)
+		return rct.items
+	}
+
+
+	@ProxyMethod
+	public void formatReceiptForPrinting(receipt){
+		if (!receipt.installments){
+			receipt.installments = em_compromise.getPaidInstallmentsByReceipt(receipt)
+		}
+
+		def installmentnos = receipt.installments.installmentno.join(',')
+		def haspartial = (receipt.installments.find{it.fullypaid == 0 } != null)
+
+		receipt._items = em_compromise.getItemsForPrinting(receipt).each{
+			if (receipt.requiredpayment){
+				if (receipt.requiredpayment.type == 'downpayment')
+					it.period = 'CO# ' + receipt.compromise.txnno +'\n Downpayment '
+				else 
+					it.period = 'CO# ' + receipt.compromise.txnno +'\n ' + it.fromyear + ' payment'
+			}
+			else{
+				if (haspartial)
+					it.period = 'CO# ' + receipt.compromise.txnno +'\nInstallment ' + installmentnos + ' (Partial)'
+				else 	
+					it.period = 'CO# ' + receipt.compromise.txnno +'\nInstallment ' + installmentnos 
+			} 
+		}
+		receipt.itemcount = receipt._items.size()
+		receipt.remove('bill')
+	}
+
+
+	@ProxyMethod
+	public def getUnpaidInstallments(compromise) {
+		def list = em_compromise_installment
+						.find([parentid:compromise.objid, fullypaid:false])
+						.orderBy('installmentno')
+						.list()
+		list.each{ it.amtdue = 0}
+		return list 
+	}
+
+
+	@ProxyMethod
+	public void voidReceipt(receipt) {
+		def compromise = findCompromiseByReceipt(receipt)
+		if (!compromise){
+			throw new Exception('Compromise receipt does not exist or has already been deleted.')
+		}
+
+		compromise.receipt = receipt 
+		def newstate = 'APPROVED'
+
+		if (compromise.downpaymentreceiptid == receipt.objid){
+			voidDownpayment(compromise)
+			newstate = 'FORPAYMENT'
+		}
+		else if (compromise.cypaymentreceiptid == receipt.objid){
+			voidCurrentPayment(compromise)
+			newstate = 'FORPAYMENT'
+		}
+
+		revertInstallmentCredits(compromise)
+		revertItemCredits(compromise)
+
+		// void compromise credit
+		def info = [:]
+		info.amtpaid = '{amtpaid - :amount }'
+		info.state = newstate
+		em_compromise.find([objid:compromise.objid]).update(info, [amount:receipt.amount])
+		em_rptpayment.find([receiptid:receipt.objid]).update([voided:true])
+
+	}
+
+	
+	@ProxyMethod
+	public def postCapturedDownpayment(compromise, pmt){
+		def receipt = createCapturedReceipt(compromise, pmt)
+		receipt.requiredpayment = [type:'downpayment']
+		receipt.amount = compromise.downpayment
+		receipt.remarks = 'Payment for Downpayment'
+		buildPostingItems(receipt)
+		postRequiredPayment(receipt)
+        postPaidItems(receipt)
+        updateCompromisePayment(receipt)
+	} 
+
+	@ProxyMethod
+	public def postCapturedCurrentYearPayment(compromise, pmt){
+		def receipt = createCapturedReceipt(compromise, pmt)
+		receipt.requiredpayment = [type:'cypayment']
+		receipt.remarks = 'Current year payment'
+		postRequiredPayment(receipt)		
+		if (pmt.type == 'cypayment' && compromise.endyear < pmt.cy){
+			em_rptledger.find([objid:compromise.rptledgerid]).update([lastyearpaid:pmt.cy,lastqtrpaid:4])
+		}
+	}
+
+
+
+	/*==============================================================
+	*
+	* SUPPORT METHODS
+	*
+	================================================================*/
+	def findCompromiseByReceipt(receipt){
+		def compromise = em_compromise_credit.find([receiptid:receipt.objid]).first()
+		if (!compromise) return null
+		return em_compromise.find([objid:compromise.parentid]).first()
+	}
+
+	void postPaymentItems(receipt, pmt){
+		receipt.bill.rptledger.postingitems.each{
+			def item = [:]
+			item.parentid = pmt.objid 
+			item.rptledgerfaasid = it.rptledgerfaasid
+			item.year = it.year 
+			item.qtr = it.qtr 
+			item.revtype = it.revtype 
+			item.revperiod = it.revperiod
+			item.amount = it.amount 
+			item.interest = it.interest
+			item.discount = it.discount
+			item.partialled = (it.partialled ? it.partialled : false)
+			item.priority =  it.priority
+			em_rptpayment_item.create(item)
+		}
+	}
+
+	void postInstallmentPayments(receipt){
+		receipt.installments = receipt.installments.findAll{it.pay == true}
+		receipt.installments.each{
+			it.fullypaid = (it.amtdue >= it.balance ? true : false)
+			it.partial = !it.fullypaid 
+
+			def credit = createCredit(receipt, it)
+			em_compromise_credit.create(credit)
+
+			def info = [:]
+			info.amtpaid = '{amtpaid  + :amtdue}'
+			info.fullypaid = it.fullypaid 
+			em_compromise_installment.find([objid:it.objid]).update(info,it)
+		}
+	}
+
+	void postRequiredPayment(receipt){
+		def info = [:]
+		if (receipt.requiredpayment.type == 'downpayment'){
+			info.downpaymentreceiptid = receipt.objid 
+			info.downpaymentorno = receipt.receiptno 
+			info.downpaymentordate = receipt.receiptdate
+			em_compromise.find([objid:receipt.compromise.objid]).update(info)
+		}
+		else {
+			info.cypaymentreceiptid = receipt.objid 
+			info.cypaymentorno = receipt.receiptno 
+			info.cypaymentordate = receipt.receiptdate
+			em_compromise.find([objid:receipt.compromise.objid]).update(info)
+		}
+		postRequiredPaymentCredit(receipt)
+	}
+
+	def postRequiredPaymentCredit(receipt){
+		def credit = [
+			parentid : receipt.compromise.objid,
+			receiptid 	: receipt.objid,
+			installmentid 	: null, 
+			collector 		: receipt.collector,
+			orno 			: receipt.receiptno,
+			ordate 			: receipt.receiptdate,
+			oramount 		: receipt.amount,
+			amount 			: receipt.amount, 
+			mode 			: (receipt.mode ? receipt.mode : 'ONLINE'),
+			paidby 			: receipt.paidby,
+			paidbyaddress   : receipt.paidbyaddress,
+			partial 		: 0,
+			remarks 		: receipt.remarks,
+		]
+		em_compromise_credit.create(credit)
+	}
+
+	void createForPostingShareEntry(receipt) {
+		def ledger = receipt.bill.rptledger;
+		em_cashreceipt_forposting.create([
+			objid: 'FP' + new java.rmi.server.UID(),
+			receiptid: receipt.objid, 
+			rptledgerid: ledger.objid, 
+			txndate: receipt.txndate,
+			error: 0
+		])
+	}
+
+	def createShare(pmt, share){
+		return [
+			parentid: pmt.objid,
+			revperiod: share.revperiod,
+			revtype: share.revtype,
+			sharetype: share.sharetype,
+			item: share.item,
+			amount: share.amount,
+			discount: share.discount,
+		]
+	}
+
+	void updateCompromisePayment(receipt){
+		def compromise = receipt.compromise
+
+		// update amtpaid 
+		def info = [amtpaid:'{amtpaid + :amount}']
+		em_compromise.find([objid:compromise.objid]).update(info, [amount:receipt.amount])
+		
+		//close if fullypaid 
+		em_compromise.where('objid = :objid and amtpaid >= amount', [objid:compromise.objid]).update([state:'CLOSED'])
+	}
+
+	def postRptPayment(receipt){
+		def pmt = [:]
+		pmt.type = 'compromise'
+		pmt.refid = receipt.bill.rptledger.objid
+		pmt.reftype = 'rptledger'
+		pmt.receiptid = receipt.objid 
+		pmt.receiptno = receipt.receiptno 
+		pmt.receiptdate = receipt.receiptdate 
+		pmt.paidby = [name: receipt.paidby, address: receipt.paidbyaddress] 
+		pmt.postedby = receipt.collector.name 
+		pmt.postedbytitle = receipt.collector.title 
+		pmt.dtposted = receipt.txndate 
+		def firstitem = receipt.bill.rptledger.postingitems.first()
+		def lastitem = receipt.bill.rptledger.postingitems.last()
+		pmt.fromyear = firstitem.year 
+		pmt.fromqtr = (firstitem.qtr ? firstitem.qtr : 1)
+		pmt.toyear = lastitem.year 
+		pmt.toqtr = (lastitem.qtr ? lastitem.qtr : 4)
+		pmt.amount = receipt.amount 
+		pmt.collectingagency = receiptSvc.getCollectingAgency()
+		pmt.voided = false
+		em_rptpayment.create(pmt)
+		postPaymentItems(receipt, pmt)
+		createForPostingShareEntry(receipt)
+		return pmt 
+	}
+
+	void updateLedgerCompromiseInfo(param){
+		def comp = em_compromise.select('state').find([objid:param.objid]).first()
+		if(comp && 'CLOSED'.equalsIgnoreCase(comp.state)){
+			em_rptledger.find([objid:param.rptledgerid]).update([undercompromise:0])
+		}
+	}
+
+	void postPaidItems(receipt){
+		receipt.bill.rptledger.postingitems.each{ it  ->
+			def updateinfo = [amtpaid:'{amtpaid + :amount}', interestpaid:'{interestpaid + :interest}']
+			em_compromise_item.find([objid: it.objid]).update(updateinfo, [amount:it.amount, interest:it.interest])
+		}
+	}
+
+	def buildPaidItemInfo(receipt, item){
+		def ledgerpmt = receipt._pmt
+		def objid = 'RI' + new java.rmi.server.UID()
+		def itemid = item.objid 
+		item.objid = objid
+		item.parentid = ledgerpmt.objid 
+		item.itemid = itemid 
+		item.rptcompromiseitemid = itemid 
+		item.rptledgerid = receipt.compromise.rptledgerid
+		item.rptreceiptid = receipt.objid 
+		item.basicdisc = 0.0
+		item.basicidledisc = 0.0
+		item.sefdisc = 0.0
+		item.shdisc = 0.0
+		item.partialled = (item.partial == 1 ? 1 : 0)
+		item.fromyear = item.year 
+		item.toyear = item.year 
+		item.fromqtr = 1
+		item.toqtr = 4
+		item.revperiod = (item.revperiod ? item.revperiod : 'previous')
+		if (item.qtr > 0){
+			item.fromqtr = item.qtr
+			item.toqtr = item.qtr 
+		}
+		return item
+	}
+
+
+	void voidDownpayment(compromise){
+		def info = [:]
+		info.downpaymentreceiptid = null
+		info.downpaymentorno = null
+		info.downpaymentordate = null
+		em_compromise.find([objid:compromise.objid]).update(info)
+	}
+
+	void voidCurrentPayment(compromise){
+		def info = [:]
+		info.cypaymentreceiptid = null
+		info.cypaymentorno = null
+		info.cypaymentordate = null
+		em_compromise.find([objid:compromise.objid]).update(info)
+
+		def pmt = em_rptpayment.find([receiptid:compromise.receipt.objid]).first()
+		if (!pmt) return 
+
+		//reset last year/qtr paid
+		info.lastyearpaid = (pmt.fromqtr == 1 ? pmt.fromyear - 1 : pmt.fromyear)
+		info.lastqtrpaid = (pmt.fromqtr == 1 ? 4 : pmt.fromqtr - 1)
+		em_rptledger.find([objid:compromise.rptledgerid]).update(info)
+
+		//revert ledger items
+		def items = em_rptpayment_item.find([parentid:pmt.objid]).list()
+		items.each{
+			def item = [:]
+			item.parentid = compromise.rptledgerid
+			item.rptledgerfaasid = it.rptledgerfaasid
+			item.rptledgerfaas = it.rptledgerfaas
+			item.basicav = it.rptledgerfaas.assessedvalue
+			item.sefav = it.rptledgerfaas.assessedvalue
+			item.av = it.rptledgerfaas.assessedvalue
+			item.revtype = it.revtype 
+			item.year = it.year 
+			item.amount = it.amount 
+			item.amtpaid = 0
+			item.priority = it.priority
+			item.taxdifference = 0
+			item.system = 0
+			em_rptledger_item.create(item)
+		}
+	}
+
+	void revertInstallmentCredits(compromise){
+		def credits = em_compromise_credit
+							.find([parentid:compromise.objid, receiptid:compromise.receipt.objid])
+							.list()
+
+		credits.each{
+			em_compromise_installment
+					.find([objid:it.installmentid])
+					.update([amtpaid:'{amtpaid - :amount}', fullypaid:false], [amount:it.amount])
+
+			em_compromise_credit.find([objid:it.objid]).delete()
+		}
+
+	}
+
+	void revertItemCredits(compromise){
+		def pmt = em_rptpayment.find([receiptid:compromise.receipt.objid]).first() 
+		if (!pmt) return 
+
+		def info = [:]
+		info.amtpaid = '{amtpaid - :amount}'
+		info.interestpaid = '{interestpaid - :interest}'
+		info.discount = '{discount - :discount}'
+
+		def items = em_rptpayment_item.find([parentid:pmt.objid]).list()
+		items.each {
+			def filter = [
+				parentid: compromise.objid, 
+				year: it.year, 
+				qtr: it.qtr,
+				revtype: it.revtype, 
+				revperiod: it.revperiod, 
+				priority: it.priority,
+				rptledgerfaasid: it.rptledgerfaasid,
+			]
+			em_compromise_item
+				.find(filter)
+				.update(info, [amount:it.amount, interest:it.interest, discount:it.discount])
+		}
+	}
+
+
+	def createCredit(receipt, installment){
+		def remarks = 'Payment for Installment No. ' + installment.installmentno 
+		if (installment.partial == 1 || installment.partial){
+			remarks = 'Partial ' + remarks 
+		}
+		return [
+			parentid 		: installment.compromise.objid,
+			receiptid 	: receipt.objid,
+			installmentid 	: installment.objid, 
+			collector 		: receipt.collector,
+			orno 			: receipt.receiptno,
+			ordate 			: receipt.receiptdate,
+			oramount 		: receipt.amount,
+			amount 			: installment.amtdue, 
+			mode 			: (receipt.objid ? 'ONLINE' : 'CAPTURE'),
+			paidby 			: receipt.paidby,
+			paidbyaddress   : receipt.paidbyaddress,
+			partial 		: (installment.partial == 1 ? 1 : 0),
+			remarks 		: remarks 
+		]
+	}
+
+	def createCapturedReceipt(compromise, pmt){
+		return [
+			compromise 	: compromise,
+			ledger  	: [objid:compromise.rptledgerid],
+			collector   : pmt.collector,
+			receiptno   : pmt.orno,
+			receiptdate : dtSvc.parse('yyyy-MM-dd', pmt.ordate),
+			amount 		: pmt.amount,
+			mode 		: 'CAPTURE',
+			paidby 		: pmt.paidby,
+			paidbyaddress : pmt.paidbyaddress,
+		]
+	}
+
+
+
+	@ProxyMethod
+	public void postCapturedInstallmentPayment( compromise, pmt, installments ){
+		def receipt = createCapturedReceipt(compromise, pmt)
+		receipt.installments = installments
+		postInstallmentPayments(receipt)
+		postCapturedItemCredit(compromise, receipt)
+
+		//update amtpaid 
+		def amtpaid = compromise.amtpaid + pmt.amount
+		def fullypaid = compromise.amount <= amtpaid 
+		def state = (fullypaid  ? 'CLOSED' : 'APPROVED')
+		em_compromise.find([objid: compromise.objid])
+			.update([amtpaid: amtpaid, state: state])
+	}	
+
+
+	//distribute payment proportionally to compromise items 
+	void postCapturedItemCredit(compromise, receipt) {
+		def partialamt = receipt.amount 
+		def openitems = em_compromise_item.find([parentid: compromise.objid]).orderBy('year, qtr ').list().findAll{it.balance > 0}
+
+		def priorities = openitems.priority.unique().sort()
+		def yrs = openitems.year.unique().sort();
+
+		def toqtr = 4
+
+		for (int idx = 0; idx < yrs.size(); idx++){
+			if (partialamt <= 0) break;
+
+			def yritems = openitems.findAll{it.year == yrs[idx]}
+			def qtrs = yritems.qtr.unique().sort();
+
+			for (int q = 0; q < qtrs.size(); q++){
+				if (partialamt <= 0) break;
+
+				def qtritems = yritems.findAll{ it.qtr == qtrs[q]}
+				for (int i = 0; i < priorities.size(); i++){
+					if (partialamt <= 0) break;
+
+					def items = qtritems.findAll{it.priority == priorities[i]}
+					def itembalance = numSvc.round(items.balance.sum())
+					if (partialamt >= itembalance){
+						partialamt -= itembalance 
+						//fully paid items 
+						items.each{
+							it.amtpaid = it.amount
+							it.interestpaid = it.interest 
+							it.balance = 0 
+							em_compromise_item.update(it)
+						}
+					}
+					else if (partialamt > 0){
+						distributePartial(partialamt, items)
+						partialamt = 0
+						break;
+					}
+				}
+			}
+		}
+	}
+
+	void distributePartial(partialamt, items){
+		if (items.size() == 1){
+			distributePartialProportionally(partialamt, items.first())
+		} 
+		else {
+			def runningpartial = partialamt
+			def totalbalance = items.balance.sum() 
+
+			for (int i = 0; i < items.size() - 1; i++){
+				def item = items[i]
+				def partial = numSvc.round(partialamt * numSvc.round(item.balance / totalbalance))
+				distributePartialProportionally(partial, item) 
+				runningpartial -= partial 
+			}
+			distributePartialProportionally(runningpartial, items.last()) 
+		}
+	}
+
+	void distributePartialProportionally(partial, item){
+		def amtpartial = numSvc.round(partial * ((item.amount - item.amtpaid) / item.balance))
+		def intpartial = numSvc.round(partial - amtpartial)
+		item.amtpaid += amtpartial
+		item.interestpaid += intpartial
+		item.balance -= (amtpartial + intpartial)
+		em_compromise_item.update(item)
+	}	
+
+
+	def createReceiptItem(receipt, item){
+		return [
+			objid: 'CI' + new java.rmi.server.UID(),
+			receiptid: receipt.objid, 
+			item: item,
+			amount: new BigDecimal('0'), 
+			remarks: null 
+		]
+	}	
+
+
+
+}

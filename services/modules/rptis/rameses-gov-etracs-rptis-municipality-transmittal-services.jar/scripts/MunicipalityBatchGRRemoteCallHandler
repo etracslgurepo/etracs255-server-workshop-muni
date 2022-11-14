@@ -1,0 +1,105 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+import com.rameses.services.extended.*
+
+class MunicipalityBatchGRRemoteCallHandler
+{   
+
+	@Service('BatchGRService')
+	def batchSvc
+
+	@Service('BatchGRSupportService')
+	def supportSvc 
+
+	@Service('FAASService')
+	def faasSvc
+
+	@DataContext('batchgr')
+	def em_batchgr 
+
+	@DataContext('batchgr_task')
+	def em_batchgr_task;
+
+	@DataContext('faas')
+	def em_faas 
+
+	@Service('NotificationService')
+	def notifySvc		
+
+
+	@ProxyMethod
+	public void postApprovedFromProvince(batchgr){
+		def state = getState(batchgr)
+		if (state == null || state != 'APPROVED'){
+			batchgr.state = 'FORAPPROVAL'
+			batchgr.faases.each{
+				def fstate = em_faas.select('state').find([objid:faas.objid]).first()?.state
+				it.state = (fstate == null ? 'PENDING' : fstate.state)
+			}
+			supportSvc.postData(batchgr)
+			batchgr.tasks = em_batchgr_task.where('refid = :objid and enddate is not null', batchgr).list()
+			doApproveBatchGR(batchgr)
+			println 'Batch GR ' + batchgr.txnno + ' created from Province has been successfully posted and approved.'
+		}
+	}
+
+	@ProxyMethod
+	public void approveByProvince(batchgr){
+		def state = getState( batchgr )
+		if (state  && ! state.equalsIgnoreCase('APPROVED')){
+			doApproveBatchGR(batchgr)
+			notifyRecommender(batchgr)
+			println 'Batch GR ' + batchgr.txnno + ' has been successfully approved.'
+		}
+	}
+
+
+	@ProxyMethod
+	public void approveFaas(faas){
+		def currfaas = em_faas.select('state').find([objid:faas.objid]).first()
+		if (currfaas && currfaas.state == 'CURRENT') return
+		faas.state = 'PENDING';
+		supportSvc.postFaasData(faas)
+		faasSvc.approveFaas(faas)
+		println 'Batch GR FAAS ' + faas.tdno + ' has been successfully approved.'
+	}
+
+
+	private void doApproveBatchGR(batchgr){
+		batchgr.tasks.each{
+			em_batchgr_task.save(it)
+		}
+		em_batchgr_task.where('refid = :objid and enddate is null', batchgr).delete()
+		batchSvc.insertFaasSignatories(batchgr)
+		batchSvc.approve(batchgr)
+	}
+
+
+	void notifyRecommender(batchgr){
+		def recommendertask = em_batchgr_task.where('refid = :objid and state = :state', [objid:batchgr.objid, state:'recommender'])
+										.orderBy('enddate desc')
+										.first()
+
+		def approvertask = batchgr.tasks.find{it.state.matches('approver|provapprover')}
+		if (recommendertask && approvertask){
+			def sendername = (approvertask.actor?.name ? approvertask.actor?.name : 'Province')
+			def msg = [
+	            objid     : recommendertask.refid,
+	            recipientid : (recommendertask.assignee?.objid ? recommendertask.assignee?.objid : '-'),
+	            recipienttype : 'user',
+	            senderid  : '-',
+	            sender    : sendername,
+	            message   : 'Batch GR ' + batchgr.txnno + ' has already been approved by ' + sendername + '.',
+	            filetype  : 'batchgr',
+	            data 	  : [:],
+	        ]
+	        notifySvc.addMessage(msg)
+		}		
+	}
+
+    def getState(entity) {
+        def batchgr = em_batchgr.select('state').find([objid: entity.objid]).first()
+        return batchgr?.state 
+    }
+
+}

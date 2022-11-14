@@ -1,0 +1,14 @@
+<schema>
+	<element tablename="bldgadditionalitem">
+		<field name="objid" primary="true"  />
+        <field name="bldgrysettingid" required="true"/>
+        <field name="type" required="true"/>
+        <field name="code" required="true"  />
+        <field name="name" required="true"  />
+        <field name="unit" required="true" />
+        <field name="expr" required="true"  />
+        <field name="addareatobldgtotalarea" type="integer" />
+        <field name="previd"  />
+        <field name="idx" type="integer" />
+	</element>
+</schema>

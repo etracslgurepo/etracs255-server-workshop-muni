@@ -1,0 +1,536 @@
+import com.rameses.annotations.*;
+import com.rameses.util.KeyGen; 
+import java.rmi.server.UID;
+
+class OnlineBusinessRenewalService {
+
+	@ActiveDB('online_bpls_renewal')
+	def online_bpls_renewal; 
+
+	@Service('DateService')
+	def dateSvc;
+
+	@Service("BusinessCashReceiptService")
+	def billSvc;
+
+    @Service("BPRequirementRuleService")
+    def requirementRuleSvc;
+
+	@Service("NumberService")
+	def numSvc;
+
+	@Service("OrgService")
+	def orgSvc;
+
+	@DataContext('sys_org') 
+	def sys_org; 
+
+	@DataContext('online_business_application') 
+	def online_app; 
+
+	@DataContext('online_business_application_doc') 
+	def em_appdoc; 
+
+	@DataContext('vw_online_business_application') 
+	def vw_online_app; 
+
+	@DataContext('entity_address')
+	def entity_address; 
+
+	@DataContext('business_address')
+	def business_address; 
+
+	@DataContext( dynamic=true )
+	def dynaEm; 
+
+	def contact_support_msg = 'Please contact the Business Permit and Licensing Office for assistance.'; 
+
+	def createToken = { refno, key-> 
+		def md5 = new com.rameses.util.Encoder.MD5Encoder(); 
+		return md5.encode(refno.toString() + key.toString()) +'-'+ key.toString(); 
+	}
+
+	def validateToken = { refno, tokenid-> 
+		def arrs = tokenid.toString().split('-'); 
+		if ( arrs.length < 2 ) throw new Exception('Invalid tokenid'); 
+
+		def key = arrs[1]; 
+		def md5 = new com.rameses.util.Encoder.MD5Encoder(); 
+		def encstr = md5.encode(refno.toString() + key) +'-'+ key; 
+		if ( !encstr.equals( tokenid)) throw new Exception('Invalid tokenid'); 
+		return key; 
+	} 
+
+	def stateValidator = { o-> 
+		if ( !o.state.toString().equalsIgnoreCase('ACTIVE')) { 
+			def msg = new StringBuilder(); 
+			msg.append('Business account status is ').append( o.state.toString()).append('.');
+			msg.append('\n').append( contact_support_msg ); 
+			throw new Exception( msg.toString()); 
+		} 
+	}
+
+	def binValidator = { bin, currentyear-> 
+		def business = online_bpls_renewal.findBIN([ bin: bin ]); 
+		if ( !business ) throw new Exception('BIN '+ bin +' does not exist'); 
+
+//		if ( !business.email ) {
+//			def msg = new StringBuilder(); 
+//			msg.append('This business account does not have a registered email address. ');
+//			msg.append('\n').append( contact_support_msg ); 
+//			throw new Exception( msg.toString()); 
+//		} 
+		return business; 
+	} 
+
+	def appValidator = { business, currentyear, currentdate-> 
+		def app = online_bpls_renewal.findLastApp([ bin: business.bin, currentyear: currentyear ]); 
+		if ( !app ) {
+			def msg = new StringBuilder(); 
+			msg.append('Unable to load the previous application. ');
+			msg.append('\n').append( contact_support_msg ); 
+			throw new Exception( msg.toString()); 
+		} 
+		
+		if ( app.appyear == currentyear ) {
+			boolean pass = false;
+
+			def nextrenewaldate = app.nextrenewaldate; 
+			if ( nextrenewaldate ) {
+				def rundate = new com.rameses.util.DateBean( currentdate ).date; 
+				rundate = new java.sql.Date( rundate.time ); 
+				pass = ( nextrenewaldate <= rundate ); 
+				if ( pass ) { 
+					app.renewalyear = currentyear + 1;
+				}
+			}
+			
+			if ( !pass ) {
+				def msg = new StringBuilder(); 
+				msg.append('An application already created for the current year. ');
+				msg.append('\n').append( contact_support_msg ); 
+				throw new Exception( msg.toString()); 
+			}
+		} 
+
+		if ( !app.state.toString().equalsIgnoreCase('COMPLETED')) {
+			def msg = new StringBuilder(); 
+			msg.append('There is a pending application for this business account. ');
+			msg.append('\n').append( contact_support_msg ); 
+			throw new Exception( msg.toString()); 
+		} 
+		return app; 
+	} 
+
+
+
+	@ProxyMethod
+	public def validateBin( param ) {
+		if ( !param.bin ) throw new Exception('bin parameter is required'); 
+
+		def currentdate = dateSvc.getServerDate(); 
+		def currentyear = dateSvc.getServerYear(); 
+		def business = binValidator( param.bin, currentyear ); 
+		
+		stateValidator( business ); 
+		appValidator( business, currentyear, currentdate ); 
+
+		def arrs = KeyGen.generateIntKey(null, 8).split('-'); 
+		def str = (arrs.length > 1 ? arrs[1] : arrs[0]); 
+		def key = str.padLeft(6, '0').toString().substring(0, 6); 
+
+		def res = [ bin: business.bin, key: key ]; 
+		res.tokenid = createToken( res.bin, res.key ); 
+
+		// merge result from openBin
+		res.putAll( openBin( res )); 
+
+		res.contact = param.contact; 
+		res.email = res.contact?.email;
+		res.mobileno = res.contact?.mobileno; 
+		return res; 
+	} 
+
+	@ProxyMethod
+  	public def openBin( param ) { 
+		if ( !param.bin ) throw new Exception('bin parameter is required'); 
+		if ( !param.tokenid ) throw new Exception('tokenid parameter is required'); 
+
+		def akey = validateToken( param.bin, param.tokenid ); 
+
+		def currentdate = dateSvc.getServerDate(); 
+		def currentyear = dateSvc.getServerYear(); 
+		def business = binValidator( param.bin, currentyear ); 
+
+		stateValidator( business ); 
+		
+		def app = appValidator( business, currentyear, currentdate ); 
+		def redflags = online_bpls_renewal.getRedFlags([ businessid: business.objid, currentdate: currentdate ]);  
+		redflags.each { 
+			it.issue = it.remove('message'); 
+		} 
+
+		def renewalyear = ( app.renewalyear ? app.renewalyear : currentyear ); 
+		if ( app.appyear != (renewalyear-1)) { 
+			redflags << [
+				office : 'BPLO', caseno: null, 
+				issue  : ('No available application for the year ' + (renewalyear-1)) 
+			]; 
+		} 
+
+		def balance = 0.0; 
+		def billdate = dateSvc.getBasicServerDate(); 
+		def apps = online_bpls_renewal.getDelinquentApps([ bin: business.bin, currentyear: renewalyear ]); 
+		apps.each{ o-> 
+			def billamt = computeBill( o, billdate ).amount; 
+			balance += billamt; 
+		}
+
+		if ( balance > 0 ) {
+			def numformatter = new java.text.DecimalFormat('#,##0.00'); 
+			redflags << [
+				office: 'TREASURY OFFICE', caseno: null, 
+				issue: 'Previous unpaid balance of '+ numformatter.format( balance ) 
+			]; 
+		}
+
+		def org = sys_org.find([ root: 1 ]).first(); 
+		def orgcode = org.objid.toString(); 
+
+		def res = online_bpls_renewal.findApplication([ objid: app.objid ]); 
+		if ( res.businessaddress ) {
+			res.businessaddress = res.businessaddress.toString().replaceAll("\\n"," "); 
+			res.businessaddress = res.businessaddress.toString().replaceAll("\\s{2,}"," "); 
+		}
+		if ( res.owner?.address ) {
+			res.owner.address = res.owner.address.toString().replaceAll("\\n"," "); 
+			res.owner.address = res.owner.address.toString().replaceAll("\\s{2,}"," "); 
+		}
+
+		res.redflags = redflags; 
+		res.orgtype = business.orgtype; 
+		res.officetype = business.officetype; 
+		res.renewalyear = res.prevapp.appyear + 1;
+
+		res.tokenid = createToken( res.businessid, akey ); 
+		res.orgcode = orgcode; 
+
+		if ( !res.redflags ) { 
+			def arg = [ businessid: res.businessid, appyear: res.prevapp.appyear ]; 
+			res.lobs = online_bpls_renewal.getApplicationLobs( arg ); 
+			res.lobs.each{ 
+				it.objid = 'APPLOB'+ new UID().toString(); 
+				it.assessmenttype = 'RENEW'; 
+				it.remove('business'); 
+				it.remove('iflag');
+			} 
+
+			res.infos = online_bpls_renewal.getApplicationInfos( arg ); 
+			res.infos.each{
+				it.objid = 'APPINFO'+ new UID().toString(); 
+			}
+		} 
+
+		res.controlno = KeyGen.generateAlphanumKey( 'B-'+ res.orgcode +'-', 12 );
+
+		return res; 
+  	}
+
+  	def computeBill( app, billdate ) {
+		def param = [ billdate: billdate, applicationid: app.objid ];
+		param.app = [ apptype: app.apptype, appyear: app.appyear, dtfiled: app.dtfiled, appno: app.appno ]; 
+    	param.payment = [ option: 'FULLYEAR' ]; 
+
+		def bill = billSvc.getBillingForPayment( param ); 
+		return [ amount: numSvc.round( bill.totals.total )]; 
+  	} 
+
+
+	@ProxyMethod
+  	public def create( param ) { 
+  		if ( !param.bin ) throw new Exception('bin parameter is required'); 
+  		if ( !param.businessid ) throw new Exception('businessid parameter is required'); 
+  		if ( !param.tokenid ) throw new Exception('tokenid parameter is required'); 
+  		if ( !param.orgcode ) throw new Exception('orgcode parameter is required'); 
+
+  		if ( !param.prevapp?.objid ) throw new Exception('prevapp.objid parameter is required'); 
+  		if ( !param.prevapp?.appyear ) throw new Exception('prevapp.appyear parameter is required'); 
+  		if ( !param.lobs ) throw new Exception('lobs parameter is required'); 
+  		if ( !param.infos ) throw new Exception('infos parameter is required'); 
+
+  		if ( !param.contact?.email ) 
+			throw new Exception('contact.email  parameter is required'); 
+
+  		if ( !param.partner?.name ) 
+			throw new Exception('partner.name  parameter is required'); 
+  		if ( !param.partner?.group?.name ) 
+			throw new Exception('partner.group.name  parameter is required'); 
+
+		def akey = validateToken( param.businessid, param.tokenid ); 
+
+		def newappyear = param.prevapp.appyear + 1; 
+
+		def findstr = 'business.objid = :businessid AND appyear = :appyear'; 
+		def findmap = [businessid: param.businessid, appyear: newappyear]; 
+		def test = online_app.select('objid,controlno,state').where( findstr, findmap ).first(); 
+		if ( test ) { 
+			def errmsg = new StringBuilder(); 
+			errmsg.append("Business renewal has already been filed for the current year.");
+			errmsg.append('\n').append( contact_support_msg ); 
+			throw new Exception( errmsg.toString() );  
+		}
+
+  		def business = online_bpls_renewal.findBusiness([ objid: param.businessid ]); 
+  		if ( !business ) throw new Exception("Business account "+ param.bin +" cannot be found"); 
+
+  		def newapp = [:]; 
+  		newapp.dtcreated = dateSvc.getServerDate(); 
+  		newapp.prevapplicationid = param.prevapp.objid; 
+  		newapp.business = [objid: param.businessid]; 
+  		newapp.appyear = newappyear; 
+  		newapp.appdate = newapp.dtcreated; 
+  		newapp.step = (param.step ? param.step : 0);
+  		newapp.apptype = 'RENEW'; 
+  		newapp.state = 'PENDING'; 
+
+  		newapp.createdby = (param.user ? param.user : [:]); 
+  		if ( !newapp.createdby?.objid ) newapp.createdby.objid = 'filipizen'; 
+  		if ( !newapp.createdby?.name ) newapp.createdby.name = 'filipizen'; 
+
+		newapp.requirements = []; 
+		newapp.lobs = param.lobs; 
+		newapp.infos = param.infos; 
+		newapp.contact = param.contact; 
+		newapp.partnername = [ param.partner.group.name, param.partner.name ].join('_'); 
+		newapp.controlno = KeyGen.generateAlphanumKey( 'B-'+ param.orgcode +'-', 12 ); 
+		online_app.create( newapp ); 
+
+		updateRequirements( newapp.objid, newapp.lobs ); 
+
+  		return newapp; 
+  	} 
+
+  	private def findApp( param ) { 
+  		def findby = null; 
+  		if ( param.objid ) {
+  			findby = [ objid: param.objid ]; 
+  		}
+  		else if ( param.controlno ) {
+  			findby = [ controlno: param.controlno ]; 
+  		}
+
+  		if ( !findby )
+  			throw new Exception('objid parameter is required'); 
+
+  		def app = vw_online_app.find( findby ).first(); 
+  		if ( !app ) { 
+			def msg = new StringBuilder(); 
+			msg.append('Business online application record not found. ');
+			msg.append('\n').append( contact_support_msg ); 
+			throw new Exception( msg.toString()); 
+  		} 
+
+  		if ( app.address?.objid ) { 
+  			def addr = business_address.find([ objid: app.address.objid ]).first(); 
+  			if ( addr ) {
+  				addr.text = formatAddress( addr ); 
+  				app.address = addr; 
+  			} 
+  		} 
+
+  		if ( app.owner?.address?.objid ) { 
+  			def addr = entity_address.find([ objid: app.owner.address.objid ]).first(); 
+  			if ( addr ) { 
+  				addr.text = formatAddress( addr ); 
+  				app.owner.address = addr; 
+  			} 
+  		} 
+
+  		return app;   		
+  	}
+
+	String formatAddress( addr ) {
+		def list = []; 
+		list << [addr.unitno, addr.bldgno, addr.bldgname].findAll{( it )}.join(' '); 
+		list << addr.street; 
+		list << addr.subdivision; 
+		list << addr.barangay?.name; 
+		list << [addr.municipality, addr.city, addr.province].findAll{( it )}.join(' '); 
+		return list.findAll{( it )}.join(", "); 
+	} 
+
+  	void updateRequirements( objid, lobs ) {
+		def app = findApp([ objid: objid ]); 
+		app.txnmode = 'ONLINE'; 
+		app.dtfiled = app.appdate; 
+		app.appno = app.controlno; 
+		app.business.orgtype = app.orgtype;
+		app.business.permittype = app.permittype; 
+		app.business.officetype = app.officetype;
+		app.business.address = app.remove('address'); 
+
+		app.lobs = lobs; 
+		app.lobs.each{
+			it.lobid = it.lob?.objid; 
+		}
+
+		def list = []; 
+		def result = requirementRuleSvc.execute( app ); 
+		result.requirements.each{ 
+			list << [objid: it.reftype, caption: it.title, ref: it]; 
+		} 
+
+		online_app.find([ objid: objid ]).update([ requirements: list ]); 
+
+		app.lobs.each{ 
+			it.remove('lobid'); 
+		}		
+  	}
+
+
+	@ProxyMethod
+  	public def getApplication( param ) { 
+  		def app = findApp( param ); 
+
+  		def addr = app.remove('address'); 
+  		app.businessaddress = addr?.text; 
+
+  		addr = app.owner?.address; 
+  		app.owner.address = addr?.text; 
+
+		def complexdata = online_app.find([ objid: app.objid ]).select('lobs,infos,requirements').first(); 
+		app.lobs = complexdata?.lobs; 
+		app.infos = complexdata?.infos; 
+		app.requirements = complexdata?.requirements; 
+		complexdata.clear(); 
+
+  		return app; 
+  	} 
+
+	@ProxyMethod
+  	public def getInfos( param ) { 
+  		def app = getApplication( param ); 
+
+		def complexdata = online_app.find([ objid: app.objid ]).select('lobs,infos,requirements').first(); 
+		app.lobs = complexdata?.lobs; 
+		app.infos = complexdata?.infos; 
+		app.requirements = complexdata?.requirements; 
+		complexdata.clear(); 
+
+		return app; 
+	}
+
+	@ProxyMethod
+  	public def saveInfos( param ) { 
+  		if ( !param.objid ) throw new Exception('objid parameter is required');  
+
+  		def findby = [ objid: param.objid ]; 
+  		def app = online_app.find( findby ).select('objid').first(); 
+  		if ( !app ) { 
+			def msg = new StringBuilder(); 
+			msg.append('Business online application record not found. ');
+			msg.append('\n').append( contact_support_msg ); 
+			throw new Exception( msg.toString()); 
+  		} 
+
+  		def uu = [:]; 
+  		if ( param.lobs ) uu.lobs = param.lobs; 
+  		if ( param.infos ) uu.infos = param.infos; 
+  		if ( param.requirements ) uu.requirements = param.requirements; 
+		if ( param.step ) uu.step = param.step;
+
+  		if ( uu ) { 
+  			online_app.find( findby ).update( uu ); 
+  			uu.clear(); 
+  		} 
+
+		return param; 
+	} 
+
+	@ProxyMethod
+	public def getRequirements( param ) {
+		if ( !param.objid ) throw new Exception('objid parameter is required');  
+
+  		def app = online_app.find([ objid: param.objid ]).select('objid,requirements').first(); 
+  		if ( !app ) { 
+			def msg = new StringBuilder(); 
+			msg.append('Business online application record not found. ');
+			msg.append('\n').append( contact_support_msg ); 
+			throw new Exception( msg.toString()); 
+  		} 
+
+		return app.requirements; 
+	} 
+
+	@ProxyMethod
+	public def submit( param ) {
+		if ( !param.objid ) throw new Exception('objid parameter is required'); 
+		if ( !param.step ) throw new Exception('step parameter is required'); 
+
+		def findby = [ objid: param.remove('objid') ]; 
+		online_app.find( findby ).update([ state: 'OPEN', step: param.step ]); 
+
+		em_appdoc.find([ parentid: findby.objid ]).delete();
+
+		def app = online_app.find( findby ).select('objid,requirements').first();
+		
+		def em_download = dynaEm.lookup('online_business_application_doc_fordownload'); 
+
+		def rundate = dateSvc.getServerDate(); 
+
+		app.requirements.eachWithIndex{ o, idx-> 
+			def path = (o.attachment?.location ? o.attachment.location : o.attachment?.path);
+			if ( !path ) return; 
+
+			if ( path.indexOf("://") > 0 ) {
+				def sb = new StringBuilder(); 
+				sb.append("/s3/"); 
+
+				def ii = path.indexOf("://"); 
+				sb.append( path.substring( ii+3 ));
+
+				path = sb.toString();  
+			}
+
+			if ( !o.attachment.filename ) {
+				o.attachment.filename = path.substring( path.lastIndexOf('/')+ 1 ); 
+			}
+			if ( !o.attachment.filetype ) {
+				def filename = o.attachment.filename; 
+				o.attachment.filetype = filename.substring( filename.lastIndexOf('.')+ 1 ); 
+			}
+			if ( !o.attachment.name ) {
+				o.attachment.name = o.attachment.filename; 
+			}
+
+			def m = [:]; 
+			m.objid = app.objid +'-'+ idx; 
+			m.parentid = app.objid; 
+			m.doc = [type: o.ref?.reftype, title: o.ref?.title];
+			m.attachment = [ objid: o.objid, path: path ];
+			m.attachment.name = (o.attachment.name ? o.attachment.name : o.attachment.filename); 
+			m.fs = [ filetype: o.attachment.filetype, state: 'PENDING' ]; 
+
+			em_appdoc.create( m ); 
+			o.docid = m.objid; 
+
+			m.scheduledate = rundate; 
+			m.filesize = m.bytesprocessed = 0; 
+			em_download.create( m ); 
+		} 
+
+		online_app.find( findby ).update( app ); 
+		return param; 
+	} 
+
+	@ProxyMethod
+	public def update( param ) {
+		if ( !param.objid ) throw new Exception('objid parameter is required'); 
+
+		def findby = [ objid: param.remove('objid') ];
+		online_app.find( findby ).update( param ); 
+
+		return param;
+	} 
+
+} 

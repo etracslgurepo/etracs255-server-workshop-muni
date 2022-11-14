@@ -1,0 +1,187 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.services.extended.*
+
+public class BusinessReceivableService  {
+
+	@DataContext( dynamic=true ) 
+	def dynaEm; 
+
+	@ActiveDB("business_receivable")
+	def em;
+
+	@ProxyMethod
+	public def addReceivable( o ) {
+		def r = [:];
+		r.objid = 'BPRCV'+new UID(); 
+		r.applicationid = o.applicationid; 
+		r.businessid = o.businessid; 
+		r.discount = (o.discount) ? o.discount : 0;
+		r.amtpaid  = (o.amtpaid)  ? o.amtpaid : 0; 
+		r.amount  = (o.amount) ? o.amount : 0; 
+		r.taxcredit  = (o.taxcredit) ? o.taxcredit : 0; 
+		r.surcharge  = (o.surcharge) ? o.surcharge : 0; 
+		r.interest  = (o.interest) ? o.interest : 0; 
+		r.lastqtrpaid = (o.lastqtrpaid) ? o.lastqtrpaid : 0; 
+		r.partial = (o.partial) ? o.partial : 0; 
+		r.iyear = o.iyear; 
+		r.taxfeetype = o.taxfeetype;
+		r.account = o.account;
+		r.lob = o.lob;
+		r.assessmenttype = o.assessmenttype;
+		em.create(r); 
+		return r; 
+	}
+
+	@ProxyMethod
+	public def saveReceivable( o ) {
+		def x = em.read( o ); 
+		if ( x ) {
+			em.update( o ); 
+		} else {
+			em.create( o ); 
+		} 
+		return o; 
+	} 
+
+	@ProxyMethod
+	public void removeReceivable( param ) {
+		def items = null; 
+		if ( param?.items instanceof List ) {
+			items = param.items;
+		} 
+		else if ( param instanceof Map ) {
+			items = [ param ];
+		}
+
+		def ids = items.collect{ it?.objid }.findAll{( it )} 
+		if ( ids ) {
+			def em = dynaEm.lookup('business_receivable');
+			em.where("objid IN ('"+ ids.join("','") +"')", [:]).delete(); 
+		}
+	} 
+
+	@ProxyMethod
+	public def addReceivables( o ) {
+		if(!o.applicationid) throw new Exception("applicationid is required");
+		if(!o.businessid) throw new Exception("businessid is required");
+		if(!o.entries) throw new Exception("entries is required");
+		if(!o.activeyear) throw new Exception("activeyear is required");
+		if(o.lobs == null) throw new Exception("lobs is required");
+
+		em.removeReceivables( o );
+
+		//post to ledger
+		for (r in o.entries) { 
+			r.objid = 'BPRCV'+new UID(); 
+			r.applicationid = o.applicationid; 
+			r.businessid = o.businessid; 
+			if(!r.discount) r.discount = 0; 
+			if(!r.amtpaid) r.amtpaid = 0; 
+			if(!r.taxcredit) r.taxcredit = 0;
+			if(!r.surcharge) r.surcharge = 0;
+			if(!r.interest) r.interest = 0;
+			if(!r.lastqtrpaid) r.lastqtrpaid = 0;
+			if(!r.partial) r.partial = 0;
+			r.iyear = o.activeyear; 
+			em.create(r); 
+		} 
+	} 
+
+	def buildFilter(def o, def methodName ) {
+		if(o.applicationid==null && o.businessid==null && o.appno==null)
+			throw new Exception("applicationid,businessid or appno is required in "+methodName);
+		def p = [:];
+		if(o.applicationid) {
+			p.filter = ''' br.applicationid=$P{applicationid} ''';
+			p.applicationid = o.applicationid;
+		}
+		else if(o.appno) {
+			p.filter = ''' ba.appno=$P{appno} AND br.amount > br.amtpaid ''';
+			p.appno= o.appno;
+		}
+		else {
+			p.filter = ''' br.businessid=$P{businessid} AND br.amount > br.amtpaid ''';
+			p.businessid = o.businessid;
+		}
+		if( o.lobid ) {
+			p.filter += ''' AND br.lob_objid=$P{lobid} ''';
+		} 
+		return p;
+	}
+
+	@ProxyMethod
+	public def removeReceivables(o) {
+		if(o.applicationid==null)
+			throw new Exception("applicationid is required in removeReceivables");
+		em.removeReceivables( o );
+	}
+
+
+	@ProxyMethod
+	public def getAssessmentTaxFees(o) {
+		return em.getAssessmentTaxFees( buildFilter(o, "getAssessmentTaxFees") );
+	}	
+
+	@ProxyMethod
+	public def getTaxFeeDetails(o) {
+		return em.getDetails( [applicationid: o.applicationid] );
+	}	
+
+	@ProxyMethod
+	public def getReceivables(o) {
+		return em.getReceivables( buildFilter(o,"getReceivables" ) );
+	}	
+
+	@ProxyMethod
+	public def getAllReceivables(o) {
+		return em.getAllReceivables( buildFilter(o,"getReceivables" ) );
+	}			
+
+	@ProxyMethod
+	public def getReceivablePayments(o) {
+		return em.getReceivablePayments( o );
+	}	
+
+	@ProxyMethod
+	public def getHasPaidReceivable(o) {
+		if(!o.applicationid) throw new Exception("applicationid is required in getHasPaidReceivable");
+		def count = em.findHasPaidReceivable( o ).counter;
+		if(count>0) 
+			return true;
+		else	
+			return false;
+	}
+
+
+	/********************************************************
+	* returns a list of applicationids that are not fully paid 
+	*********************************************************/
+	@ProxyMethod
+	public def getOpenReceivablesByBusiness( def o ) {
+		if( !o.businessid ) throw new Exception("businessid is required for getOpenReceivablesByBusiness");
+		o.filter = ''' br.businessid=$P{businessid} ''';
+		return em.getOpenReceivablesByBusiness(o);	
+	}
+
+	@ProxyMethod
+	public def getOpenReceivablesByBIN( def o ) {
+		if( !o.bin ) throw new Exception("bin is required for getOpenReceivablesByBIN");
+		o.filter = ''' b.bin=$P{bin} ''';
+		return em.getOpenReceivablesByBusiness(o);	
+	}
+
+	@ProxyMethod
+	public def getOpenReceivablesByOwner( def o ) {
+		if( !o.ownerid ) throw new Exception("ownerid is required for getOpenReceivablesByOwner");
+		return em.getOpenReceivablesByOwner(o);	
+	}
+
+	@ProxyMethod
+	public def updateReceivable( def o ) {
+		if( !o.receivableid ) throw new Exception("receivableid is required for BusinessReceivableService.updateReceivable");
+		return em.updateReceivable(o);	
+	}
+
+}

@@ -1,0 +1,17 @@
+<schema adapter="main">
+
+	<element tablename="entityprofile">
+		<field name="objid" primary="true"/>
+		<field name="idno" required="true" caption="ID No" indexed="true" searchable="true"/>
+
+		<field name="lastname" caption="Last Name" indexed="true" searchable="true"/>
+		<field name="firstname" caption="First Name" indexed="true" searchable="true"/>
+		<field name="middlename" caption="First Name" indexed="true" searchable="true"/>
+		<field name="birthdate" type="date"/>
+		<field name="gender"/>
+		<field name="address"/>
+		<field name="defaultentityid"/>
+
+	</element>
+
+</schema>

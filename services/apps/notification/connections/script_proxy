@@ -1,0 +1,5 @@
+provider=script
+app.host=localhost:${@@osiris3:port}
+app.cluster=osiris3
+app.context=notification
+readTimeout=60000

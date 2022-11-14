@@ -1,0 +1,27 @@
+<schema>
+	<element name="rpttaxincentive" tablename="rpttaxincentive">
+		<field name="objid" primary="true" />
+		<field name="state" required="true" />
+		<field name="txnno" />
+		<field name="txndate" />
+		<field name="taxpayer_objid" required="true" />
+		<field name="taxpayer_name" required="true" />
+		<field name="taxpayer_address"  />
+		<field name="name" required="true" />
+		<field name="remarks" required="true" />
+		<field name="createdby_objid" required="true" />
+		<field name="createdby_name" required="true" />
+		<field name="createdby_title" required="true" />
+		<field name="createdby_date" required="true" />
+	</element>
+
+	<element name="rpttaxincentiveitem" tablename="rpttaxincentive_item">
+		<field name="objid" primary="true" />
+		<field name="rpttaxincentiveid" required="true" />
+		<field name="rptledgerid" required="true" />
+		<field name="fromyear" required="true" type="integer"/>
+		<field name="toyear" required="true" type="integer"/>
+		<field name="basicrate" required="true" type="decimal" />
+		<field name="sefrate" required="true" type="decimal" />
+	</element>
+</schema>

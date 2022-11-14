@@ -1,0 +1,34 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.services.extended.*;
+
+public class CreditMemoListService 
+{
+	
+	@ActiveDB("creditmemo")
+	def db;
+
+	String pagingKeys = "objid"
+
+
+	@ProxyMethod
+	public def getColumns(def params ) {
+		return [
+			[name:'state', caption:'State', maxWidth:100],
+			[name:'refno', caption:'Ref. No.', maxWidth:150, width:150],
+			[name:'refdate', caption:'Ref. Date', maxWidth:100],
+			[name:'payername', caption:'Payee'],
+            [name:'amount', caption:'Amount', type:'decimal', maxWidth:100],
+            [name:'particulars', caption:'Remarks'],
+		]
+	}
+	
+
+	@ProxyMethod 
+	public def getList( def params )  {
+		if (! params.searchtext) params.searchtext = ''
+		params.searchtext = params.searchtext + '%'
+		return db.getList(params)
+	}
+}

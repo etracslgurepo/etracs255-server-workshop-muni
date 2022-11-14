@@ -1,0 +1,32 @@
+import com.rameses.annotations.*;
+
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import java.util.*;
+
+/***************************************************************************
+* This is used to update the taskid in the workflow application 
+***************************************************************************/
+public class WorkflowUpdateTaskIdInterceptor {
+	
+	@DataContext(dynamic=true)
+	def em;
+
+	@After(pattern="WorkflowTaskService.(start|signal)", eval="#{args[0].refid !=null }", index=1000)
+	public void afterWorkflowStartAndSignal( def evt ) {
+		def p = evt.args[0];
+		def task = evt.result;
+		def db = null;
+		try {
+			db = em.lookup( p.processname );
+		}
+		catch(e) {
+			e.printStackTrace();
+		}
+		if( db  ) {
+			db.find([objid: p.refid]).update([taskid: task.taskid]);
+		}
+	}
+
+}

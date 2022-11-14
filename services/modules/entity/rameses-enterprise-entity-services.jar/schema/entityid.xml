@@ -1,0 +1,18 @@
+<schema adapter="main">
+
+	<element tablename="entityid">
+		<field name="objid" primary="true" prefix="EID"/>
+		<field name="entityid" required="true"/>
+		<!--
+		<complex name="entity" ref="entityindividual" required="true" jointype="many-to-one"
+			includefields="entityno,lastname,firstname">
+			<key field="entityid" target="objid"/>
+		</complex>	
+		-->
+		<field name="idtype" required="true" caption="ID Type"/>
+		<field name="idno" required="true" caption="ID Number"/>
+		<field name="dtissued" caption="Issued Date"/>
+		<field name="dtexpiry" caption="Expiry Date"/>
+	</element> 
+
+</schema>

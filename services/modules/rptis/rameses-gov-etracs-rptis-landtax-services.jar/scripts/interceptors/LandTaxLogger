@@ -1,0 +1,55 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class LandTaxLogger
+{
+    @Service('LogService')
+    def logSvc
+
+    @After(pattern="RPTLedgerService.(create|update|approve|fixLedger|updateState|updateFaasReference|postPayment)", index=100000) 
+    public void logLedgerActions( evt ) {
+        def entity = evt.result 
+        def refid = entity.objid
+        def remarks = entity._remarks
+
+        if (evt.methodName == 'postPayment') {
+            refid = entity.rptledger.objid
+            remarks = 'Last Year/Qtr Paid: ' + entity.toyear + '/' + entity.toqtr
+        }
+
+        logSvc.logA(evt.methodName, 'rptledger', refid, remarks)
+    }
+
+    @After(pattern="RPTLedgerService.(createSubLedger|approveSubLedger)") 
+    public void logSubLedgerActions( evt ) {
+        def ledger = evt.result 
+        def action = evt.methodName.replace('SubLedger', '')
+        logSvc.logA( action, 'subledger', ledger.objid, ledger._remarks)
+    }
+
+    @After(pattern="RPTLedgerService.createAvDifference") 
+    public void logTaxDifferenceActions( evt ) {
+        def taxdiff = evt.result 
+        def msg = 'Tax difference for year: ' + taxdiff.year + ' av: ' + taxdiff.av
+        logSvc.logA( 'create-taxdifference', 'rptledger', taxdiff.parent.objid, msg)
+    }
+
+    @After(pattern="RPTLedgerService.(addTag|removeTag)") 
+    public void logTagActions( evt ) {
+        def tag = evt.result 
+        def remarks = 'Tag: ' + tag.tag 
+        logSvc.logA( evt.methodName, 'rptledger', tag.parent.objid, remarks)
+    }
+
+    @After(pattern="LandTaxReportTaxClearanceService.(createClearance|update)") 
+    public void logClearanceActions( evt ) {
+        def cert = evt.result 
+        def remarks = 'Create Tax Clearance ' + cert.txnno + '.'
+        if ('update'.equalsIgnoreCase(evt.methodName)) {
+            remarks = 'Update Tax Clearance ' + cert.txnno + ' information.'
+        }
+        logSvc.logA( evt.methodName, 'rpttaxclearance', cert.objid, remarks)
+    }
+}
+

@@ -1,0 +1,45 @@
+import com.rameses.annotations.*
+import com.rameses.util.*
+
+class PlantTreeRPUGRService
+{
+    @PersistenceContext('main')
+    def em
+
+    @Service('PlantTreeRYSettingLookupService')
+    def lookupSvc
+
+    @Service('PlantTreeRPUService')
+    def rpuSvc 
+
+    @Service('DateService')
+    def dtSvc 
+    
+    @ProxyMethod
+    public def revisePlantTreeRpu(rpu){
+        def deletedItems = []
+        rpu.dtappraised = dtSvc.serverDate 
+        rpu.planttrees.each { planttree -> 
+            def ptuv = lookupSvc.lookupUnitValueByPrevId(planttree.planttreeunitvalue.objid)
+            if( ptuv ) {
+                planttree.planttreeunitvalue = ptuv 
+                planttree.unitvalue = ptuv.unitvalue 
+                
+                def al = lookupSvc.lookupAssessLevelByPrevId(planttree.actualuse.objid)
+                if( al ) {
+                    planttree.actualuse         = al
+                    planttree.assesslevel       = al.rate 
+                }
+            }
+            else {
+                deletedItems.add( planttree )
+            }
+        }
+        
+        rpu.planttrees.removeAll( deletedItems ) 
+        rpuSvc.calculateAssessment(rpu)
+        return rpu
+    }
+
+}
+ 

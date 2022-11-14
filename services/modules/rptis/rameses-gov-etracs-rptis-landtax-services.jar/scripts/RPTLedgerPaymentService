@@ -1,0 +1,68 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.util.*
+import com.rameses.services.extended.*
+
+
+class RPTLedgerPaymentService
+{
+    @Env
+    def env
+
+    @DataContext('rptpayment')
+    def em_rptpayment
+
+    @DataContext('rptpayment_item')
+    def em_rptpayment_item
+
+    @DataContext('rptpayment_share')
+    def em_rptpayment_share
+
+    @DataContext('rptledger_credit')
+    def em_rptledger_credit
+
+    @DataContext('rptledger')
+    def em_rptledger
+
+    @DataContext('rptledger_item')
+    def em_rptledger_item
+
+
+
+    @ProxyMethod
+    public void delete( ledger ) {
+        def payments = em_rptpayment.select('objid').find([refid:ledger.objid]).list()
+        payments.each{
+            em_rptpayment_item.find([parentid:it.objid]).delete()
+            em_rptpayment_share.find([parentid:it.objid]).delete()
+        }
+        em_rptpayment.find([refid:ledger.objid]).delete() 
+        em_rptledger_credit.find([rptledgerid:ledger.objid]).delete() 
+    }
+
+
+    @ProxyMethod
+    public def getPayments(entity) {
+        return em_rptledger.getLedgerPayments(entity)
+    }
+
+    @ProxyMethod
+    public def getPaymentDetails( payment ) {
+        def data = [:]    
+        data.items = em_rptpayment_item.find([parentid:payment.objid]).orderBy('year desc,qtr desc, revtype').list()
+        data.shares = em_rptpayment_share.find([parentid:payment.objid]).orderBy('sharetype,revperiod,revtype').list()
+        return data 
+    }    
+
+    @ProxyMethod
+    public void deletePayment(payment) {
+        if (payment.receiptid) throw new Exception('Online issued reecipt cannot be deleted.')
+
+        em_rptpayment_item.find([parentid: payment.objid]).delete();
+        em_rptpayment_share.find([parentid: payment.objid]).delete();
+        em_rptpayment.find([objid: payment.objid]).delete();
+        em_rptledger_item.find([parentid: payment.refid]).delete();
+    }
+}
+
+

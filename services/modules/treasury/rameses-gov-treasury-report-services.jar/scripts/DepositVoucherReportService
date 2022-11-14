@@ -1,0 +1,129 @@
+import com.rameses.annotations.*;
+
+class DepositVoucherReportService {
+
+	@DataContext('depositvoucher')
+	def dv_em; 
+
+	@DataContext('depositvoucher_fund')
+	def dvf_em; 
+				
+	@DataContext('sys_user')
+	def user_em; 
+
+	@ActiveDB('depositvoucher_report') 
+	def report_em; 
+
+	@ActiveDB('depositvoucher_rcd_report') 
+	def rcd_em; 
+
+
+	@ProxyMethod 
+	def initReport( param) { 
+		def resp = [:]; 
+		resp.funds = rcd_em.getFunds( param ); 
+		return resp; 
+	} 
+
+	@ProxyMethod 
+	def getReportByFund( param ) { 
+		if ( !param.depositvoucherid ) throw new Exception("depositvoucherid parameter is required"); 
+		if ( !param.fund?.objid ) throw new Exception("fund.objid parameter is required"); 
+
+		def result = [:]; 		
+		def dvinfo = dv_em.find([ objid: param.depositvoucherid ]).first(); 
+		if ( !dvinfo ) return result; 
+
+		result.putAll( dvinfo ); 
+
+		result.fund = param.fund; 
+		boolean is_all_funds = ( result.fund.objid == 'all' );
+
+		def dvfs = []; 
+		def p = [ depositvoucherid: dvinfo.objid ]; 
+		if ( is_all_funds ) { 
+			result.remove('fund'); 
+			p.fundid = '%'; 
+		} 
+		else {
+			p.fundid = result.fund.objid; 
+		}
+
+		result.receipts = report_em.getReportByFundReceipts( p ); 
+		if ( !result.receipts ) throw new Exception('No available receipts that matches your criteria');  
+
+		result.amount = result.totalcheck = result.totalcr = 0.0; 
+		result.acctsummaries = report_em.getReportByFundAcctSummaries( p ); 
+		result.acctsummaries.each{
+			result.amount += it.amount; 
+		}
+
+		def userinfo = user_em.find([ objid: result.createdby.objid ]).select('objid,jobtitle').first(); 
+		result.createdby.title = userinfo?.jobtitle; 
+
+		resolveCompatibility( result ); 
+		return result; 
+	} 
+
+	@ProxyMethod 
+	def getReportByItemAccount( param ) { 
+		if ( !param.depositvoucherid ) throw new Exception("depositvoucherid parameter is required"); 
+		if ( !param.fund?.objid ) throw new Exception("fund.objid parameter is required"); 
+
+		def result = [:]; 		
+		def dvinfo = dv_em.find([ objid: param.depositvoucherid ]).first(); 
+		if ( !dvinfo ) return result; 
+
+		result.putAll( dvinfo ); 
+
+		result.fund = param.fund; 
+		boolean is_all_funds = ( result.fund.objid == 'all' );
+
+		def p = [ depositvoucherid: dvinfo.objid ]; 
+		if ( is_all_funds ) { 
+			result.remove('fund'); 
+			p.fundid = '%'; 
+		} 
+		else {
+			p.fundid = result.fund.objid; 
+		}
+
+		result.items = report_em.getReportByFundAcctSummaries( p ); 
+		if ( !result.items ) throw new Exception('No available record(s) that matches your criteria');  
+
+		result.amount = result.totalcheck = result.totalcr = 0.0; 
+		result.items.each{
+			result.amount += it.amount; 
+		}
+
+		def userinfo = user_em.find([ objid: result.createdby.objid ]).select('objid,jobtitle').first(); 
+		result.createdby.title = userinfo?.jobtitle; 
+
+		resolveCompatibility( result ); 
+		return result; 
+	} 
+
+	private void resolveCompatibility( result ) {
+		result.txnno = result.controlno; 
+		result.dtposted = result.controldate;
+		result.txndate = result.dtcreated;  
+
+		if ( result.totalcr == null ) result.totalcr = 0.0;
+		if ( result.totalcheck == null ) result.totalcheck = 0.0;
+		
+		result.totalnoncash = result.totalcheck + result.totalcr; 
+		result.totalcash = result.amount - result.totalnoncash; 
+		result.cashier = result.createdby;
+		result.user = result.createdby;
+
+		if ( result.receipts ) {
+			result.receipts.each{
+				it.afid = it.formno;
+				it.payer = it.paidby;
+				it.serialno = it.receiptno;
+				it.txndate = it.receiptdate;
+				it.particulars = it.acctname; 
+			} 
+		}
+	}
+} 

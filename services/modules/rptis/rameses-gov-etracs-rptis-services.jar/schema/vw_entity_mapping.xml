@@ -1,0 +1,17 @@
+<schema>
+	<element tablename="vw_entity_mapping">
+		<field name="objid" primary="true" />
+		<field name="parent_objid" />
+		<field name="org_objid" />
+		<field name="entityno" caption="Account No." />
+		<field name="name" caption="Name" />
+		<field name="address_text" caption="Address" />
+		<field name="address_municipality" caption="Municipality" />
+		<field name="address_province" caption="Province" />
+	</element>
+</schema>
+
+
+
+
+

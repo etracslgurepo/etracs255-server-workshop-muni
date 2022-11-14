@@ -1,0 +1,73 @@
+import com.rameses.annotations.*;
+
+class SREAbstractOfCollectionReportService {
+
+	@ActiveDB('sre_abstractofcollection')
+	def em;
+
+	@DataContext('collectionvoucher') 
+	def liq_db;
+
+	@DataContext('fund') 
+	def fund_db;
+	
+	@DataContext('account_maingroup') 
+	def acctgroup_db;
+
+	@Service("NumberService")
+	def numSvc;
+
+	@Service("DateService")
+	def dateSvc;
+
+
+	@ProxyMethod 
+	public def initReport( param ) {
+		def m = [:]; 
+		m.funds = em.getLiquidationFunds([ refid: param.objid ]); 
+
+		m.acctgroups = acctgroup_db.where("reporttype IN ('SRE')").orderBy('reporttype, version, title').list(); 
+		return m; 
+	}
+
+	@ProxyMethod 
+	public def getReport( param ) { 
+		def refdata = liq_db.find([ objid: param.objid ]).first(); 	
+		if ( !refdata?.objid ) 
+			throw new Exception('Transaction record not found'); 
+
+		def fund = null; 
+		if ( param.fund?.objid ) {
+			fund = fund_db.find([ objid: param.fund.objid ]).first(); 
+		} 
+
+		def p = [refid: param.objid];
+		p.maingroupid = param.acctgroup?.objid.toString(); 
+
+		def filters = ['1=1'];
+		if ( fund?.objid ) { 
+			filters << "fundid = '"+ fund.objid +"'";
+		} 
+		p.filters = ' AND '+ filters.join(' AND '); 
+
+		def items = em.getLiquidationReport( p );
+		def acctgroup = acctgroup_db.find([ objid: p.maingroupid ]).first();
+		def reporttype = (acctgroup?.reporttype ? acctgroup.reporttype : 'SRE').toUpperCase(); 
+
+		def hdr = [:]; 
+		hdr.REPORTTITLE = ''+ reporttype + ' ABSTRACT OF COLLECTION';
+		hdr.CONTROLDATE = refdata.controldate;
+		hdr.CONTROLNO = refdata.controlno;
+		hdr.LIQUIDATINGOFFICERNAME = refdata.liquidatingofficer?.name
+		hdr.LIQUIDATINGOFFICERTITLE = refdata.liquidatingofficer?.title
+		hdr.AMTINWORDS = numSvc.doubleToWords( refdata.amount );
+		hdr.DATEPOSTED =  refdata.dtposted;  
+		if ( fund?.objid ) { 
+			hdr.FUNDTITLE = fund.title; 
+		} 
+		else { 
+			hdr.FUNDTITLE = '( ALL FUNDS )';	
+		} 
+		return [ header: hdr, items: items ]; 
+	} 
+}

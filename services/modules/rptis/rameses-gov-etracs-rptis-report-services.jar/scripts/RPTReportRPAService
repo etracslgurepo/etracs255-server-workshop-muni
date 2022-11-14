@@ -1,0 +1,307 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class RPTReportRPAService
+{
+	@Env 
+	def env 
+
+    @ActiveDB('rptreport_rpa')
+    def em
+
+    @Service('Var')
+    def var 
+
+    @Service('LGUService')
+    def lguSvc 
+
+    @DataContext('propertyclassification')
+    def propertyclassification
+
+    @DataContext('exemptiontype')
+    def exemptiontype
+
+    @Service('RPTUtil')
+    def util
+
+    @Service('ReportParameterService')
+    def paramSvc 
+
+    @Service('DateService')
+    def dtSvc 
+
+    @Service('NumberService')
+    def numSvc 
+
+
+    @Async
+	@ProxyMethod
+	public Map generateReportOnRPA( params ) {
+		buildFilter(params)
+
+		def taxableclasses = []
+		def exemptclasses = []
+		def restrictions = []
+
+		if (params.reporttype.type == 'standard'){
+			if (params.distributiontype == 'DOMINANT') {
+				taxableclasses = buildTaxableClasses(em.getTaxables(params), params)
+			} else {
+				taxableclasses = buildTaxableClasses(em.getTaxablesMixUse(params), params)
+			}
+			exemptclasses = buildExemptClasses(em.getExempts(params), params)	
+		}
+		else if (params.reporttype.type == 'lift'){
+			if (util.toBoolean(var.assessor_report_lift_show_net, true)) {
+				params.filter += " AND not exists(select * from faas_restriction where parent_objid = f.objid and state = 'ACTIVE') "
+			}
+			if (params.distributiontype == 'DOMINANT') {
+				taxableclasses = buildTaxableClasses(em.getLiftTaxables(params), params)
+			} else {
+				taxableclasses = buildTaxableClasses(em.getLiftTaxablesMixUse(params), params)
+			}
+			exemptclasses = buildExemptClasses(em.getLiftExempts(params), params)	
+		}
+		else if (params.reporttype.type == 'lift_restriction'){
+			restrictions = buildRestrictions(params)
+		}
+		else if (params.reporttype.type == 'lift_idleland'){
+			if (util.toBoolean(var.assessor_report_lift_show_net, true)) {
+				params.filter += " AND not exists(select * from faas_restriction where parent_objid = f.objid and state = 'ACTIVE') "
+			}
+			taxableclasses = buildTaxableClasses(em.getLiftIdleLandTaxables(params), params)
+			exemptclasses = buildExemptClasses(em.getLiftIdleLandExempts(params), params)	
+		}
+		else{
+			throw new Exception('Report Type ' + params.reporttype.caption + ' is not supported.')
+		}
+
+
+		def p = [
+			PERIOD 		: params.period,
+			PERIODTYPE 	: params.periodtype,
+			TITLE 		: params.title,
+			FORLGUNAME  : (params.lgu ? params.lgu.name : (env.ORGCLASS + ' OF ' + env.ORGNAME)),
+			LGUTYPE     : (params.lgu ? params.lgu.lgutype : env.ORGCLASS), 
+			BRGYCOUNT   : getBarangays(params).size(),
+			BARANGAY    : params.barangay?.name,
+			BASICRATE   : params.basicrate, 
+			SEFRATE     : params.sefrate, 
+		]
+		
+		return [
+			parameters  : p, 
+			reportdata  : taxableclasses + exemptclasses + restrictions,
+		]
+	}
+
+	void buildFilter(params){
+		params.filter = ''
+		params.title = 'REPORT ON REAL PROPERTY ASSESSMENTS'
+
+		if (params.periodtype.type.matches('monthly|quarterly')){
+			util.buildReportTitlePeriod(params.title, params)
+			util.buildStartEndDateFilter(params)
+		}
+		else {
+			params.enddate = params.asofdate
+			params.period = 'As of ' + dtSvc.format('MMMMM dd, yyyy', dtSvc.parse('yyyy-MM-dd', params.asofdate))
+		}
+
+		if (params.ry){
+			params.filter += ' AND rp.ry = $P{ry} ' 
+		}
+
+		if (params.lgu){
+			params.filter += ' AND f.lguid = $P{lguid} ' 
+			params.lguid = params.lgu.objid 
+		}
+
+		if (params.barangay){
+			params.filter += ' AND rp.barangayid = $P{barangayid} ' 
+			params.barangayid = params.barangay.objid 
+		}
+
+	}
+
+	def buildTaxableClasses(taxables, params){
+		taxables.each{ item ->
+			if (params.reporttype.type == 'standard'){
+				item.basicrate = params.basicrate
+				item.sefrate = params.sefrate
+				item.basictax = numSvc.round((item.totalav - item.totalrestrictionav) * item.basicrate )
+				item.seftax = numSvc.round((item.totalav - item.totalrestrictionav) * item.sefrate )
+			}
+			else {
+				def cls =params.classifications.find{it.objid == item.classid}
+				item.basicrate = (cls?.basicrate == null ? 0 : cls.basicrate / 100.0)
+				item.sefrate = (cls?.sefrate == null ? 0 : cls.sefrate / 100.0)
+
+				item.basictax = numSvc.round(item.totalav * item.basicrate)
+				item.seftax = numSvc.round(item.totalav * item.sefrate)	
+			}
+		}
+		
+		int lineno = 1
+		int charindex = 'a' 
+		def taxableclasses = getClassifications()
+		def firstspecial = taxableclasses.find{ it.special == 1 }
+		taxableclasses.add( taxableclasses.indexOf( firstspecial), [objid:'SPECIAL', name:'SPECIAL', special:0] )
+		
+		taxableclasses.each{ item ->
+			def taxablesItems = taxables.findAll{ it.classid == item.objid }
+			if( taxablesItems ) {
+				buildClassInfo(item, taxablesItems)
+			}
+			item.taxability = 'TAXABLE' 
+			if( item.special == 0 ) {
+				item.classname = lineno + '. ' + item.name 
+				lineno += 1
+			}
+			else {
+				item.classname = '   ' + ((char)charindex) + '. ' + item.name 
+				charindex += 1;
+			}
+		}
+	}
+
+
+	def buildRestrictions(params){
+		if ('TAXABLE'.equalsIgnoreCase(params.taxability) || !params.taxability){
+			params.filter += ' AND r.taxable = 1 '
+		}
+		else {
+			params.filter += ' AND r.taxable = 0 '
+		}
+
+		def restrictions = em.getLiftRestrictions(params)
+		restrictions.each{ item -> 
+			if (params.reporttype.type == 'standard'){
+				item.basicrate = params.basicrate/100.0
+				item.sefrate = params.sefrate/100.0
+				item.basictax = numSvc.round((item.totalav - item.totalrestrictionav) * item.basicrate)
+				item.seftax = numSvc.round((item.totalav - item.totalrestrictionav) * item.sefrate)
+				
+			}
+			else {
+				def cls =params.classifications.find{it.objid == item.classid}
+				item.basicrate = (cls?.basicrate == null ? 0 : cls.basicrate / 100.0)
+				item.sefrate = (cls?.sefrate == null ? 0 : cls.sefrate / 100.0)
+
+				item.basictax = numSvc.round(item.totalav * item.basicrate )
+				item.seftax = numSvc.round(item.totalav * item.sefrate)	
+				
+			}
+		}
+	}
+
+
+
+	def buildExemptClasses(exempts, params){
+		int lineno = 1
+		exempts.each{ 
+			it.basictax = 0.0
+			it.seftax = 0.0
+		}
+		
+		def exemptclasses  = getExemptionTypes();
+		exemptclasses.each { item -> 
+			def exempt = exempts.find{ it.classid == item.objid }
+			if( exempt ) {
+				item.putAll( exempt )
+			}
+			item.classname = lineno + '. ' + item.name 
+			item.taxability = 'EXEMPT'
+			lineno += 1
+		}
+	}
+
+
+    @ProxyMethod
+    public def getClassifications(){
+    	def classifications = propertyclassification.find([state:'APPROVED']).orderBy('orderno').list()
+    	initList(classifications)
+    	return classifications
+    }
+
+    @ProxyMethod
+    public def getExemptionTypes(  ) {
+    	def exemptions = exemptiontype.find([state:'APPROVED']).orderBy('orderno').list()
+    	initList(exemptions)
+    	return exemptions
+    }
+
+    @ProxyMethod
+    public def getBarangays(params){
+    	return lguSvc.lookupBarangaysByRootId(params.lguid)	
+    }
+
+	void buildClassInfo(classification, list) {
+		classification.putAll(list[0])
+		if (list.size() > 1) {
+			for (def idx = 1; idx < list.size(); idx++ ) {
+				def item = list[idx]
+				classification.rpucount += item.rpucount ? item.rpucount : 0
+				classification.countland += item.countland ? item.countland : 0
+				classification.countbldg += item.countbldg ? item.countbldg : 0
+				classification.countmach += item.countmach ? item.countmach : 0
+				classification.countother += item.countother ? item.countother : 0
+				classification.counttotal += item.counttotal ? item.counttotal : 0
+				classification.areasqm += item.areasqm ? item.areasqm : 0
+				classification.areaha += item.areaha ? item.areaha : 0
+				classification.landmv += item.landmv ? item.landmv : 0
+				classification.bldgmv += item.bldgmv ? item.bldgmv : 0
+				classification.bldgmv175less += item.bldgmv175less ? item.bldgmv175less : 0
+				classification.bldgmvover175 += item.bldgmvover175 ? item.bldgmvover175 : 0
+				classification.machmv += item.machmv ? item.machmv : 0
+				classification.othermv += item.othermv ? item.othermv : 0
+				classification.totalmv += item.totalmv ? item.totalmv : 0
+				classification.landav += item.landav ? item.landav : 0
+				classification.bldgav += item.bldgav ? item.bldgav : 0
+				classification.bldgav175less += item.bldgav175less ? item.bldgav175less : 0
+				classification.bldgavover175 += item.bldgavover175 ? item.bldgavover175 : 0
+				classification.machav += item.machav ? item.machav : 0
+				classification.otherav += item.otherav ? item.otherav : 0
+				classification.totalav += item.totalav ? item.totalav : 0
+				classification.carpav += item.carpav ? item.carpav : 0
+				classification.litigationav += item.litigationav ? item.litigationav : 0
+				classification.otherrestrictionav += item.otherrestrictionav ? item.otherrestrictionav : 0
+				classification.totalrestrictionav += item.totalrestrictionav ? item.totalrestrictionav : 0
+			}
+		} 
+	}
+
+    void initList(list) {
+    	list.each {
+			it.rpucount = 0
+			it.countland = 0
+			it.countbldg = 0
+			it.countmach = 0
+			it.countother = 0
+			it.counttotal = 0
+			it.areasqm = 0
+			it.areaha = 0
+			it.landmv = 0
+			it.bldgmv = 0
+			it.bldgmv175less = 0
+			it.bldgmvover175 = 0
+			it.machmv = 0
+			it.othermv = 0
+			it.totalmv = 0
+			it.landav = 0
+			it.bldgav = 0
+			it.bldgav175less = 0
+			it.bldgavover175 = 0
+			it.machav = 0
+			it.otherav = 0
+			it.totalav = 0
+			it.carpav = 0
+			it.litigationav = 0
+			it.otherrestrictionav = 0
+			it.totalrestrictionav = 0
+    	}
+    }
+
+
+}

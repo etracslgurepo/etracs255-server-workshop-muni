@@ -1,0 +1,33 @@
+import com.rameses.annotations.*;
+
+class CreditMemoPersistenceInterceptor {
+
+	@Env
+	def env;
+
+	@Service('ControlService') 
+	def controlSvc;	
+
+	@Service('DateService') 
+	def dateSvc;	
+
+	@Service('IncomeSummaryService') 
+	def incomeSummarySvc;	
+
+
+	@Before(pattern="PersistenceService.create", eval="#{ args[0]._schemaname == 'creditmemo' }")
+	public void beforeCreate( evt ) { 
+		def o = evt.args[0];
+		o.issuedby = [objid:env.USERID, name:env.FULLNAME];
+		o.controlno = controlSvc.formatTxnno([ txncode: 'CM' ]);
+		o.dtissued = dateSvc.getServerDate();
+	} 
+
+	@After(pattern="PersistenceService.removeEntity", eval="#{ args[0]._schemaname == 'creditmemo' }")
+	public void afterRemove( evt ) { 
+		def refid = evt.args[0].objid; 
+		if ( refid ) { 
+			incomeSummarySvc.removeItems([ refid: refid ]); 
+		}
+	} 
+}

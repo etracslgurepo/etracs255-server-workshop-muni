@@ -1,0 +1,256 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.util.*
+import com.rameses.services.extended.*
+
+class MCSettlementService 
+{
+	@ActiveDB('mcsettlement')
+	def em 
+	
+	@Service('SequenceService')
+	def seqSvc
+	
+	@Service('TxnRefService')
+	def txnRef
+
+    @Service('TxnSignatoryService')
+    def signatorySvc 
+	
+	@Service('WorkflowStateService')
+	def workflowSvc
+
+	@Service('DateService')
+	def dtSvc
+	
+	@Service('RPTUtil')
+	def util
+
+	@Service('FAASService')
+	def faasSvc
+
+	@Service('RealPropertyService')
+	def rpSvc
+
+	@Service('RPUService')
+	def rpuSvc 
+
+	@Service('Var')
+	def var 
+
+
+	@Env
+	def env
+
+
+	def SCHEMA_NAME			= 'mcsettlement'
+	def SCHEMA_OTHERCLAIM	= 'otherclaim'
+	def SCHEMA_AFFECTEDRPU  = 'affectedrpu'
+	
+	def STATE_DRAFT             = 'DRAFT'
+    def STATE_APPROVED          = 'APPROVED'
+	def STATE_PENDING 			= 'PENDING'
+	
+	def TXNTYPE_MS				= 'MS'
+
+	def signatories = ['receiver','taxmapper', 'taxmapping_chief', 'examiner', 'appraiser', 'appraisal_chief', 'recommender', 'assistant_assessor', 'approver']
+
+
+	@ProxyMethod
+	public def create( entity ) {
+		def prevfaas = entity.prevfaas 
+
+		util.required('Settled Claim Property', prevfaas)
+
+		def pdate = dtSvc.parseCurrentDate()
+        entity.state 			= STATE_DRAFT
+        entity.txnno 			= seqSvc.getNextFormattedSeries('mcsettlement')
+        entity.effectivityyear 	= pdate.year + 1
+        entity.effectivityqtr  	= 1
+        entity.lgutype = prevfaas.lgutype
+        entity.lguid = prevfaas.lguid
+		signatorySvc.init(entity, signatories)
+		signatorySvc.buildSignatories(entity, signatories)
+    	em.create(entity)
+    	workflowSvc.insert(entity)
+    	txnRef.insert([objid:prevfaas.objid, refid:entity.objid, msg:'FAAS is currently referenced by Multiple Claim Settlement No. ' + entity.txnno + '.'])
+
+    	def otherclaims = em.getOpenOtherClaims(prevfaas)
+    	if (!otherclaims)
+    		throw new Exception('There are no active other claims for this property.')
+
+    	otherclaims.each{
+    		it.objid = util.generateId('MCO')
+    		it.mcsettlementid = entity.objid 
+    		em.create(it, SCHEMA_OTHERCLAIM)
+    		txnRef.insert([objid:it.faas.objid, refid:entity.objid, msg:'FAAS is currently referenced by Multiple Claim Settlement No. ' + entity.txnno + '.'])
+    	}
+
+    	em.getOpenAffectedRpus(prevfaas).each{
+    		it.objid = util.generateId('MCA')
+    		it.mcsettlementid = entity.objid 
+    		em.create(it, SCHEMA_AFFECTEDRPU)
+    		txnRef.insert([objid:it.prevfaas.objid, refid:entity.objid, msg:'FAAS is currently referenced by Multiple Claim Settlement No. ' + entity.txnno + '.'])
+    	}
+
+    	return entity
+	}
+
+
+	@ProxyMethod
+	public def update( entity ) {
+		if (em.findById(entity).state != entity.state)	
+			throw new Exception('Document state has already been modified. Requery the data and try again.')
+		signatorySvc.buildSignatories(entity, signatories)
+		em.update(entity )
+		return entity 
+	}
+
+
+	@ProxyMethod
+	public def open( objid ) {
+		def entity = em.findById([objid:objid])
+		if (!entity) throw new Exception('Document does not exist or has already been deleted.')
+		signatorySvc.loadSignatories('entity', entity)
+		return entity
+	}
+
+
+	@ProxyMethod
+	public def getOtherClaims( objid ) {
+		return em.getOtherClaims([objid:objid])
+	}
+
+
+	@ProxyMethod
+	public def getAffectedRpus( objid ) {
+		return em.getAffectedRpus([objid:objid])
+	}
+
+
+	@ProxyMethod
+	public void deleteEntity(entity){
+		signatorySvc.deleteSignatories(entity)
+		txnRef.delete(entity.objid)
+		workflowSvc.deleteAll(entity.objid)
+		deleteFaasRecords(entity)
+		em.deleteOtherClaims(entity)
+		em.deleteAffectedRpus(entity)
+		em.delete(entity)
+	}
+
+
+ 	void deleteFaasRecords(entity){
+ 		 getAffectedRpus(entity.objid).each{
+			faasSvc.deleteFaasById(it.newfaas.objid)
+ 		 }
+ 		 faasSvc.deleteFaasById(entity.newfaas.objid)
+ 	}
+
+
+	@ProxyMethod
+	public def saveAffectedRpu(arpu){
+		em.update(arpu, SCHEMA_AFFECTEDRPU)
+	}
+
+
+
+	/*------------------------------------------------------------------------
+ 	*
+ 	* WORKFLOW SUPPORT
+ 	*
+ 	------------------------------------------------------------------------*/
+
+    @ProxyMethod
+    public def disapprove(entity) {
+        workflowSvc.delete(entity)
+        entity.state = STATE_DRAFT
+    	deleteFaasRecords(entity)
+    	update(entity)
+    	return entity
+    }
+
+
+    @ProxyMethod
+    public def approve(entity) {
+    	entity.state = STATE_APPROVED
+    	workflowSvc.insert(entity)
+    	txnRef.delete(entity.objid)
+    	createFaasRecords(entity)
+    	doApprove(entity)
+    	return entity 
+    }
+
+
+
+	void updateFaasInfo(faas, entity, item) {
+		faas.state 			= 'PENDING'
+		faas.effectivityyear = entity.effectivityyear
+		faas.effectivityqtr = entity.effectivityqtr
+		faas.tdno 			= item.newtdno 
+		faas.memoranda 		= item.memoranda 
+		faas.appraiser 		= entity.appraiser
+		faas.recommender	= entity.recommender
+		faas.taxmapper		= entity.taxmapper
+		faas.approver		= entity.approver
+	}
+
+
+	void createFaasRecords(entity){
+		def info = [
+			faas 		: entity.prevfaas,
+			txntype 	: faasSvc.getTxnType(TXNTYPE_MS),
+		]
+
+		info.faas = faasSvc.openFaas(info.faas)
+		def landfaas = faasSvc.initOnlineTransaction(info)
+		updateFaasInfo(landfaas, entity, entity)
+		faasSvc.updateFaas(landfaas)
+
+		entity.newfaas = [objid:landfaas.objid]
+		update(entity)
+
+	 	getAffectedRpus(entity.objid).each{arpu ->
+	 		info = [
+ 				faas 		: arpu.prevfaas,
+ 				txntype 	: faasSvc.getTxnType(TXNTYPE_MS),
+ 			]
+
+ 			info.faas = faasSvc.openFaas(info.faas)
+ 			def faas = faasSvc.initOnlineTransaction(info)
+ 			updateFaasInfo(faas, entity, arpu)
+
+ 			faas.rpu.realpropertyid = landfaas.rp.objid
+ 			faas.realpropertyid = landfaas.rp.objid 
+ 			faasSvc.updateFaas(faas)
+
+ 			arpu.newfaas = [objid:faas.objid]
+ 			saveAffectedRpu(arpu)
+	 	}
+ 	}
+
+
+ 	void doApprove(entity){
+        getAffectedRpus(entity.objid).each{ arpu ->
+            def faas = faasSvc.openFaas(arpu.newfaas)
+            faasSvc.approveFaas(faas)
+        }
+
+        faasSvc.approveFaas(faasSvc.openFaas(entity.newfaas))
+
+        def params = [
+        	objid			: entity.objid, 
+        	cancelreason 	:TXNTYPE_MS, 
+        	canceldate 		: entity.approver.dtsigned,
+        	cancelledbytdnos : entity.newfaas.tdno 
+        ]
+        em.cancelOtherClaimFaas(params)
+        em.cancelOtherClaimRpu(params)
+        em.cancelOtherClaimRealProperty(params)
+        em.cancelOtherClaimLedger(params)
+
+        entity.state = STATE_APPROVED
+ 		update(entity)
+ 	}
+
+}

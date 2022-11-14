@@ -1,0 +1,18 @@
+<schema>
+
+	<element name="user" tablename="sys_user">
+		<field name="objid" primary="true"/>
+		<field name="state" />
+		<field name="dtcreated" />
+		<field name="createdby" />
+		<field name="username" required="true"/>
+		<field name="pwd" />
+		<field name="lastname" required="true"/>		
+		<field name="firstname" required="true"/>
+		<field name="middlename" />
+		<field name="jobtitle" />
+		<field name="name" />
+		<field name="txncode" />
+	</element>
+	
+</schema>

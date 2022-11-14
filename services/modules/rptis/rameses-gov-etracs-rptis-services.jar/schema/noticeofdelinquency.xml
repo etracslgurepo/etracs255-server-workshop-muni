@@ -1,0 +1,60 @@
+<schema>
+	<element name="noticeofdelinquency" tablename="noticeofdelinquency">
+		<field name="objid" primary="true"/>
+		<field name="docstate" required="true" />
+		<field name="doctype" required="true" />
+		<field name="ledgerid" required="true"/>
+		<field name="txnno" required="true"/>
+		<field name="txndate" required="true"/>
+		<field name="pin" required="true"/>
+		<field name="tdno" required="true"/>
+		<field name="taxpayername" required="true"/>
+		<field name="taxpayeraddress" required="true"/>
+		<field name="rputype" required="true"/>
+		<field name="barangay" required="true"/>
+		<field name="cadastrallotno" required="true"/>
+		<field name="classcode" required="true"/>
+		<field name="classtitle" />
+		<field name="assessedvalue" type="decimal" required="true" />
+		<field name="delinquentamount" type="decimal" required="true" />
+		<field name="currentamount" type="decimal" required="true" />
+		<field name="basic" type="decimal" required="true" />
+		<field name="basicdisc" type="decimal" required="true" />
+		<field name="basicint" type="decimal" required="true" />
+		<field name="sef" type="decimal" required="true" />
+		<field name="sefdisc" type="decimal" required="true" />
+		<field name="sefint" type="decimal" required="true" />
+		<field name="total" type="decimal" required="true" />
+		<field name="currentqtr" type="integer" required="true" />
+		<field name="currentyear" type="integer" required="true" />
+		<field name="delinquentyrqtr" required="true" />
+		<field name="delinquentqtr" required="true" />
+		<field name="delinquentyr" required="true" />
+		<field name="receivedby"  />
+		<field name="receiveddate"  />
+		<complex name="extended" merge="true" serializer="default" required="false"/>
+	</element>
+	
+	<element name="noticeofdelinquencysetting" tablename="noticeofdelinquencysetting">
+		<field name="objid" primary="true"/>
+		<field name="noticeofdelinquency" />
+		<field name="noofdaysexpirednod" />
+		<field name="secondtracer" />
+		<field name="noofdaysexpiredst" />
+		<field name="finaldemand" />
+		<field name="noofdaysexpiredfd" />
+		<field name="warrantoflevy" />
+		<field name="noofdaysexpiredwol" />
+		<field name="noticeofpublication" />
+		<field name="noofdaysexpirednopas" />
+		<field name="certofsaleofproperty" />
+		<field name="noofdaysexpiredcsdrp" />
+		<field name="noticeofredemption" />
+		<field name="noofdaysexpirednor" />
+		<field name="advancecomputation" />
+	</element>
+	
+</schema>
+
+
+

@@ -1,0 +1,154 @@
+import com.rameses.annotations.*;
+
+class RemittanceInterceptor {
+
+	@Service("NumberService")
+	def numSvc;
+
+	@DataContext("remittance")
+	def rem_db;
+
+	@DataContext("remittance_fund")
+	def remf_db;
+
+	@DataContext("remittance_af")
+	def remaf_db;
+
+	@DataContext("cashreceipt")
+	def cashreceipt_db;
+
+	@DataContext("af_control")
+	def afc_db;
+	
+	@DataContext("af_control_detail")
+	def afd_db;
+
+	
+	@After(pattern="QueryService.getNodeList", eval="#{ args[0]._schemaname == 'remittance' }")
+	public void getNodes( evt ) { 
+		def x = evt.args[0];
+		def result = evt.result;
+		result << [  title: 'Draft', state:'DRAFT' ];
+		result << [  title: 'Open', state:'OPEN' ];
+		result << [  title: 'Posted', state:'POSTED', liquidated: false ];
+		result << [  title: 'Liquidated', state:'POSTED', liquidated:true ];
+		result << [  title: 'On Hold', state:'HOLD' ];
+	}
+
+	@Before(pattern="QueryService.getList", eval="#{ args[0]._schemaname == 'remittance' }")
+	public void beforeGetList(def evt) {
+		def o = evt.args[0];
+
+		if ( !o.node?.state ) return;
+
+		if ( o.node.state.toString().matches('POSTED|HOLD')) {
+			o.orderBy = ' controldate desc, dtposted desc '; 
+		} else {
+			o.orderBy = ' controldate, dtposted '; 
+		}
+
+		//o.debug = true;
+		def str = "state = :state";
+		def m = [ state : o.node.state ]; 
+
+		if ( o.node.liquidated != null ) {
+			if ( o.node.liquidated == false ) {
+				str += " AND collectionvoucherid IS NULL ";
+			} 
+			else {
+				str += " AND collectionvoucherid IS NOT NULL ";
+			}
+		}
+
+		if ( o.where ) {
+			o.where[0] = str + " AND " + o.where[0];	
+			o.where[1].putAll( m );
+		}
+		else {
+			o.where = [str, m];
+		} 
+	}	
+
+	@After(pattern="QueryService.getList", eval="#{ args[0]._schemaname == 'remittance' }")
+	public void afterGetList( evt ) { 
+		def param = evt.args[0]; 
+		if ( param._tag == 'collectionvoucher_initial' ) {
+			def xmap = [:];
+			evt.result.each{ o-> 
+				xmap.remittanceid = o.objid.toString(); 
+				def mm = rem_db.findReceiptSummary( xmap ); 
+				if ( mm == null ) return; 
+
+				o.totalreceipts = mm.amount; 
+				o.totalvoided   = mm.voidamount; 
+			} 
+			xmap.clear(); 
+		}
+	} 
+
+	@After(pattern="PersistenceService.read", eval="#{ args[0]._schemaname == 'remittance' }" )
+	public void afterRead( evt ) {
+		def p = evt.result;
+		if ( !p ) throw new Exception('Remittance transaction no longer exist'); 
+
+		if( p.amount < 1 ) { 
+			def amount = Long.parseLong( p.amount.toString().split("\\.")[1] )
+			p.amountinwords = numSvc.doubleToWords( amount ).toUpperCase() + " CENTAVOS";
+		} else {
+			p.amountinwords = numSvc.doubleToWords( p.amount ).toUpperCase() + " PESOS ONLY";
+		}
+
+		p.afsummaries = remaf_db.getAFSummary([ remittanceid: p.objid ]); 
+		p.afsummaries.each{
+			if ( it.formtype != 'serial' ) {
+				it.issuedstartseries = it.issuedendseries = null; 
+				it.endingstartseries = it.endingendseries = null; 
+			}
+		}
+	} 
+
+	@Before( pattern="PersistenceService.removeEntity", eval="#{args[0]._schemaname == 'remittance'}"  )
+	public void beforeDelete( evt ) {
+		def params = evt.args[0]; 
+		def m = [ objid: params.objid ];
+		def o = rem_db.find( m ).select('objid,state').first();
+		if ( !o ) return; 
+
+		if(o.state!='DRAFT') 
+			throw new Exception("Cannot remove remittance. It is not in DRAFT state");
+
+		// 
+		// initiate update on state field to forcely locked the record 
+		// 
+		def state = o.state.toString().toUpperCase(); 
+		def xstate = 'X' + state; 
+		rem_db.find( m ).update([ state: xstate ]); 
+
+		if ( !state.matches('DRAFT|OPEN')) {
+			throw new Exception('This transaction is no longer in DRAFT mode'); 
+		} 
+
+		//
+		// restore the original state of the record 
+		// 
+		rem_db.find( m ).update([ state: state ]); 
+
+		//
+		// deletion process starts here...
+		// 
+		m = [ remittanceid: o.objid ];
+		cashreceipt_db.find( m ).update([ remittanceid: '{NULL}' ]);
+		
+		remf_db.find( m ).delete(); 
+		remaf_db.find( m ).delete(); 
+		
+		afd_db.find([ refid: params.objid ]).list().each{
+			afc_db.find([ objid: it.controlid ]).update([ currentdetailid: '{NULL}']); 
+			afd_db.find([ objid: it.objid ]).delete();
+			def currentitem = afd_db.find([ controlid: it.controlid ]).select('objid').orderBy('refdate desc, txndate desc, indexno desc').first();  
+			if ( currentitem?.objid ) {
+				afc_db.find([ objid: it.controlid ]).update([ currentdetailid: currentitem.objid ]); 
+			}
+		}
+	} 
+}

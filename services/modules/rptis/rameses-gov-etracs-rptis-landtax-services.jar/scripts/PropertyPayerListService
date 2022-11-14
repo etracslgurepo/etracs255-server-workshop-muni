@@ -1,0 +1,28 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+
+class PropertyPayerListService extends ActiveListService
+{
+	@ActiveDB('propertypayer')
+    def em 
+
+    @ProxyMethod
+    public def getColumns( params ) {
+        return [
+            [name:"taxpayer.acctno", caption:"Account", width:100],
+            [name:"taxpayer.name", caption:"Taxpayer", width:300],
+            [name:"taxpayer.addresstext", caption:"Address", width:300],
+        ]
+    }
+
+    void beforeList(params){
+        params._pagingKeys = 'pp.objid'
+
+        if (!params.searchtext) 
+            params.searchtext = ''
+        params.searchtext += '%'
+    }
+}
+

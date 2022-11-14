@@ -1,0 +1,122 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import java.rmi.server.UID;
+import com.rameses.util.*;
+import com.rameses.io.*;
+
+class EntityService 
+{
+	@DataContext("entity")
+	def	em; 
+
+	@Service('PersistenceService')
+	def persistenceSvc;	
+
+	@ActiveDB('entityindividual')
+	def em_individual 
+
+	@ActiveDB('entityjuridical')
+	def em_juridical 
+
+	@ActiveDB('entitymultiple')
+	def em_multiple 
+
+	@ActiveDB('entitymember')
+	def em_member
+
+	@Service
+	def self;	
+
+	@ProxyMethod
+	public def open( o ) { 
+		def type = em.select('type').find([ objid: o.objid ]).val(); 
+		if (!type || type == 'null') type = o.type 
+		o._schemaname = 'entity' + type?.toString().toLowerCase();
+		return persistenceSvc.read( o ); 
+	} 
+
+	@ProxyMethod
+	public def save( o ) { 
+		o._schemaname = 'entity';
+		persistenceSvc.save( o ); 
+
+		o._schemaname = 'entity' + o.type.toString().toLowerCase(); 
+
+		def entity = null 
+		if ('entityindividual' == o._schemaname){
+			entity = em_individual.read(o)
+			if (entity)
+				em_individual.update(o)
+			else 
+				em_individual.insertIndividual(o)
+		}
+		else if ('entityjuridical' == o._schemaname){
+			entity = em_juridical.read(o)
+			if (entity){
+				em_juridical.update(o)
+			}
+			else {
+				o.administrator_name = o.adminstrator?.name
+				o.administrator_address = o.adminstrator?.address
+				o.administrator_position = o.adminstrator?.position
+				em_juridical.insertJuridical(o)
+			}
+		}
+		else if ('entitymultiple' == o._schemaname){
+			entity = em_multiple.findById(o)
+			if (entity)
+				em_multiple.updateMultiple(o)
+			else 
+				em_multiple.insertMultiple(o)
+			saveMember(o)
+		}
+		return o
+	} 
+
+	void saveMember(o){
+		o.members?.each{
+			try{
+				def m  = em_member.read(it)
+				if (m)
+					em_member.update(it)
+				else 
+					em_member.create(it)
+			}
+			catch(e){
+				//ignore 
+			}
+		}
+	}
+
+	@ProxyMethod 
+	public def getTypes() {
+		return []; 
+	}
+
+	@ProxyMethod 
+	public def getPhoto( o ) {
+		return [:]; 
+	}
+
+	@ProxyMethod(local=true) 
+	public def getMedia( params ) {
+		def result = self.getPhoto( params );  
+		def o = result.photo; 
+		if ( o instanceof String ) {
+			def base64 = new Base64Cipher(); 
+            if ( base64.isEncoded( o )) {
+                o = base64.decode( o ); 
+            }
+		}
+
+		if ( o ) {
+			def mf = new MediaFile(); 
+			mf.setContentType('image/jpeg');  
+			mf.setContent( o );  
+			return mf; 
+			
+		} else {
+			return null; 
+		} 
+	} 
+}

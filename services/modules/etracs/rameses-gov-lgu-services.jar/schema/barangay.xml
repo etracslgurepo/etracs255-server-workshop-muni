@@ -1,0 +1,25 @@
+<schema>
+
+	<element tablename="barangay" extends="sys_org">
+		<field name="objid" primary="true" visible="true" caption="ID"/>
+		<field name="state" />
+		<field name="indexno" />
+		<field name="pin" caption="PIN" searchable="true" indexed="true" width="120" />
+		<field name="name" caption="Barangay" width="150" searchable="true" indexed="true" />
+		<field name="fullname" />
+		<field name="address" />
+		<field name="previd" />
+
+		<complex name="parent" ref="sys_org" jointype="many-to-one" includefields="code,name,orgclass" required="true">
+			<key field="parentid" target="objid"/>
+		</complex>  
+
+		<field name="captain_name" />
+		<field name="captain_title" />
+		<field name="captain_office" />
+		<field name="treasurer_name" />
+		<field name="treasurer_title" />
+		<field name="treasurer_office" />
+	</element>
+	
+</schema>

@@ -1,0 +1,39 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.common.*
+import com.rameses.services.extended.*
+
+class SubCollectorRemittanceListService extends ActiveListService {
+
+	@ActiveDB("subcollector_remittance")
+	def em; 
+
+	String pagingKeys = "r.objid"
+
+	@Env
+	def env;
+
+	@ProxyMethod
+	public def getColumns( def p ) {
+		return [
+			[name:"txnno", caption:"Remittance No", width:120, resizable:false],
+			[name:"dtposted", caption:"Remittance Date", width:120, resizable:false],
+			[name:"collector.name", caption:"Collector"],
+			[name:"subcollector.name", caption:"Sub Collector"],
+			[name:"amount", caption:"Amount", type:"decimal"]
+		];	
+	}	
+
+	void beforeList( o ) { 
+		o.filter = '';
+		o.userid = env.USERID; 
+		if ( o._tag == 'all') { 
+			// do nothing 
+		} else if ( o._tag == 'collector' ) {
+			o.filter = ''' AND r.collector_objid = $P{userid} '''; 
+		} else {
+			o.filter = ''' AND r.subcollector_objid = $P{userid} '''; 
+		}
+	} 
+} 

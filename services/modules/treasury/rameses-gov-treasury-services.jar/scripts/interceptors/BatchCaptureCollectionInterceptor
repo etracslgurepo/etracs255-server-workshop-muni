@@ -1,0 +1,91 @@
+import com.rameses.annotations.*; 
+
+class BatchCaptureCollectionInterceptor {
+
+	@DataContext("batchcapture_collection")
+	def bc_db;
+
+	@DataContext("batchcapture_collection_entry")
+	def bce_db;
+
+	@DataContext("batchcapture_collection_entry_item")
+	def bcei_db;
+
+	@DataContext('af_control') 
+	def afc_db; 
+
+
+	@Before( pattern="AFControlService.changeMode" ) 
+	public void beforeChangeMode( evt ) { 
+		def param = evt.args[0]; 
+		def bc = bc_db.find([ controlid: param.objid ]).select('objid').where(" state <> 'CLOSED' ", [:]).first(); 
+		if ( bc?.objid ) throw new Exception('Please close all the batch captured transactions first'); 
+	} 
+	
+	@Before( pattern="PersistenceService.create", eval="#{args[0]._schemaname == 'batchcapture_collection_entry'}" ) 
+	void beforeCreateEntry( evt ) { 
+		def item = evt.args[0]; 
+		if ( bce_db.find([ parentid: item.parentid, receiptno: item.receiptno ]).select('objid').first()) 
+			throw new Exception('Receipt Number already exist. Please reopen your batch capture transaction');  		
+	}
+
+	@After( pattern="PersistenceService.create", eval="#{args[0]._schemaname == 'batchcapture_collection_entry'}" ) 
+	void afterCreateEntry( evt ) { 
+		updateEntryImpl( evt, 'create' ); 
+	}
+
+	@After( pattern="PersistenceService.update", eval="#{args[0]._schemaname == 'batchcapture_collection_entry'}" ) 
+	void afterUpdateEntry( evt ) {
+		updateEntryImpl( evt, 'update' ); 
+	} 
+
+	@After( pattern="PersistenceService.read", eval="#{args[0]._schemaname == 'batchcapture_collection_entry'}" ) 
+	void afterReadEntry( evt ) {
+		def item = evt.result; 
+		item.items = bcei_db.find([ parentid: item.objid ]).list(); 
+	} 
+
+	@Before( pattern="PersistenceService.removeEntity", eval="#{args[0]._schemaname == 'batchcapture_collection_entry'}" ) 
+	void beforeRemoveEntry( evt ) { 
+		def item = evt.args[0]; 
+		bcei_db.find([ parentid: item.objid ]).delete();  
+	} 
+
+
+	private void updateEntryImpl( evt, mode ) {
+		def item = evt.args[0]; 
+		bcei_db.find([ parentid: item.objid ]).delete(); 
+		item.items.each { 
+			def fund = it.item.fund; 
+			if ( !fund ) fund = it.fund; 
+
+			it.objid ="BCCEI"+new java.rmi.server.UID();
+			it.parentid = item.objid;
+			it.item.fund = fund; 
+			it.fund = fund;
+			it.amount = ( it.amount? it.amount : item.amount );
+			bcei_db.create( it ); 
+		} 
+
+		def bes = bc_db.findBatchSummary([ objid : item.parentid ]); 
+		if ( bes == null ) bes = [:]; 
+
+		def header = bc_db.find([ objid: item.parentid ]).first(); 
+ 		if ( mode == 'create' ) { 
+			def afc = afc_db.find([ objid: header.controlid ]).first(); 
+			def interval = afc?.afunit?.interval; 
+			if ( interval == null || interval <= 0 ) interval = 1;
+
+			header.startseries += interval; 
+		} 
+		bes.startseries = header.startseries; 
+		bes.totalnoncash = ( bes.totalnoncash ? bes.totalnoncash : 0.0 ); 
+		bes.totalamount = ( bes.totalamount ? bes.totalamount : 0.0 ); 
+		bes.totalcash = bes.totalamount - bes.totalnoncash; 
+		bc_db.find([ objid: item.parentid ]).update( bes ); 
+
+		def result = evt.result; 
+		result.currentseries = bes.startseries; 
+		result.items = item.items; 
+	} 
+}

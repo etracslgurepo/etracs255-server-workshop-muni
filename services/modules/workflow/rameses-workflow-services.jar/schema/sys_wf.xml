@@ -1,0 +1,13 @@
+<schema adapter="system">
+
+	<element tablename="sys_wf">
+		<field name="name" primary="true" required="true" visible="true" caption="Name"/>
+		<field name="title" required="true" caption="Title"/>
+		<field name="domain"  caption="Domain"/>
+		<complex name="nodes" ref="sys_wf_node" jointype="one-to-many" orderBy="idx" required="false">
+			<key field="name" target="processname"/>
+		</complex>	
+	</element>	
+
+</schema>	
+

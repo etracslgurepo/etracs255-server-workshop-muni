@@ -1,0 +1,34 @@
+import com.rameses.annotations.*;
+import groovy.text.*;
+
+class SysReportDefListInterceptor {
+	
+	@After(pattern="QueryService.getNodeList", eval="#{args[0]._schemaname == 'sys_report_def'  }")
+	public void afterNode( def evt ) {
+		def r = evt.result;
+		r << [state: "DRAFT", title: "Draft"];
+		r << [state: "DEPLOYED", title: "Deployed"];
+	}
+
+	@Before(pattern="QueryService.getList", eval="#{args[0]._schemaname == 'sys_report_def'  }")
+	public void afterList( def evt ) {
+		def o = evt.args[0];
+		
+		if( !o.node?.state ) return;
+
+		def str = " state = :state";
+		def m = [state: o.node.state ];
+
+		//add to first position of where
+		if( o.where ) {
+			o.where[0] = str + " AND " + o.where[0];	
+			o.where[1].putAll( m );
+		}
+		else {
+			o.where = [str, m];
+		}
+
+	}
+
+	
+}

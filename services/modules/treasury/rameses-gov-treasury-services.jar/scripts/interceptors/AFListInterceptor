@@ -1,0 +1,22 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+
+class AFListInterceptor  {
+
+
+	@DataContext('afunit')
+	def unitEm;
+
+	@After(pattern="QueryService.getList", eval="#{args[0]._schemaname == 'af' && args[0]._tag == 'lookup' }")
+	public def afterList(def evt) { 
+		def r = evt.result;
+		def e = evt.args[0];
+		r.each {
+			it.units = unitEm.find( [itemid: it.objid ] ).select('unit,saleprice').list();
+		}
+	}
+	
+
+
+}

@@ -1,0 +1,22 @@
+<schema>
+	<element  tablename="collectionvoucher" >
+		<field name="objid" primary="true" prefix="CV"/>
+		<field name="state" required="true" caption="Status"/>
+		<field name="controlno" required="true" caption="ControlNo" searchable="true" indexed="true"/>
+		<field name="controldate" required="true" type="date" caption="ControlDate" indexed="true"/>
+		<field name="dtposted" required="true" type="date" caption="Date" indexed="true"/>
+
+		<field name="liquidatingofficer_objid" required="true"/>
+		<field name="liquidatingofficer_name" required="true" caption="LiqOfficerName" searchable="true" indexed="true"/>
+		<field name="liquidatingofficer_title" required="true"/>
+		<field name="liquidatingofficer_signature" />
+
+		<field name="amount" required="true" type="decimal" caption="Amount"/>
+		<field name="totalcash" required="true" type="decimal" caption="TotalCash"/>
+		<field name="totalcheck" required="true" type="decimal" caption="TotalCheck"/>
+		<field name="totalcr" required="true" type="decimal" caption="TotalCR"/>
+		<complex name="cashbreakdown" required="true" serializer="default" type="list"/>
+		
+		<field name="depositvoucherid" caption="DepositVoucherId" indexed="true"/>
+	</element>
+</schema>	

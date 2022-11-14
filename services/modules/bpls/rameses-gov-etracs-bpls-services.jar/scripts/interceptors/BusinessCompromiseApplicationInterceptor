@@ -1,0 +1,54 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.services.extended.*;
+
+public class BusinessCompromiseAgreementService {
+
+	@ActiveDB("business_compromise")
+	def em;
+
+	@Service("DateService")
+	def dateSvc;
+
+	@Service("BusinessMasterService")
+	def bizSvc;
+
+	@Env
+	def env;
+
+	@After(pattern="BusinessApplicationService.initNew", eval="#{args[0].apptype=='COMPROMISE' }")
+	public void initNew(def evt) { 
+		def app = evt.result;
+		app.objid = "BARNW"+ new UID();
+
+		if(!app.business.objid) throw new Exception("Please specify a business");
+        def b = bizSvc.open(app.business);
+
+        def currentYear = dateSvc.getServerYear();
+		def activeYear = b.activeyear;
+
+		if(activeYear == currentYear )
+			throw new Exception("This business has no delinquency for previous years.");
+
+		if( b.state == 'CANCELLED') 
+			throw new Exception("Business already cancelled");	
+
+		if( b.state == 'RETIRED') 
+			throw new Exception("Business already retired");	
+
+		app.objid = 'BCOMP' + new UID();
+		app.businessid = b.objid;
+		app.business = b;
+	}
+
+	@Before(pattern="BusinessApplicationService.create", eval="#{args[0].apptype=='COMPROMISE' }")
+	public void beforeCreate(def evt) { 
+	}
+
+	@After(pattern="BusinessApplicationService.create", eval="#{args[0].apptype=='COMPROMISE' }")
+	public void afterCreate(def evt) { 
+	}
+
+
+}

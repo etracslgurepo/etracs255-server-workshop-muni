@@ -1,0 +1,32 @@
+import com.rameses.annotations.*;
+
+class LobService  {
+
+	@ActiveDB("lob")
+	def em;
+
+	@ActiveDB("lobclassification")
+	def classification;
+
+	@ProxyMethod
+	public void addAttribute( def o ) {
+		em.create( o, "attribute" );				
+	}
+
+	@ProxyMethod
+	public void removeAttribute( o ) {
+		em.delete( o, "attribute" );				
+	}
+
+	public void beforeRemoveEntity( def data ) {
+		em.removeAttributes([lobid: data.objid]);
+	}
+
+	public void afterOpen( def data ) {
+		data.classification = classification.read(data.classification);
+		data.attributes = em.getAttributes([lobid: data.objid]);
+	}	
+
+
+
+}

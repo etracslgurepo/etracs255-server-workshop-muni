@@ -1,0 +1,153 @@
+import com.rameses.common.*
+import com.rameses.annotations.*
+import com.rameses.services.extended.*
+
+class TDOnlineService {
+	@Env 
+	def env
+
+	@Service('RPTBillingService')
+	def billSvc
+
+	@Service('RPTUtil')
+	def util
+
+	@DataContext('faas')
+	def em_faas
+
+	@DataContext('faas_list')
+	def em_faaslist
+
+	@DataContext('realproperty')
+	def em_realproperty
+
+	@DataContext('rptledger')
+	def em_rptledger
+
+	@DataContext('rptpayment')
+	def em_rptpayment
+
+	@ActiveDB('rptis_online_taxdec')
+	def em_online_taxdec
+
+	@Service('DateService')
+	def dtSvc;
+
+	@ProxyMethod
+	public def verifyTaxDec(params) {
+		params.tdno = params.refno 
+		def faas = em_faaslist.find([tdno: params.tdno]).first()
+		if (!faas) throw new Exception('TD No. does not exist.')
+
+		def rp = em_realproperty.find([objid: faas.realpropertyid]).first()
+		def boundary = [
+			north : rp?.north,
+			east : rp?.east,
+			south : rp?.south,
+			west : rp?.west,
+		]
+
+		def rptledger = getLedger(params)
+		def bill = getBill(rptledger)
+		def lastpayment = getLastPayment(rptledger)
+
+        return [
+        	objid: faas.objid,
+			state: faas.state,
+            tdno: faas.tdno,
+            pin: faas.displaypin,
+            titleno: faas.titleno,
+            cadastrallotno: faas.cadastrallotno,
+            blockno: faas.blockno,
+            surveyno: faas.surveyno,
+            classcode: faas.classcode,
+            owner: faas.owner,
+            taxpayer: faas.taxpayer,
+            administrator: faas.administrator,
+            barangay: faas.barangay,
+            street: rp?.street,
+            areaha: faas.totalareaha,
+            areasqm: faas.totalareasqm,
+            totalmv: faas.totalmv,
+            totalav: faas.totalav,
+            bill: bill,
+            lastpayment: lastpayment,
+            boundary: boundary,
+        ]
+	}
+
+	@ProxyMethod
+	public def getImprovementsByPermitNo(params) {
+		if (!params.permitno) throw new Exception('Building Permit No. must be specified.')
+		return em_online_taxdec.getImprovementsByPermitNo(params);
+	}
+
+
+	def getLedger(params) {
+		def rptledger = em_rptledger
+						.select('objid,tdno,lastyearpaid,lastqtrpaid')
+						.find([tdno: params.tdno])
+						.first()
+		if (!rptledger) {
+			rptledger = [tdno: params.tdno]
+		}
+		return rptledger
+
+	}
+
+	def getBill(rptledger) {
+		def pdate = dtSvc.parseCurrentDate();
+
+		def bill = [
+			lastyearpaid: rptledger.lastyearpaid, 
+	        lastqtrpaid: rptledger.lastqtrpaid,
+	        period: '',
+			amtdue: 0.0,
+			ispaid: true,
+		]
+
+		if (
+			rptledger.lastyearpaid > pdate.year || 
+			(rptledger.lastyearpaid == pdate.year && rptledger.lastqtrpaid >= pdate.qtr)
+		) {
+			return bill
+		}
+		
+
+		try {
+			def b = billSvc.generateBillByTdNo(rptledger)
+			bill.amtdue = b.totals.total 
+			bill.period = buildPeriodCovered(b.ledgers[0])
+			bill.ispaid = false
+		} catch(e) {
+			println '[ERROR] ' + e.message
+			bill.ispaid = true
+		}
+		return bill
+	}
+
+	def buildPeriodCovered(rptledger) {
+		def items = [
+			[	
+				fromyear: rptledger.fromyear, 
+				fromqtr: rptledger.fromqtr,
+				toyear: rptledger.toyear,
+				toqtr: rptledger.toqtr, 
+			]
+		]
+		util.buildPeriodCovered(items)
+		return items.first().period.toUpperCase().replace('FULL', '') 
+	}
+
+	def getLastPayment(rptledger) {
+		def pmt = em_rptpayment
+					.select('receiptno,receiptdate,amount,paidby_name,paidby_address')
+					.where('refid = :objid and voided = 0', rptledger)
+					.orderBy('receiptdate desc')
+					.first()
+
+		if (!pmt) pmt = [:]
+		return pmt 
+	}
+
+}

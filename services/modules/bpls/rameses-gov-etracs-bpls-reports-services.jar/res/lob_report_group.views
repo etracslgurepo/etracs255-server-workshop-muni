@@ -1,0 +1,24 @@
+SELECT 
+  (SELECT objid FROM sys_org WHERE root=1) AS lgucode,
+  b.*
+FROM (SELECT 
+    be.year,
+    a.itemid,
+    a.title, 
+    SUM( IF( businesssize = 'MICRO', 1, 0 )) AS micro,
+    SUM( IF( businesssize = 'SMALL', 1, 0 )) AS small,
+    SUM( IF( businesssize = 'MEDIUM', 1, 0 )) AS `medium`,
+    SUM( IF( businesssize = 'LARGE', 1, 0 )) AS `large`,
+    SUM( IF( businesssize = 'NA', 1, 0 )) AS `na`,
+    COUNT(*) AS totalcount 
+FROM bpls_lob_info_extended be
+INNER JOIN 
+( 
+SELECT lrc.objid AS itemid, lrcm.lobid, lrc.title
+FROM lob_report_category_mapping lrcm 
+INNER JOIN lob_report_category lrc ON lrc.objid=lrcm.categoryid 
+WHERE lrc.groupid = 'DNIPC'
+) a
+ON be.`lobid`=a.lobid 
+WHERE be.year = 2016
+GROUP BY be.year, a.itemid, a.title) b

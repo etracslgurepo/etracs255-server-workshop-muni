@@ -1,0 +1,48 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+import com.rameses.util.*;
+
+class QueueMonitorService { 
+
+	@DataContext(value='queue_counter', adapter='queue') 
+	def qm;
+
+    @XConnection('queue_ws_server')
+    def wssender;
+
+	@Service 
+	def self; 
+
+	@ProxyMethod 
+	public def getCounters( groupid ) {
+		return qm.getCounters([ groupid: groupid ]); 
+	} 	
+
+	@ProxyMethod 
+	public def refresh( params ) { 
+		self.notifyWs([ type:'RELOAD_MONITOR', groupid: params.groupid ]); 
+	}
+
+
+	@Async 
+	@ProxyMethod(local=true) 
+	public void notifyWs( data ) { 
+		if ( !data ) return; 
+
+		data.channel = data.group = 'queue'; 
+
+		wssender.send([ 
+            channel : data.channel, 
+            group   : data.group, 
+            data    : resolveData( data )  
+        ]); 
+	} 	
+
+	def resolveData( data ) {
+        try {
+            return new Base64Cipher().decode( data ); 
+        } catch(Throwable t) { 
+            return data; 
+        } 
+    } 	
+} 

@@ -1,0 +1,296 @@
+import com.rameses.annotations.*
+import com.rameses.util.*
+import com.rameses.services.extended.*
+
+class SubdivisionSyncDataService
+{
+	@Env
+	def env 
+
+	@Service('DateService')
+    def dtSvc
+
+	@Service('RPTMainSyncDataService')
+	def syncSvc 
+
+    @Service('RPTSyncDataService')
+    def rptSync
+
+    @Service('RPTSyncDataSupport')
+    def support
+
+    @Service('SubdivisionService')
+    def svc
+
+	@Service('SubdivisionSupport2Service')
+    def subdivisionSupport 
+
+	@Service('SubdivisionWorkflowService')
+	def workflowSvc
+
+	@Service('FAASService')
+	def faasSvc
+
+	@Service('FAASSyncDataService')
+	def faasSyncSvc
+
+	@Service('CancelledFAASService')
+    def cancelFaasSvc
+
+
+    @DataContext('subdivision')
+    def em_subdivision
+
+    @DataContext('subdivision_motherland')
+    def em_motherland
+
+    @DataContext('subdivision_subdividedland')
+    def em_subdividedland
+
+    @DataContext('subdivision_affectedrpu')
+    def em_affectedrpu
+
+	@DataContext('subdivision_cancelledimprovement')
+    def em_cancelledimprovement
+
+    @DataContext('subdivision_task')
+    def em_task
+
+    @DataContext('cancelledfaas')
+    def em_cancelledfaas
+
+    @DataContext('cancelledfaas_signatory')
+    def em_cancelledfaas_signatory
+
+
+    
+    def getActions(){
+		return  [
+	    	'SUBDIVISION-FORAPPROVAL': [send: sendForApproval, receive: postForApproval, schedule: scheduleSubmitToProvince],
+	    	'SUBDIVISION-REQUIREMENTS': [send: {}, receive: {}, schedule: scheduleRequirements],
+	    	'SUBDIVISION-FAAS-APPROVED': [send: sendApprovedFaas, receive: postApprovedFaas, schedule: {}],
+	    	'SUBDIVISION-APPROVED': [send: sendApprovedSubdivision, receive: postApprovedSubdivision, schedule: scheduleSubdivisionApproval],
+	    	'SUBDIVISION-DISAPPROVAL': [send: sendDisapprovedSubdivision, receive: postDisapprovedSubdivision, schedule: scheduleSubdivisionDisapproval],
+	    	'SUBDIVISION-CANCELLED-FAAS': [send: sendCancelledFaas, receive: saveCancelledFaas, schedule: {}],
+	    	'SUBDIVISION-CANCELLED-FAAS-APPROVED': [send: sendApprovedCancelledFaas, receive: postApprovedCancelledFaas, schedule: {}],
+	    ]
+	}
+
+
+	/*---------------------------------------------------------
+	*
+	* SCHEDULING SYNC SUPPORT 
+	*
+	---------------------------------------------------------*/
+	@ProxyMethod
+	public void schedule(data) {
+		def action= getActions()[data.action]
+		if (!action) throw new Exception('Scheduler not found for action ' + data.action)
+
+		def subdivision = em_subdivision.find([objid: data.objid]).first()
+		data.remote = rptSync.getRemoteOrg(subdivision)
+        def syncdata = syncSvc.create(data)
+
+		action.schedule(syncdata, subdivision)
+	}
+
+	def createItem(item, syncdata, action, async) {
+		return [
+			refid: item.objid, 
+			reftype: syncdata.reftype, 
+			refno: syncdata.refno, 
+			async: (async == null ? syncdata.async : async),
+			action: (action ? action : syncdata.action),
+		]
+	}
+
+	void createSyncItem(entity, syncdata, action) {
+		createSyncItem(entity, syncdata, action, null)
+	}
+
+	void createSyncItem(entity, syncdata, action, async) {
+		def item = createItem(entity, syncdata, action, async)
+        syncSvc.createItem(syncdata, item)
+	}
+
+
+	def scheduleSubmitToProvince = {syncdata, subdivision ->
+		syncdata.info = syncdata.info ? syncdata.info : [:]
+    	syncdata.info.txntype = 'SD'
+
+        em_subdividedland.find([subdivisionid: subdivision.objid]).list().each {
+        	faasSyncSvc.scheduleFaasData(syncdata, [objid: it.newfaasid])
+        }
+
+		em_affectedrpu.find([subdivisionid: subdivision.objid]).list().each {
+        	faasSyncSvc.scheduleFaasData(syncdata, [objid: it.newfaasid])
+        }
+
+        em_cancelledimprovement.find([parentid: subdivision.objid]).list().each {
+        	createSyncItem(it, syncdata, 'SUBDIVISION-CANCELLED-FAAS')	
+        }
+
+        createSyncItem(subdivision, syncdata, 'SUBDIVISION-FORAPPROVAL')
+        rptSync.scheduleExaminations(syncdata, subdivision.objid)
+    	rptSync.scheduleRequirements(syncdata, subdivision.objid)
+	}
+
+	def scheduleRequirements = {syncdata, subdivision ->
+		syncdata.info = syncdata.info ? syncdata.info : [:]
+    	syncdata.info.txntype = 'SD'
+    	rptSync.scheduleRequirements(syncdata, subdivision.objid)
+	}
+
+
+	def scheduleSubdivisionApproval = {syncdata, subdivision ->
+        em_subdividedland.find([subdivisionid: subdivision.objid]).list().each {
+        	def faas = [objid: it.newfaasid]
+        	createSyncItem(faas, syncdata, 'SUBDIVISION-FAAS-APPROVED')
+        }
+
+		em_affectedrpu.find([subdivisionid: subdivision.objid]).list().each {
+            if (it.newfaasid) {
+                def faas = [objid: it.newfaasid]
+                createSyncItem(faas, syncdata, 'SUBDIVISION-FAAS-APPROVED')
+            }
+        }
+
+        em_cancelledimprovement.find([parentid: subdivision.objid]).list().each {
+        	createSyncItem(it, syncdata, 'SUBDIVISION-CANCELLED-FAAS-APPROVED')	
+        }
+
+    	createSyncItem(subdivision, syncdata, 'SUBDIVISION-APPROVED')
+
+        rptSync.scheduleExaminations(syncdata, subdivision.objid)
+	}
+
+	def scheduleSubdivisionDisapproval = {syncdata, subdivision ->
+		createSyncItem(subdivision, syncdata, 'SUBDIVISION-DISAPPROVAL')
+	}
+
+	
+	/*---------------------------------------------------------
+	* SEND/RECEIVE HANDLERS 
+	---------------------------------------------------------*/
+	@ProxyMethod
+	public void send(syncdata) {
+		rptSync.send(syncdata, getActions())
+	}
+
+	@ProxyMethod
+	public void receive(syncdata) {
+		rptSync.receive(syncdata, getActions())
+	}
+
+
+	/*---------------------------------------------------------
+	* SUPPORT METHODS
+	---------------------------------------------------------*/
+	def sendForApproval = {syncdata ->
+		def subdivision = [objid: syncdata.refid]
+		return subdivisionSupport.getForApproval(subdivision)
+	}
+
+	def postForApproval = {syncdata ->
+		def subdivision = syncdata.data 
+		subdivisionSupport.postSubdivisionData(subdivision)
+		startWorkflow(syncdata, subdivision)
+	}
+
+
+	def sendApprovedFaas = {syncdata ->
+		return getApprovedFaas(syncdata)
+	}
+
+	def getApprovedFaas = {syncdata ->
+		def faas = [objid: syncdata.refid]
+		return subdivisionSupport.getApprovedFaas(faas)
+	}
+
+	def postApprovedFaas = {syncdata ->
+		def faas = syncdata.data 
+		subdivisionSupport.postApprovedFaas(faas)
+
+	}
+
+	def sendApprovedSubdivision = {syncdata ->
+		def subdivision = [objid: syncdata.refid]
+		return subdivisionSupport.getForApproval(subdivision)
+	}
+
+	def postApprovedSubdivision = {syncdata ->
+		def subdivision = syncdata.data 
+		subdivisionSupport.postApprovedSubdivision(subdivision)
+
+	}
+	
+	def sendDisapprovedSubdivision = {syncdata ->
+		return [objid: syncdata.refid]
+	}
+
+	def postDisapprovedSubdivision = {syncdata ->
+		def subdivision = syncdata.data 
+		subdivisionSupport.postDisapprovedSubdivision(subdivision)
+
+	}
+
+	def sendCancelledFaas = {syncdata ->
+		return getCancelledFaas(syncdata)
+	}
+
+	def getCancelledFaas = {syncdata ->
+		def cancelledfaas = em_cancelledfaas.read([objid: syncdata.refid])
+		if (cancelledfaas) {
+			cancelledfaas.signatories = em_cancelledfaas_signatory.read(cancelledfaas)
+		} else {
+			cancelledfaas = [:]
+		}
+		return cancelledfaas 
+	}
+
+	def saveCancelledFaas = {syncdata ->
+		def cancelledfaas = syncdata.data 
+		em_cancelledfaas.save(cancelledfaas)
+		em_cancelledfaas_signatory.save(cancelledfaas.signatories)
+	}
+
+	def sendApprovedCancelledFaas = {syncdata ->
+		def cancelledfaas = getCancelledFaas(syncdata)
+		cancelledfaas.faas = getApprovedFaas([refid: cancelledfaas.faasid])
+		return cancelledfaas
+	}
+
+	def postApprovedCancelledFaas = {syncdata ->
+		def cancelledfaas = syncdata.data 
+		em_cancelledfaas.save(cancelledfaas)
+		em_cancelledfaas_signatory.save(cancelledfaas.signatories)
+		if (cancelledfaas.faas) {
+			faasSvc.updateFaas(cancelledfaas.faas)
+		}
+		cancelFaasSvc.postLedgerCancellation(cancelledfaas)
+	}
+
+
+	void startWorkflow(syncdata, subdivision){
+		def currtask = em_task.select('objid').where('refid = :objid and enddate is null', subdivision).first()
+		if (!currtask) {
+			def tasks = workflowSvc.start([refid:subdivision.objid, data:subdivision])
+			if (tasks){
+				subdivision.taskid = tasks[0].objid
+			}
+			notifyGroup(syncdata, subdivision)
+		}
+	}
+
+	void notifyGroup(syncdata, subdivision){
+        def param = [:]
+        param.objid = subdivision.objid 
+        param.sender = syncdata.sender
+        param.recipientid = 'assign-receiver'
+        param.filetype = 'subdivision'
+        param.msg = 'Subdivision No. ' + subdivision.txnno + ' (assign-receiver) submitted by ' + syncdata.sender.name + '.'
+        param.taskid = subdivision.taskid 
+        support.notifyGroup(param)
+	}
+}
+ 

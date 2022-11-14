@@ -1,0 +1,13 @@
+<schema>
+	<element  tablename="holiday">
+		<field name="objid" primary="true" prefix="HOL" />	
+		<field name="name" required="true" caption="Holiday Name" />	
+		<field name="year" required="true" caption="Year" type="integer" defaultValue="0"/>	
+		<field name="month" required="true" caption="Month" type="integer" defaultValue="0"/>	
+		<field name="day" required="true" caption="Day" type="integer" defaultValue="0"/>	
+		<field name="week" required="true" caption="Week" type="integer" defaultValue="0"/>	
+		<field name="dow" required="true" caption="Day Of Week" type="integer" defaultValue="0"/>	
+	</element>
+</schema>
+
+

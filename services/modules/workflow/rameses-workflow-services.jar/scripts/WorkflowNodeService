@@ -1,0 +1,21 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.services.extended.*;
+
+class WorkflowNodeService extends ActiveCrudService {		
+
+	@ActiveDB("wf")
+	def em;
+
+	@ProxyMethod
+	public def getNodes(def o) {
+		return em.getNodes(o);
+	}
+
+	@ProxyMethod
+	public def getNodeTransitions(def o) {
+		return em.getNodeTransitions(o);
+	}
+
+}

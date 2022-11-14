@@ -1,0 +1,63 @@
+import com.rameses.annotations.*
+import com.rameses.services.extended.*
+
+class RPTCertificationPropertyHistoryService 
+{
+    @Service('RPTCertificationService')
+    def certSvc 
+
+		@DataContext('faas_previous')
+		def em_faas_previous
+
+	
+	@ProxyMethod
+	public def createCertification( cert ) {
+		certSvc.buildFilter(cert)
+		certSvc.createCertification(cert)
+		return openCertification(cert.objid)
+	}
+
+	@ProxyMethod
+	public def openCertification(objid) {
+		def cert = certSvc.openCertification(objid)
+		cert.items = getHistories([objid: cert.faasid])
+		loadFaasInfo(cert)
+		certSvc.makeHtmlSafe(cert)
+		return cert 
+	}
+
+	void buildFaasHistories(faas, histories) {
+		def history = certSvc.getFaasInfo(faas.objid)
+		if (history) histories << history
+
+		def prevfaases = em_faas_previous.select('prevfaasid').find([faasid: faas.objid]).list()
+		prevfaases.each{pf ->
+			buildFaasHistories([objid: pf.prevfaasid], histories)
+		}
+	}
+
+	def getHistories(faas) {
+		def histories = []
+		buildFaasHistories(faas, histories)
+		return histories
+	}
+
+	void loadFaasInfo(cert){
+		def faas = certSvc.getFaasInfo(cert.faasid)
+		if (faas) {
+			faas.street = (faas.street ? faas.street : faas.barangay.name)
+			
+			def locations = [];
+			locations << faas.barangay.name
+			locations << faas.lgu.name
+			if (faas.parentlgu?.name) locations << faas.parentlgu.name
+			faas.location = locations.join(', ')
+
+			faas.areatype = faas.classcode.matches('A|AGR') ? 'ha' : 'sqm'
+			def certid = cert.objid 
+			cert.putAll( faas )
+			cert.objid = certid
+		}
+		certSvc.makeHtmlSafe(cert)
+	}
+}

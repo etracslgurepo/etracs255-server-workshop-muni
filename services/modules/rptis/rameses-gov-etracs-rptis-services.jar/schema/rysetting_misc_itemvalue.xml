@@ -1,0 +1,10 @@
+<element tablename="miscitemvalue">
+	<field name="objid" primary="true"/>
+	<field name="miscrysettingid" required="true"/>
+	<field name="miscitem_objid" required="true" />
+       <field name="expr" required="true" />
+	<field name="previd"  />
+	<complex name="miscitem" ref="miscitem" jointype="many-to-one" required="true">
+		<key field="miscitem_objid" target="objid" />
+	</complex>
+</element>

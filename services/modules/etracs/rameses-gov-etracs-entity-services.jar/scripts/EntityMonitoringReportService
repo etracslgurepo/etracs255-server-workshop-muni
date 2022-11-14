@@ -1,0 +1,75 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import com.rameses.services.extended.*;
+
+class EntityMonitoringReportService 
+{
+	@ActiveDB('entity_report')
+	def em
+
+
+	@Service('DateService')
+	def dtSvc 
+
+	@Service('RPTUtil')
+	def util
+
+
+	@ProxyMethod
+	public def getEncodingStatistics( params ) {
+		def sdate = params.year + '-'
+
+		if (params.month.index < 10) 
+			sdate += '0'
+		sdate += params.month.index;
+
+		if (params.day == null) {
+			sdate += '-01'
+		}
+		else {
+			sdate += '-'
+			if (params.day < 10 )
+				sdate += '0'
+			sdate += params.day 
+		}
+
+		def fromdate = dtSvc.parse('yyyy-MM-dd', sdate);
+		
+		def todate = null
+		if (params.day == null)
+			todate = dtSvc.getMonthEndDate(fromdate)
+		else 
+			todate = dtSvc.add(fromdate, '1d')
+
+		def items = em.getEncodingStatistics([fromdate:fromdate, todate:todate]).each{
+			it.individualcnt = (Integer) it.individualcnt
+			it.juridicalcnt = (Integer) it.juridicalcnt
+			it.multiplecnt = (Integer) it.multiplecnt
+			it.total = (Integer) it.total
+		}
+
+		return [
+			title 	: buildTitle( params.year, params.qtr, params.month, params.day),
+			period 	: util.buildPeriod(params),
+			items 	: items
+		]
+	}
+
+	def buildTitle( year, qtr, month, day) {
+		if( day ) return 'Daily Entity Encoding Monitoring'
+		if( month ) return 'Monthly Entity Encoding Monitoring'
+		if( qtr ) return 'Quarterly Entity Encoding Monitoring'
+	}
+
+	@ProxyMethod
+	public List getNumDays( year, month ) {
+		if ( !month && month < 0 ) return []
+		
+		Calendar cal = Calendar.getInstance()
+        cal.set( year, month, 1)
+        int maxday = cal.getActualMaximum(cal.DAY_OF_MONTH)
+		def numdays = []
+		1.upto( maxday ) { numdays.add( it ) }
+		return numdays 
+	}
+}

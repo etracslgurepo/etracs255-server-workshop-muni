@@ -1,0 +1,35 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+
+public class BusinessApplicationChangeInfoInterceptor {
+
+	@DataContext('business_active_lob') 
+	def activelob_db;
+
+	@DataContext('bpls_tool') 
+	def bpls_tool; 
+
+
+	@After(pattern="BusinessApplicationService.updateInfos") 
+	public void afterUpdateInfos( evt ) {
+		def param = evt.args[0]; 
+		def app = bpls_tool.findApp([ objid: param.applicationid ]); 
+		if ( !app ) return; 
+
+		def business = bpls_tool.findBusiness([ objid: app.business.objid ]); 
+		if ( app.objid.toString() == business.currentapplicationid.toString() ) { 
+			def bparam = [ businessid: business.objid ]; 
+			bpls_tool.removeActiveLobs( bparam );  
+			
+			def aparam = [ applicationid: app.objid ]; 
+			bpls_tool.getBusinessAppLobs([ businessid: business.objid, appyear: app.appyear ]).each{ o-> 
+				if ( o.assessmenttype.toString().toUpperCase() == 'RETIRE' ) { 
+					bpls_tool.removeActiveLob([ businessid: business.objid, lobid: o.lobid ]);  
+				} 
+				else { 
+					activelob_db.create([ objid: o.objid, businessid: o.businessid, lobid: o.lobid, name: o.name ]); 
+				} 
+			} 
+		} 
+	} 
+} 

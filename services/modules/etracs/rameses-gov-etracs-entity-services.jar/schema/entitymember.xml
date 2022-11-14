@@ -1,0 +1,17 @@
+<schema>
+	
+	<element tablename="entitymember">
+		<field name="objid" primary="true"/>
+		<field name="entityid" required="true"/>
+		<field name="itemno" type="integer" />
+		<field name="prefix" />
+		<field name="member_objid" required="true"/>
+		<field name="member_name"  required="true"/>
+		<field name="member_address_text"  required="true"/>
+		<field name="suffix" />
+		<complex name="member" ref="entity" jointype="many-to-one" includefields="type" required="false">
+			<key field="member_objid" target="objid" />
+		</complex>	
+	</element>
+
+</schema>

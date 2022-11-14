@@ -1,0 +1,128 @@
+import com.rameses.annotations.*
+import com.rameses.util.*
+import com.rameses.services.extended.*
+
+class FAASAnnotationSyncDataService
+{
+	@Env
+	def env 
+
+	@Service('DateService')
+    def dtSvc
+
+	@Service('RPTMainSyncDataService')
+	def syncSvc 
+
+    @Service('RPTSyncDataService')
+    def rptSync
+
+    @Service('RPTSyncDataSupport')
+    def support
+
+    @Service('FAASAnnotationService')
+    def svc
+
+    @Service('CancelAnnotationService')
+    def cancelSvc
+
+
+	def getActions(){
+		return  [
+	    	'FAASANNOTATION-POST': [send: sendAnnotation, receive: postAnnotation, schedule: scheduleAnnotation],
+	    	'FAASANNOTATION-CANCELLED': [send: sendCancelAnnotation, receive: postCancelAnnotation, schedule: scheduleCancelAnnotation],
+	    ]
+	}
+
+	/*---------------------------------------------------------
+	*
+	* SCHEDULING SYNC SUPPORT 
+	*
+	---------------------------------------------------------*/
+	@ProxyMethod
+	public void schedule(data) {
+		def action= getActions()[data.action]
+		if (!action) throw new Exception('Scheduler not found for action ' + data.action)
+
+		action.schedule(data)
+	}
+
+	def createItem(item, syncdata, action) {
+		return [
+			refid: item.objid, 
+			reftype: syncdata.reftype, 
+			refno: syncdata.refno, 
+			action: (action ? action : syncdata.action)
+		]
+	}
+
+	void createSyncItem(entity, syncdata, action) {
+		def item = createItem(entity, syncdata, action)
+        syncSvc.createItem(syncdata, item)
+	}
+
+
+	def scheduleAnnotation = {data ->
+		def annotation = svc.open([objid: data.objid])
+		annotation.lguid = annotation.faas.lguid
+		data.remote = rptSync.getRemoteOrg(annotation)
+        
+        def syncdata = syncSvc.create(data)
+		createSyncItem(annotation, syncdata, null)
+
+        scheduleSharedData(syncdata, annotation)
+	}
+
+	def scheduleCancelAnnotation = {data ->
+		def cancelannotation = cancelSvc.open([objid: data.objid])
+		cancelannotation.lguid = cancelannotation.annotation.faas.lguid
+		data.remote = rptSync.getRemoteOrg(cancelannotation)
+        
+        def syncdata = syncSvc.create(data)
+		createSyncItem(cancelannotation, syncdata, null)
+	}
+
+	void scheduleSharedData(syncdata, annotation) {
+		rptSync.scheduleImages(syncdata, annotation.objid)
+    }	
+
+	
+	/*---------------------------------------------------------
+	*
+	* SEND/RECEIVE HANDLERS 
+	*
+	---------------------------------------------------------*/
+	@ProxyMethod
+	public void send(syncdata) {
+		rptSync.send(syncdata, getActions())
+	}
+
+	@ProxyMethod
+	public void receive(syncdata) {
+		rptSync.receive(syncdata, getActions())
+	}
+	/*---------------------------------------------------------
+	*
+	* SUPPORT METHODS
+	*
+	---------------------------------------------------------*/
+	def sendAnnotation = {syncdata ->
+		return svc.open([objid: syncdata.refid])
+	}
+
+	def postAnnotation = {syncdata ->
+		def annotation = syncdata.data 
+		svc.postRemote(annotation)
+	}
+
+
+	def sendCancelAnnotation = {syncdata ->
+		return cancelSvc.open([objid: syncdata.refid])
+	}
+
+	def postCancelAnnotation = {syncdata ->
+		def cancelannotation = syncdata.data 
+		cancelSvc.postRemote(cancelannotation)
+	}
+
+}
+ 

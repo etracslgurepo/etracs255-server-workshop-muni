@@ -1,0 +1,3 @@
+provider=http
+http.host=${queue_host}:9960/wschannel
+http.action=post

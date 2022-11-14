@@ -1,0 +1,26 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class TaxmappingListService
+{
+	@ActiveDB('taxmapping_list')
+	def em
+
+
+	@ProxyMethod
+	public def getList( params ) {
+		return em.getList(params);
+	}
+
+	@ProxyMethod
+	public def getFaasList(item) {
+		return em.getFaasList(item)
+	}
+
+
+	@ProxyMethod
+	public def getRevisionYears() {
+		return em.getRevisionYears().ry;
+	}
+}

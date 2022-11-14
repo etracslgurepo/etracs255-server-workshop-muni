@@ -1,0 +1,63 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class RPTSyncDataSupport
+{   
+	@Env
+	def env 
+
+	@Service('NotificationService')
+	def notificationSvc		
+
+
+	@ProxyMethod
+	public void updateEnv(syncdata) {
+		if (!env) 
+			env = [:]
+
+		if (syncdata.parent && syncdata.parent.remote && !env.orgclass) {
+			env.ORGID = syncdata.parent.remote.orgid
+			env.ORGCLASS = syncdata.parent.remote.orgclass
+		}
+	}
+
+
+	@ProxyMethod
+	public void notifyGroup(param){
+        def msg = [
+            objid     		: param.objid,
+            senderid  		: param.sender?.objid ? param.sender.objid : 'system',
+            sender    		: param.sender?.name ? param.sender?.name : 'system',
+            recipientid   	: param.recipientid,
+            recipienttype 	: (param.recipienttype ? param.recipienttype : 'group'),
+            message   		: param.msg,
+            filetype  		: param.filetype,
+            data 	  		: [objid: param.objid, taskid:param.taskid],
+        ]
+        notificationSvc.addMessage(msg);
+	}
+
+
+	@ProxyMethod
+	public void notifyRecommender(param) {
+		//get recommender and set taskid to approver task 
+		//to open the faas record in approve state 
+		def task = param.recommendertask
+		if (task && param.tasks){
+			task.objid = param.tasks.last().objid
+			def msg = [
+	            objid     : task.refid,
+	            recipientid : (task.assignee.objid ? task.assignee.objid : '-'),
+	            recipienttype : 'user',
+	            senderid  : (param.sender.objid ? param.sender.objid : '-'),
+	            sender    : param.sender.name,
+	            message   : param.msg,
+	            filetype  : param.filetype,
+	            data 	  : [taskid: task.objid],
+	        ]
+	        notificationSvc.addMessage(msg)
+		}		
+	}
+
+}

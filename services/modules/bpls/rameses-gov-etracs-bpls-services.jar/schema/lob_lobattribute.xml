@@ -1,0 +1,8 @@
+<schema>
+
+	<element tablename="lob_lobattribute">
+		<field name="lobid" primary="true"/>
+		<field name="lobattributeid" primary="true"/>
+	</element>
+
+</schema>

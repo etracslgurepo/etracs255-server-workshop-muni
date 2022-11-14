@@ -1,0 +1,154 @@
+import com.rameses.osiris3.xconnection.*;
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+import com.rameses.services.extended.*
+
+class MunicipalityRPTLedgerService
+{   
+	@Env 
+	def env 
+
+	@Service('RPTMainSyncDataService')
+	def syncSvc
+
+    @Service('RPTLedgerSyncDataService')
+    def  ledgerSyncSvc
+
+    @Service('RPTLedgerSyncDataSupportService')
+    def supportSvc     
+
+	@Service('FAASService')
+	def faasSvc 
+
+	@Service('RPTLedgerService')
+	def ledgerSvc 
+
+    @Service('Var')
+    def var
+    
+    @Service('RPTUtil')
+    def util
+
+    @DataContext("municipality")
+    def em_municipality
+    
+    @DataContext("barangay")
+    def em_barangay
+
+    @DataContext("propertyclassification")
+    def em_classification
+
+    @DataContext('faas')
+	def em_faas
+
+    @ActiveDB('municipality_ledger_sync')
+    def em_ledger_sync;
+
+
+
+    @ProxyMethod 
+    public def getCreateMode()  {
+        def mode = util.toBoolean(var.landtax_create_ledger_as_online, true);
+        if (mode) {
+            return 'online'
+        }
+        return 'manual'
+    }
+
+    @ProxyMethod
+    public def getMunicipalities() {
+        return em_municipality.select('objid,name,indexno,pin')
+                    .where('1=1')
+                    .orderBy('indexno')
+                    .list()
+    }
+
+    @ProxyMethod
+    public def getBarangays(lgu) {
+        return em_barangay.select('objid,name,indexno,pin')
+                    .find([parentid: lgu.objid])
+                    .orderBy('indexno')
+                    .list()
+    }
+
+    @ProxyMethod
+    public def getTxnTypes() {
+        return faasSvc.getTxnTypes()
+    }
+
+    @ProxyMethod
+    public def getClassifications() {
+        return em_classification.find([state: 'APPROVED']).orderBy('orderno').list()
+    }
+
+
+	@ProxyMethod
+	public def createLedger( params ) {
+        def faas = em_faas.findById(params)
+        if (!faas) {
+            throw new Exception('TD No. ' + params.tdno + ' is invalid or FAAS does not exist.');
+        }
+            
+        def ledger = null;
+        try{
+            ledger = ledgerSvc.getLedgerByFaasId( faas.objid )
+        }
+        catch(e){
+            //
+        }
+        if (ledger)
+            throw new Exception('Ledger for FAAS ' + faas.tdno + ' has already been created.');
+            
+        return ledgerSvc.postNewLedger(faas);
+	}
+
+    @ProxyMethod
+    public def createManualLedger(faas) {
+        try {
+            faas.lguid = faas.lgu.objid
+            faas.datacapture = true
+            faas.taxable = true
+            def ledger = ledgerSvc.postNewLedger(faas)
+            return ledgerSvc.open(ledger)
+        } catch (e ) {
+            e.printStackTrace()
+            throw e
+        }
+    }
+
+
+	@ProxyMethod
+	public def syncLedger(ledger) {
+		def mapping = supportSvc.getLedgerMapping(ledger)
+		mapping.idinfo = ledgerSyncSvc.getItemsObjid(ledger)
+
+		def syncdata = [:]
+        syncdata.refid =  ledger.objid 
+        syncdata.reftype = 'rptledger'
+        syncdata.refno = ledger.tdno
+        syncdata.action = 'SYNCDATA'
+        syncdata.remote = mapping.remote 
+        syncdata.data = mapping
+		def remoteledger = syncSvc.send(syncdata)
+
+		supportSvc.resolveIds(ledger, remoteledger)
+		ledgerSyncSvc.sync(remoteledger)
+		return [status:'OK']
+	}
+
+    @ProxyMethod
+    public void syncWithProvinceLedgers(params) {
+        if (!params) params = [:]
+        if (!params._limit) params._limit = 5
+        em_ledger_sync.getLedgersForSync(params).each {
+            try {
+                syncLedger(it)
+                em_ledger_sync.deleteLedger(it)
+                println 'Sync [INFO] Ledger ' + it.tdno
+            } catch(e) {
+                em_ledger_sync.deleteLedger(it)
+            }
+        }
+    }
+
+}

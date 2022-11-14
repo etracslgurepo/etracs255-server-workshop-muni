@@ -1,0 +1,11 @@
+<schema>
+	<element tablename="vw_income_ledger">
+		<field name="objid" primary="true"/>
+		<field name="jevid" required="true" />
+		<field name="itemacctid" required="true" />
+		<field name="fundid" required="true" />
+		<field name="amount" required="true" />
+		<field name="year" required="true" />
+		<field name="month" required="true" />
+	</element>
+</schema>

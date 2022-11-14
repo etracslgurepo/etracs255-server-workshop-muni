@@ -1,0 +1,94 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.UID;
+
+class AsyncNotificationService 
+{   
+    @ActiveDB(value='async_notification', em='notification') 
+    def em; 
+
+    @Service('DateService') 
+    def dateSvc; 
+
+    @ProxyMethod 
+    public def create( data ) { 
+    	def rundate = dateSvc.serverDate; 
+    	data.dtfiled = rundate.toString(); 
+    	em.create( data ); 
+
+		def pendingdata = [ 
+            objid       : data.objid, 
+            dtretry     : data.dtfiled, 
+            retrycount  : 0 
+        ]; 
+        em.create( pendingdata, 'pending' ); 
+    	return data; 
+    } 
+
+    @ProxyMethod 
+    public void removeEntity( params ) { 
+        params.refid = params.objid; 
+        em.delete(params, 'pending'); 
+        em.delete(params, 'processing'); 
+        em.delete(params, 'delivered'); 
+        em.delete(params, 'failed'); 
+        em.delete(params); 
+    } 
+
+    @ProxyMethod 
+    public def open( params ) { 
+    	return em.read( params ); 
+    } 
+
+    @ProxyMethod 
+    public def findPending( params ) {
+        return em.read( params, 'pending' ); 
+    }
+
+    @ProxyMethod 
+    public void markAsFailed( params ) { 
+        em.removePending( params ); 
+        em.removeProcess( params ); 
+        em.removeFailed([ refid: params.objid ]); 
+
+    	params.refid = params.objid; 
+    	params.objid = 'FMSG' + new UID(); 
+    	params.dtfiled = dateSvc.serverDate.toString(); 
+    	em.create( params, 'failed' ); 
+    } 
+
+    @ProxyMethod 
+    public void markAsDelivered( params ) { 
+        def data = em.findMessage( params ); 
+        if ( !data ) return; 
+
+    	em.removePending( params ); 
+        em.removeProcess( params ); 
+        em.removeDelivered([ refid: params.objid ]); 
+
+    	params.refid = params.objid; 
+    	params.objid = 'DMSG' + new UID(); 
+    	params.dtfiled = dateSvc.serverDate.toString(); 
+    	em.create( params, 'delivered' ); 
+    } 
+
+    @ProxyMethod 
+    public void reschedulePending( params ) {
+        def data = em.read( params, 'pending' ); 
+        if (data) {
+            def rundate = dateSvc.serverDate;
+            def retrycount = (data.retrycount? data.retrycount: 0) + 1; 
+            def interval = retrycount * 5; 
+            data.dtretry = dateSvc.add(rundate, interval+'s'); 
+            data.retrycount = retrycount; 
+            em.update( data, 'pending' ); 
+        } 
+        em.delete( params, 'processing' ); 
+    } 
+
+    @ProxyMethod 
+    public boolean containsMessage( msgid ) {
+        def data = em.findMessage([ objid: msgid ]); 
+        return ( data ? true : false ); 
+    } 
+} 

@@ -1,0 +1,60 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+
+class AdminAuthService 
+{	
+    @ActiveDB('user')
+    def user;
+
+    @Service('Var')
+    def var;
+
+    @Service('DateService')
+    def dateSvc;    
+
+    @ProxyMethod
+    public Map authenticate(username, password) {
+        def isSA = "sa".equalsIgnoreCase(username+'');
+        if (isSA) {
+            if (password != var.sa_pwd) 
+                throw new Exception("Access denied. Please check your username and password"); 
+
+            def sainfo = [userid:'sa', username:'sa']; 
+            if (var.sa_pwd_change_on_logon != '0') { 
+                sainfo.CHANGE_PWD_ON_LOGIN = true; 
+            } 
+            return sainfo; 
+        }
+
+        def info = user.findByUsername([username: username]);
+        if (!info) throw new Exception('User account does not exist');
+
+        if( info.pwd != password)
+            throw new Exception("Access denied. Please check your username and password");    
+
+        info.pwdlogincount = toInt(info.pwdlogincount); 
+        def pwd_change_login_count = toInt(var.pwd_change_login_count);
+        if (pwd_change_login_count > 0) {
+            user.incrementLoginCount(username, info.pwdlogincount);
+            info.pwdlogincount++;
+        }
+
+        def CHANGE_PWD_ON_LOGIN = false; 
+        if (pwd_change_login_count > 0 && info.pwdlogincount > pwd_change_login_count) 
+            CHANGE_PWD_ON_LOGIN = true;
+        else if (!info.pwdexpirydate || dateSvc.serverDate >= info.pwdexpirydate) 
+            CHANGE_PWD_ON_LOGIN = true; 
+
+        def result = [userid:info.objid, username:info.username];
+        result.CHANGE_PWD_ON_LOGIN = CHANGE_PWD_ON_LOGIN; 
+        return result;       
+    }	
+
+    private def toInt( value ) {
+        try {
+            return value.toInteger(); 
+        } catch(e) {
+            return 0; 
+        }
+    }       
+}

@@ -1,0 +1,729 @@
+import com.rameses.annotations.*;
+import java.rmi.server.*;
+import com.rameses.rules.common.*;
+import com.rameses.util.*;
+import com.rameses.services.extended.*;
+import rptis.landtax.facts.*;
+import rptis.landtax.actions.*;
+
+
+public class RPTBillingService
+{
+	@Env
+	def env
+
+	@ActiveDB('rptbill')
+	def em 
+
+	@DataContext('rptledger')
+	def em_rptledger
+
+	@DataContext('rptbill')
+	def em_rptbill
+
+	@DataContext('rptbill_ledger')
+	def em_rptbill_ledger
+
+	@DataContext('rptledger_item')
+	def em_rptledger_item
+
+	@DataContext('paymentorder_type')
+	def em_paymentorder_type
+
+	@DataContext('collectiontype')
+	def em_collectiontype
+
+	@DataContext('barcode_launcher')
+	def em_barcodelauncher;
+
+
+	@Service()
+	def self
+
+	@Service( dynamic=true )
+	def dynaSvc;
+
+	@Service('Var')
+	def var 
+
+	@Service('RPTUtil')
+	def util
+
+	@Service('DateService')
+	def dtSvc 
+
+	@Service('NumberService')
+	def numSvc
+
+	@Service('SequenceService')
+	def seqSvc
+
+	@Service('RPTLedgerService')
+	def ledgerSvc 
+
+	@Service('RPTBillingRuleService')
+	def ruleSvc
+
+
+	
+	def RULESET 			= 'rptbilling'
+	def FACT_PACKAGE 		= 'rptbilling.'
+	def MAX_ADVANCE_YEARS 	= 3 
+	def BARCODE_KEY 		= '56001'
+
+    def PAYMENTORDER_TYPE = 'RPT'
+
+	
+	@ProxyMethod
+	public def initBill() {
+		return initBill([_generate_barcode:true])
+	}
+
+	@ProxyMethod
+	public def initBill(params) {
+		def pdate = dtSvc.parseCurrentDate()
+		def objid = 'RB' + new java.rmi.server.UID()
+		def bill = [:]
+		bill.objid = objid 
+		bill.billid = objid 
+		bill.billtoyear = pdate.year
+		bill.billtoqtr = 4
+		bill.ledgers = []
+        bill.totals = [:]
+		bill.advancebill = false
+        bill.currentdate = pdate.date
+        bill.cy = pdate.year
+        bill.cqtr = pdate.qtr
+        bill.cmonth = pdate.month
+        if (params._generate_barcode == null || params._generate_barcode == true){
+        	bill.barcode = generateBarcode(bill)
+        }
+        bill.maxadvanceyear = getMaxAdvanceYear()
+        return bill 
+	}
+
+	@ProxyMethod
+	public def getBillByBarcode(params) { 
+		if (!params.barcodeid.startsWith(BARCODE_KEY)){
+			params.barcodeid = BARCODE_KEY + ':' + params.barcodeid;
+		}
+
+		params.barcode = params.barcodeid 
+
+		if (!params.barcode) {
+			throw new Exception('barcode must be specified.')
+		}
+
+		def perSvc = dynaSvc.lookup('PersistenceService', 'treasury');
+		def bc = perSvc.read([ _schemaname: 'barcode_launcher', objid: BARCODE_KEY ]); 
+		def colltype = bc?.collectiontype; 
+		if ( !colltype ) {
+			// get collectiontype from paymentorder_type
+	        def potype = em_paymentorder_type.find([ objid: PAYMENTORDER_TYPE ]).first(); 
+	        if ( potype?.collectiontype?.objid ) {
+		        colltype = potype.collectiontype; 
+	        }
+		}
+
+        if ( colltype?.objid ) {
+        	// load collectiontype record 
+			colltype = perSvc.read([ _schemaname: 'collectiontype', objid: colltype.objid ]); 
+        } 
+		if ( !colltype?.objid ) {
+			throw new Exception('Collection Type is not defined for barcode key ' + BARCODE_KEY + '.')
+		}
+
+
+		def bill = em_rptbill.find([ barcode: params.barcode ]).first(); 
+		if ( !bill ) { 
+			throw new Exception('Invalid barcode or associated bill has already expired.')
+		}
+
+		def islocaltxn =  (params._txntype == null || params._txntype != "FILIPIZEN"); 
+		if ( islocaltxn && bill.expirydate <= dtSvc.serverDate ) {
+			throw new Exception('Bill has already expired.')
+		}
+
+		bill.collectiontype = colltype; 
+
+		def pdate = dtSvc.parseCurrentDate()
+		bill.currentdate = pdate.date 
+        bill.cy = pdate.year
+        bill.cqtr = pdate.qtr
+        bill.cmonth = pdate.month
+        bill.maxadvanceyear = getMaxAdvanceYear()
+        bill.totals = [:]
+        bill.ledgers = em_rptbill_ledger.select('objid:{rptledgerid}').find([billid:bill.objid]).list()
+        if (!bill.ledgers) {
+        	throw new Exception('There are no unpaid ledgers for this bill.')
+        }
+		return bill 
+	}	
+
+
+
+	@Async
+	@ProxyMethod
+	public def generateBillAsync(bill) {
+		return self.generateBill(bill)
+	}
+
+	@ProxyMethod
+	public def generateBillByLedger(params){
+		def ledger = em_rptledger.find([objid:params.objid]).first() 
+		if (!ledger) throw new Exception('Ledger does not exist.')
+		
+		def option = [_generate_barcode:true]
+		if (params.billid) {
+			option._generate_barcode = false
+		}
+		def bill = initBill(option)
+
+		if (params.billid){
+			bill.objid = params.billid
+			bill.billid = params.billid 
+			bill.barcode = em_rptbill.select('barcode').find([objid:bill.objid]).first()?.barcode 
+		}
+		if (params.billtoyear) bill.billtoyear = params.billtoyear
+		if (params.billtoqtr) bill.billtoqtr = params.billtoqtr
+		bill.taxpayer = ledger.taxpayer 
+		bill.ledgers = [[objid:ledger.objid]]
+		bill._forpayment = true 
+		return  self.generateBill(bill)
+	}
+
+	@ProxyMethod
+	public def generateBillByTdNo(params){
+		def ledger = em_rptledger.select('objid,state').find([tdno:params.tdno]).first() 
+		if (!ledger) throw new Exception('Invalid TD No.')
+		if ('CANCELLED'.equalsIgnoreCase(ledger.state)) throw new Exception('Ledger has already been cancelled.')
+		if (!'APPROVED'.equalsIgnoreCase(ledger.state)) throw new Exception('Ledger is pending. Contact Land Tax office for assistance.')
+
+		params.objid = ledger.objid 
+		params.state = ledger.state
+		return generateBillByLedger(params)
+	}
+
+
+	@ProxyMethod
+	public def generateBill(bill) {
+		if (!bill.ledgers) throw new Exception('Ledgers must be specified.')
+		if (!bill.billtoyear) throw new Exception('Bill to Year must be specified.')
+		if (!bill.billtoqtr) throw new Exception('Bill to Quarter must be specified.')
+
+		def ledgersforbilling = bill.remove('ledgers')
+		def tmpbill = bill.clone()
+		bill.ledgers = []
+        bill.totals = [:]
+
+		ledgersforbilling.each{ledger ->
+			tmpbill.rptledgerid = ledger.objid 
+			tmpbill.rptledger = em.findOpenLedger(tmpbill)
+			println 'Recalculating ledger : ' + tmpbill.rptledger?.tdno 
+			validateAndSetBill(tmpbill)
+            tmpbill.rptledger._billdate = tmpbill.billdate
+	        def endyear = ( tmpbill.billtoyear < tmpbill.cy ? tmpbill.cy : tmpbill.billtoyear)
+	        ledgerSvc.postLedgerItemsForBilling(tmpbill.rptledger, tmpbill.billtoyear)
+	        tmpbill.items = ledgerSvc.getLedgerEntriesForBilling(tmpbill)
+	        tmpbill = ruleSvc.getBilling(tmpbill)
+			bill.expirydate = tmpbill.expirydate
+			bill.billdate = tmpbill.billdate
+			aggregateBill(bill, tmpbill)
+		}
+		saveBill(bill)
+		return bill 
+	}
+
+
+	@ProxyMethod
+	public def getOpenLedgers(bill){
+		if (!bill.taxpayer && !bill.rptledgerid) throw new Exception('Taxpayer must be specified.')
+		if (!bill.billtoyear) throw new Exception('Bill to year must be specified.')
+		if (!bill.billtoqtr) throw new Exception('Bill to quarter must be specified.')
+		bill.taxpayerid = bill.taxpayer?.objid 
+		bill.taxpayerid = (bill.taxpayerid ? bill.taxpayerid : '%')
+		if (bill.rptledgerid) {
+			bill.taxpayerid = '%'
+		} else {
+			bill.rptledgerid = '%'
+		}
+		bill.barangayid = (bill.barangay ? bill.barangay.objid : '%')
+		bill.rputype = (bill.rputype ? bill.rputype : '%')
+		return em.getBilledLedgers(bill)
+	}	
+
+	@ProxyMethod
+	public def getMaxAdvanceYear(){
+		def max_year = var.landtax_collection_max_advance_years_allowed
+		if (max_year) {
+			try{
+				return new java.math.BigDecimal(max_year.toString()).intValue() 
+			}
+			catch(e){
+				; 
+			}
+		}
+		return MAX_ADVANCE_YEARS;
+	}
+
+
+	@ProxyMethod
+	public def getShares(bill){
+		return ruleSvc.getShares(bill)
+	}
+	
+
+
+	/*=====================================================
+	*
+	* SUPPORT METHODS 
+	*
+	=====================================================*/
+	void validateAndSetBill(bill){
+		if (!bill.rptledger) {
+			throw new Exception('Ledger is fully paid or is exempted.')
+		}
+
+		bill.rptledgerid = bill.rptledger.objid
+		if (!bill.billdate) {
+			bill.billdate = bill.currentdate
+		}
+		else {
+			bill.billdate = dtSvc.parse('yyyy-MM-dd',bill.billdate) 
+		}
+
+		if (bill.billtoyear > bill.cy + getMaxAdvanceYear()){
+			throw new Exception('Bill To Year must not exceed year ' +  bill.maxbilltoyear + '.')
+		}
+
+		if (bill.advancepayment){
+			if (bill.billtoyear < bill.cy)
+				throw new Exception('Advance Year must be greater than current year.')
+		}
+		else if (bill.advancebill){
+			if ( bill.billdate < bill.currentdate )
+				throw new Exception('Advance Billing Date must be greater than current date.')
+		}
+		
+		if (bill.advancebill && bill.billdate <= (bill.currentdate - 1 ))
+            throw new Exception('Advance Billing Date must be greater than current date.')
+	}	
+
+
+	def generateBarcode(bill){
+		def cy = bill.cy.toString()[-2..-1]
+		def lguid = '000'
+		if (env){
+			if (env.ORGID){
+				lguid = env.ORGID.replaceAll('-', '')
+			}
+		}
+		return BARCODE_KEY + ':' + lguid + cy + seqSvc.getNextFormattedSeriesA('RPTBILL-' + cy,7)
+	}
+
+	void saveBill(bill){
+		if (bill.totals.total <= 0.0){
+			throw new Warning('There are no unpaid items found.')
+		}
+		if (bill._save == false) {
+			return
+		}
+
+		if (!bill.billto && bill.taxpayer){
+			bill.billto = [:]
+			bill.billto.objid = bill.taxpayer.objid
+			bill.billto.entityno = bill.taxpayer.entityno
+			bill.billto.name = bill.taxpayer.name
+			if (!(bill.taxpayer.address instanceof String)){
+				bill.billto.address = bill.taxpayer.address.text
+			} else{
+				bill.billto.address = bill.taxpayer.address
+			}
+		}
+		if (!bill.postedby){
+			bill.postedby = (env.FULLNAME ? env.FULLNAME : 'system') 
+			bill.postedbytitle = (env.FULLNAME ? env.FULLNAME : 'system') 
+		}
+		bill.taxpayer = bill.billto
+		bill.dtposted = bill.currentdate
+		bill.validuntil = bill.expirydate - 1
+		em_rptbill.save(bill)
+		bill.ledgers.collect{[billid:bill.objid, rptledgerid:it.objid]}.each{bl->
+			em_rptbill_ledger.save(bl)
+		}
+	}
+
+	void aggregateBill(bill, tmpbill){
+		if (!tmpbill.items) return;
+		
+		def rptledger = tmpbill.rptledger
+		if (!bill.reportformat || 'STANDARD'.equalsIgnoreCase(bill.reportformat.code)) {
+			rptledger.items = buildStandardItemsReport(tmpbill)
+		} else if ('SIMPLIFIED'.equalsIgnoreCase(bill.reportformat.code)) {
+			rptledger.items = buildSimplifiedItemsReport(tmpbill)
+		} else {
+			rptledger.items = buildAnnualItemsReport(tmpbill)
+		}
+
+		if (bill._forpayment && bill._forpayment == true) {
+        	rptledger.pay = true
+        	rptledger.billitems = tmpbill.billitems
+        	rptledger.billitems.each {
+        		it.amount = numSvc.round(it.amount)
+        	}
+        	rptledger.postingitems = buildPostingItems(tmpbill)
+        	rptledger.shares = tmpbill.shares
+
+        	def itemsTotal = numSvc.roundA(rptledger.items.sum{ (it.total ? it.total : 0) }, 2)
+        	def postItemsTotal = numSvc.roundA(rptledger.postingitems.sum{ (it.total ? it.total : 0) }, 2)
+        	def sharesTotal = 0.0
+        	if (rptledger.shares){
+        		sharesTotal = numSvc.roundA(rptledger.shares.sum{ (it.amount ? it.amount : 0) }, 2)
+        	}
+        	if (itemsTotal != postItemsTotal && itemsTotal != sharesTotal){
+        		throw new Exception('There is a discrepancy in items and shares total.\nPlease verify rules.')
+        	}
+		}
+
+		def fromyear = (rptledger.lastqtrpaid == 4 ? rptledger.lastyearpaid + 1 : rptledger.lastyearpaid)
+		def fromqtr = (rptledger.lastqtrpaid == 4 ? 1 : rptledger.lastqtrpaid + 1)
+
+		if (rptledger.items){
+			// for collection, adjust to handle tax difference
+			def pitem = rptledger.items.first()
+			if (util.isTrue(pitem.taxdifference)){
+				fromyear = pitem.year
+				fromqtr = (pitem.qtr ? pitem.qtr : 1)
+			}
+		}
+
+		rptledger.hastaxdifference = tmpbill.items.find{ util.isTrue(it.taxdifference)} != null 
+		rptledger.partialled = false
+		rptledger.fromyear = fromyear
+		rptledger.fromqtr = fromqtr
+		rptledger.toyear = tmpbill.billtoyear
+		rptledger.toqtr = tmpbill.billtoqtr
+		rptledger.total = rptledger.items.total.sum()
+		if (rptledger.total == null) rptledger.total = 0.0
+		if (!rptledger.nextbilldate){
+			em_rptledger.find([objid:rptledger.objid]).update([nextbilldate:bill.expirydate])
+		}
+
+		tmpbill.remove('items')
+		bill.ledgers << rptledger 
+		if (!bill.totals) bill.totals = [:]
+		tmpbill.totals.each{k,v ->
+			if (!bill.totals[k]){
+				bill.totals[k] = 0
+			}
+			bill.totals[k] = numSvc.round(bill.totals[k] + v)
+		}
+
+		if (bill.reportformat && 'SUMMARY'.equalsIgnoreCase(bill.reportformat.code)) {
+			rptledger.putAll(rptledger.items[0])
+			rptledger.remove('items')
+		}
+	}
+
+	def buildPostingItems(bill){
+		def items = []
+		bill.items.each{
+			items << [
+				itemid: it.objid,
+				rptledgerfaasid: it.rptledgerfaasid,
+				revtype: it.revtype,
+				revperiod: it.revperiod,
+				year: it.year,
+				qtr: (it.qtr ? it.qtr : null),
+				amount: it.amtdue,
+				interest: it.interest,
+				discount: it.discount,
+				partialled: it.partialled,
+				priority: it.priority,
+				total: it.amtdue + it.interest - it.discount
+			]
+		}
+		return items.sort{a,b -> 
+			def akey = a.year + ':' + a.qtr + ':' + a.priority 
+			def bkey = b.year + ':' + b.qtr + ':' + b.priority 
+			return akey <=> bkey
+		} 
+	}
+
+
+	void sortItems(items) {
+		items.sort{a, b ->
+			def ayrq = a.year + '-' + (a.qtr ? a.qtr : 0) + '-' + a.originalav
+			def byrq = b.year + '-' + (b.qtr ? b.qtr : 0) + '-' + b.originalav
+			return ayrq <=> byrq
+		}
+	}
+
+    def getQuarterIndicators(fromqtr, toqtr, addIndicator) {
+        def speriod = new StringBuffer();
+        (fromqtr..toqtr).each{
+            speriod.append(it)
+        }
+        if (addIndicator) {
+            speriod.append('Q,')
+        }
+        return speriod.toString()
+    }   
+
+
+	def buildStandardItemsReport(bill){
+		bill.totals = [total:0.0]
+		def items = []
+		def minyear = bill.items.year.min() 
+		def groups = bill.items.groupBy{ it.year + '-' + (it.qtr ? it.qtr : 1) + ':' + it.taxdifference + ':' + it.rptledgerfaasid }
+		groups.each{k, list ->
+			def first = list.first() 
+			def item = [:]
+			item.year = first.year 
+			item.qtr = first.qtr 
+			item.originalav = first.rptledgerfaas.assessedvalue 
+			item.taxdifference = first.taxdifference
+			item.period =  buildPeriod(bill, list, minyear)
+			item.periodqtrs = buildPeriodQuarters(bill, list, minyear)
+			item.total = 0.0 
+			item.flag = ''
+			list.each{
+				item[it.revtype] = numSvc.round(it.amtdue)
+				item[it.revtype+'int'] = numSvc.round(it.interest)
+				item[it.revtype+'disc'] = numSvc.round(it.discount)
+				item[it.revtype+'net'] = numSvc.round(it.amtdue - it.discount + it.interest)
+				item[it.revtype+'dp'] = numSvc.round(it.interest - it.discount)
+				item.total = numSvc.round(item.total + item[it.revtype+'net'])
+				if (!item.flag && !it.revtype.matches('basic|sef')) {
+					item.flag = '*'
+				}
+				calcBillTotals(it.revtype, bill, item)
+			}
+			if (item.taxdifference){
+				item.flag = '*'
+			}
+			items << item
+		}
+		sortItems(items)
+		return items
+	}
+
+	def buildSimplifiedItemsReport(bill){
+		bill.totals = [total:0.0]
+		def items = []
+		def minyear = bill.items.year.min() 
+		def groups = bill.items.groupBy{ it.year }
+		groups.each{k, list ->
+			def first = list.first() 
+			def item = [:]
+			item.year = first.year 
+			item.qtr = first.qtr 
+			item.originalav = first.rptledgerfaas.assessedvalue 
+			item.taxdifference = first.taxdifference
+			item.period = buildPeriod(bill, list, minyear)
+			item.periodqtrs = buildPeriodQuarters(bill, list, minyear)
+			item.total = 0.0 
+			item.flag = ''
+			list.each{
+				if (!item[it.revtype]) {
+					item[it.revtype] = 0.0
+					item[it.revtype+'int'] = 0.0
+					item[it.revtype+'disc'] = 0.0
+					item[it.revtype+'net'] = 0.0
+					item[it.revtype+'dp'] = 0.0
+				}
+				item.linetotal = numSvc.round(it.amtdue - it.discount + it.interest)
+				item[it.revtype] += numSvc.round(it.amtdue)
+				item[it.revtype+'int'] += numSvc.round(it.interest)
+				item[it.revtype+'disc'] += numSvc.round(it.discount)
+				item[it.revtype+'net'] +=  item.linetotal
+				item[it.revtype+'dp'] += numSvc.round(it.interest - it.discount)
+				item.total += item.linetotal
+				if (!item.flag && !it.revtype.matches('basic|sef')) {
+					item.flag = '*'
+				}
+				calcSimplifiedBillTotals(it.revtype, bill, item)
+			}
+
+			if (item.taxdifference){
+				item.flag = '*'
+			}
+			items << item
+		}
+		sortItems(items)
+		return items
+	}	
+
+	def buildAnnualItemsReport(bill){
+		bill.totals = [total:0.0]
+		def items = []
+
+		sortItems(bill.items)
+
+		def currentItem = bill.items.last()
+		def item = [:]
+		item.originalav = currentItem.rptledgerfaas.assessedvalue 
+		item.taxdifference = 0
+		item.period = buildAnnualPeriod(bill)
+		item.total = 0.0
+		bill.items.each{
+			if (item[it.revtype] == null) {
+				item[it.revtype] = 0.0
+				item[it.revtype+'int'] = 0.0
+				item[it.revtype+'disc'] = 0.0
+				item[it.revtype+'net'] = 0.0
+				item[it.revtype+'dp'] = 0.0
+			}
+			item[it.revtype] += numSvc.round(it.amtdue)
+			item[it.revtype+'int'] += numSvc.round(it.interest)
+			item[it.revtype+'disc'] += numSvc.round(it.discount)
+			item[it.revtype+'net'] += numSvc.round(it.amtdue - it.discount + it.interest)
+			item[it.revtype+'dp'] += numSvc.round(it.interest - it.discount)
+			item.subtotal = numSvc.round(it.amtdue - it.discount + it.interest)
+			item.total += item.subtotal
+			calcAnnualBillTotals(it.revtype, bill, item)
+		}
+		items << item
+		return items
+	}
+
+
+	def getStartEndQtr(bill, list, minyear) {
+        def firstitem = list.first()
+				def lastitem = list.last()
+
+        def startqtr = 1
+        def endqtr = 4
+
+				if (minyear < bill.rptledger.lastyearpaid ) {
+            //taxcredit
+            if (firstitem.qtr != null) startqtr = firstitem.qtr
+						if (lastitem.qtr != null) endqtr = lastitem.qtr
+        } else if (bill.billtoyear == firstitem.year) {
+            if (firstitem.qtr == null) {
+                if (firstitem.year == minyear) {
+                    startqtr = (bill.rptledger.lastqtrpaid == 4 ? 1 : bill.rptledger.lastqtrpaid + 1)
+                } 
+                endqtr = bill.billtoqtr
+            } else {
+                startqtr = firstitem.qtr 
+                endqtr = lastitem.qtr
+            }
+        } else if (firstitem.year == minyear) {
+            if (firstitem.qtr == null) {
+                startqtr = (bill.rptledger.lastqtrpaid == 4 ? 1 : bill.rptledger.lastqtrpaid + 1)
+            } else {
+                startqtr = firstitem.qtr
+																endqtr = firstitem.qtr
+            }
+        } else if (firstitem.qtr != null) {
+											startqtr = firstitem.qtr
+											endqtr = firstitem.qtr
+								}
+        return [startqtr: startqtr, endqtr: endqtr]
+    }
+
+	def buildPeriod(bill, list, minyear){
+		def qtr = getStartEndQtr(bill, list, minyear)
+
+        def period = list.first().year
+        if (qtr.startqtr == qtr.endqtr )
+            period = period + '-' + qtr.startqtr
+        else if (qtr.startqtr != 1 || qtr.endqtr != 4)
+            period = period + '-' + qtr.startqtr + '' + qtr.endqtr
+        return period
+    }    
+
+    def buildPeriodQuarters(bill, list, minyear){
+    	def qtr = getStartEndQtr(bill, list, minyear)
+        return getQuarterIndicators(qtr.startqtr, qtr.endqtr, false)
+    }    
+
+
+	def buildAnnualPeriod(bill){
+		def firstitem = bill.items.first()
+		def lastitem = bill.items.last()
+		def speriod = new StringBuffer()
+		if (firstitem.qtr  == null) {
+			firstitem.qtr = (bill.rptledger.lastqtrpaid == 4 ? 1 : bill.rptledger.lastqtrpaid + 1)
+		}
+		if (firstitem.year == lastitem.year) {
+			if (firstitem.qtr == bill.billtoqtr) {
+				speriod.append(firstitem.qtr + 'Q,')
+			} else if (firstitem.qtr != 1 || bill.billtoqtr != 4) {
+				speriod.append(firstitem.qtr + '' + bill.billtoqtr + 'Q,')
+			} else if (firstitem.qtr == null && bill.billtoqtr != 4) {
+				speriod.append('1' + bill.billtoqtr + 'Q,')
+			}
+			speriod.append(firstitem.year)
+		} else {
+			speriod.append(firstitem.qtr + 'Q,')
+			speriod.append(firstitem.year)
+			speriod.append('-')
+			if (lastitem.qtr != null && bill.billtoqtr != 4) {
+				speriod.append(bill.billtoqtr + 'Q,')
+			}
+			speriod.append(lastitem.year)
+		}        
+		return speriod 
+	}
+
+
+	void calcBillTotals(revtype, bill, item){
+		def keys = [revtype]
+		keys << revtype + 'int'
+		keys << revtype + 'disc'
+		keys << revtype + 'net'
+		keys << revtype + 'dp'
+
+		if (!bill.totals[revtype]){
+			keys.each{
+				bill.totals[it] = 0.0
+			}
+		}
+
+		keys.each{
+			bill.totals[it] += item[it]
+		}
+		bill.totals.total += item[revtype+'net']
+	}
+
+	void calcAnnualBillTotals(revtype, bill, item){
+		def keys = [revtype]
+		keys << revtype + 'int'
+		keys << revtype + 'disc'
+		keys << revtype + 'net'
+		keys << revtype + 'dp'
+
+		if (!bill.totals[revtype]){
+			keys.each{
+				bill.totals[it] = 0.0
+			}
+		}
+
+		keys.each{
+			bill.totals[it] += item[it]
+		}
+		bill.totals.total += item.subtotal 
+	}
+
+	void calcSimplifiedBillTotals(revtype, bill, item){
+		def keys = [revtype]
+		keys << revtype + 'int'
+		keys << revtype + 'disc'
+		keys << revtype + 'net'
+		keys << revtype + 'dp'
+
+		if (!bill.totals[revtype]){
+			keys.each{
+				bill.totals[it] = 0.0
+			}
+		}
+
+		keys.each{
+			bill.totals[it] += item[it]
+		}
+		bill.totals.total += item.linetotal
+	}
+	
+}

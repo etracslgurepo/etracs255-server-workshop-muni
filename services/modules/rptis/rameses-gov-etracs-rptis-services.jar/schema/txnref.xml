@@ -1,0 +1,11 @@
+<schema>
+	<element tablename="txnref">
+		<field name="oid" primary="true" />
+		<field name="objid" />
+		<field name="refid" />
+		<field name="msg" />
+	</element>
+</schema>
+
+
+

@@ -1,0 +1,100 @@
+import com.rameses.annotations.*;
+import java.util.concurrent.*;
+
+class LoginPluginServiceInterceptor  {
+
+	@DataContext("sys_domain")
+	def domainEm;
+
+	@Service(dynamic=true)
+	def dynaSvc;
+
+	@Context 
+	def appCtx;
+
+	@After(pattern="LoginService.login" )
+	public void afterLogin( evt ) {
+		def res = evt.result;
+
+		def orgid = res.env.ORGID;
+		if( res.env.ORGROOT == 1 ) {
+			orgid = null;
+		}
+
+		def plugins = domainEm.where("1=1").list();
+		
+		def executor = Executors.newCachedThreadPool(); 
+		def futures = []; 
+
+		plugins.each{ pp-> 
+			def roleSvc = null; 
+			try {
+				roleSvc = dynaSvc.lookup( "UserRoleService", pp.connection );
+			} catch(Throwable t) {
+				// do nothing 
+			}
+
+			def param = [ orgid: orgid, userid: res.USERID ]; 
+			def loader = createLoader( pp, param, roleSvc ); 
+			futures.add( executor.submit( loader )); 
+		}
+
+		futures.each{ fu-> 
+			def map = null; 
+			try {
+				map = fu.get(); 
+			} 
+			catch(Throwable t) { 
+				// do nothing 
+			} 
+
+			if ( map ) { 
+				res.env.ROLES.putAll( map ); 
+			}
+		}
+
+        try { 
+            executor.shutdown(); 
+        } 
+        catch(Throwable t){
+        	// do nothing 
+        } 
+        finally { 
+	        futures.clear(); 
+	        futures = null; 
+	        executor = null; 
+        }
+	}
+
+
+	def createLoader( plugin, param, roleSvc ) {
+
+		return [
+
+			call: {
+				def result = [:];
+				
+				try { 
+					if ( roleSvc == null ) {
+						println "\nFailed to load authorization for domain " + plugin; 
+						return null; 
+					} 
+
+					def list = roleSvc.getUserRoles([ userid: param.userid, orgid: param.orgid ]);
+					if ( list ) {
+						list.each{ k,v->
+							result.put( plugin.name.toUpperCase() +"."+k, v ); 
+						} 
+					} 
+				} 
+				catch( Throwable err ) { 
+					result = null; 
+					println "\nFailed to load authorization for domain " + plugin.name + " -> " + err.getMessage();
+				}  
+
+				return result; 
+			}
+
+		] as Callable; 
+	}
+}

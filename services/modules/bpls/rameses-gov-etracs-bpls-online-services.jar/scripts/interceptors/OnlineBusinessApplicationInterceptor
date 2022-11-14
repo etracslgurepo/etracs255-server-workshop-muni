@@ -1,0 +1,16 @@
+import com.rameses.annotations.*;
+
+class OnlineBusinessApplicationInterceptor {
+
+	@DataContext('online_business_application')
+	def online_app;
+
+	@After(pattern="PersistenceService.read", eval="#{ args[0]._schemaname == 'vw_online_business_application' }")
+	public void afterRead( evt ) { 
+		def result = evt.result;
+
+		// load data from the actual table 
+		def app = online_app.find([ objid: result.objid.toString() ]).first(); 
+		if ( app ) result.putAll( app ); 
+	} 
+}

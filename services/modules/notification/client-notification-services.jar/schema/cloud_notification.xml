@@ -1,0 +1,60 @@
+<schema>
+
+	<element name="cloud_notification" tablename="cloud_notification">
+		<field name="objid" primary="true"/>
+		<field name="dtfiled" required="true"/>
+		<field name="sender" required="true"/>
+		<field name="senderid" required="true"/>
+		<field name="groupid" required="true"/>
+		<field name="message" required="true"/>
+		<field name="messagetype" required="true"/>
+		<field name="filetype" required="true"/>
+		<field name="channel" required="true"/>
+		<field name="channelgroup" required="true"/>
+		<field name="origin" />
+		<field name="data" />
+		<field name="attachmentcount"/> 
+	</element> 
+
+	<element name="attachment" tablename="cloud_notification_attachment">
+		<field name="objid" primary="true"/>
+		<field name="parentid" required="true"/>
+		<field name="dtfiled" required="true"/>
+		<field name="fileid" required="true"/>
+		<field name="indexno" required="true"/>
+		<field name="name" required="true"/>
+		<field name="type" />
+		<field name="description"/>
+	</element>	
+
+	<element name="pending" tablename="cloud_notification_pending">
+		<field name="objid" primary="true"/>
+		<field name="dtfiled" required="true"/>
+		<field name="dtexpiry" required="true"/>
+		<field name="dtretry" required="true"/>
+		<field name="type" required="true"/>
+	</element>		
+
+	<element name="failed" tablename="cloud_notification_failed">
+		<field name="objid" primary="true"/>
+		<field name="dtfiled" required="true"/>
+		<field name="refid" required="true"/>
+		<field name="reftype" required="true"/>
+		<field name="errormessage" required="true"/> 
+	</element>	
+
+	<element name="delivered" tablename="cloud_notification_delivered">
+		<field name="objid" primary="true"/>
+		<field name="dtfiled" required="true"/>
+		<field name="traceid" required="true"/>
+		<field name="tracetime" required="true"/>
+	</element>	
+
+	<element name="received" tablename="cloud_notification_received">
+		<field name="objid" primary="true"/>
+		<field name="dtfiled" required="true"/>
+		<field name="traceid" required="true"/>
+		<field name="tracetime" required="true"/>
+	</element>	
+	
+</schema>

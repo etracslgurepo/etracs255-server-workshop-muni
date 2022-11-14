@@ -1,0 +1,35 @@
+<schema>
+	
+	<element tablename="sys_wf_task">
+		<field name="objid" primary="true"/>
+		<field name="refid" required="true"/>
+		<field name="parentprocessid" />
+		<field name="state"/>
+		<field name="startdate" />
+		<field name="assignee_objid"/>
+		<field name="assignee_name"/>
+		<field name="enddate"/>
+		<field name="actor_objid"/>
+		<field name="actor_name"/>
+		<field name="message"/>
+	</element>	
+
+	<element name="subtask" tablename="sys_wf_subtask">
+		<field name="objid" primary="true"/>
+		<field name="taskid" required="true"/>
+		<field name="requester_objid" />
+		<field name="requester_name" />
+		<field name="requestdate" />
+
+		<field name="startdate" required="true"/>
+		<field name="assignee_objid" required="true"/>
+		<field name="assignee_name" required="true"/>
+		<field name="enddate"/>
+		<field name="actor_objid"/>
+		<field name="actor_name"/>
+		<field name="remarks"/>
+		<field name="message"/>
+		<field name="action" required="true"/>
+	</element>	
+
+</schema>

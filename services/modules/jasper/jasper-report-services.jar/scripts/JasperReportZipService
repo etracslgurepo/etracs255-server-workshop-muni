@@ -1,0 +1,77 @@
+import com.rameses.annotations.*;
+import java.io.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import java.util.zip.*;
+
+class JasperReportZipService  {
+	
+	@Service("JasperReportService")
+	def jasperSvc;
+
+	String outputReportPath = "/apps/server/output/";
+
+	@ProxyMethod
+	public def generate( def o ) {
+		def reportid = o.reportid;	
+		def attachments = o.attachments;
+		if( !attachments ) throw new Exception("attachments is required in JasperReportZipService.generate");
+		
+		attachments.each { p->
+			if(!p.filename) {
+				def token = jasperSvc.generateReport( p );
+				p.filename = outputReportPath + token.tokenid + "." + ( p.ext ? p.ext : "pdf" );			
+			}
+			if(!p.title) p.title = p.filename;
+		}
+
+		FileOutputStream fos = null;
+		ZipOutputStream zipOS = null;
+
+		String fileid = "ZIP" + Encoder.MD5.encode( ""+new UID() ) + ".zip";
+
+		try {
+			fos = new FileOutputStream(outputReportPath+fileid); 
+			zipOS = new ZipOutputStream(fos);
+			attachments.each { tfile ->
+				writeToZipFile(tfile, zipOS  );
+			}
+		}
+		catch( ex ) {
+			throw ex;
+		}	
+		finally {
+			try { zipOS.close(); } catch(ign) {;}
+            try { fos.close();  } catch(ign) {;}
+
+			//delete all file attachments after archiving
+			attachments.each { p->
+				def file = new File( p.filename );
+				file.delete();
+			}            
+		}	
+		return [tokenid: fileid];
+	}
+
+	private void writeToZipFile(def entry, ZipOutputStream zipStream) throws FileNotFoundException, IOException { 
+		def fpath = entry.filename;
+		def fname = entry.title;
+
+		File aFile = new File(fpath); 
+		FileInputStream fis = new FileInputStream(aFile); 
+		ZipEntry zipEntry = new ZipEntry(fname); 
+		zipStream.putNextEntry(zipEntry); 
+		byte[] bytes = new byte[1024]; 
+		int length; 
+		while ((length = fis.read(bytes)) >= 0) { 
+			zipStream.write(bytes, 0, length); 
+		} 
+		zipStream.closeEntry(); 
+		fis.close(); 
+	} 
+
+	
+
+}
+
+

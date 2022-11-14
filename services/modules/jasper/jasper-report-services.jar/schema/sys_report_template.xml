@@ -1,0 +1,9 @@
+<schema>
+	<element tablename="sys_report_template">
+		<field name="name" primary="true" caption="Name" searchable="true" visible="true"/>
+		<field name="title" required="true" caption="Title"/>
+		<field name="filepath" caption="File Path"/>	
+		<field name="master" required="true" caption="Master"/>
+	</element>
+</schema>
+

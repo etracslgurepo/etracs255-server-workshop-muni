@@ -1,0 +1,28 @@
+import com.rameses.annotations.*;
+
+/*****************************************************
+* This accepts a list and returns a sum of qty
+*
+******************************************************/
+class CashBreakdownSummaryService  {
+
+	@ProxyMethod
+	public def summarize( list ) { 
+		if ( !list ) return []; 
+
+		def tmps = []; 
+		list.each{ tmps.addAll( it ); } 
+
+		def result = []; 
+		tmps.groupBy{ it.denomination }.each { k,v-> 
+			def m = [:]; 
+			m.denomination = k; 
+			m.caption = v.first().caption;
+			m.qty = v.sum{( it.qty ? it.qty : 0 )} 
+			m.amount = v.sum{( it.amount ? it.amount: 0.0 )} 
+			result << m; 
+		} 
+		tmps.clear(); 
+		return result; 
+	} 
+}

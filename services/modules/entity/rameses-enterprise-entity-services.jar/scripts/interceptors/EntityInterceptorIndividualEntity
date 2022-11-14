@@ -1,0 +1,88 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import java.rmi.server.UID;
+import com.rameses.util.*;
+import com.rameses.io.*;
+import com.rameses.services.extended.*;
+
+class EntityInterceptorIndividualEntity  {
+
+	@ActiveDB("entityindividual")
+	def	em; 
+
+	@Service("LOVService")
+	def LOV;
+
+	@Service("DateService")
+	def dtSvc;
+
+	@Service('LogService')
+	def logSvc 
+
+
+	@After(pattern="EntityService.create", eval="args[0].type == 'INDIVIDUAL'")
+	public void beforeCreateIndividual( evt ) {
+		def parms = evt.args[0];
+		if( !parms?.loaded ) {
+			em.create( parms );
+		}
+		logSvc?.log('create', 'IndividualEntity', parms.objid)
+	}
+
+	@After(pattern="EntityService.update", eval="args[0].type == 'INDIVIDUAL'")
+	public void beforeUpdateIndividual( evt ) {
+		def parms = evt.args[0];
+		if( !parms?.loaded ) {
+			em.update( parms );
+		}
+		logSvc?.log('update', 'IndividualEntity', parms.objid)
+	}
+
+	private void loadData( def entity ) {
+		if (entity.birthdate){ 
+			try { 
+				entity.age = dtSvc.calculateAge( entity.birthdate ); 
+			} catch(e) {;} 
+		} 
+		if( entity.gender ) {
+			entity.gendername = LOV.GENDER.get( entity.gender );
+		}
+		if( entity.civilstatus ) {
+			entity.civilstatusname = LOV.CIVIL_STATUS.get( entity.civilstatus );
+		}
+	}
+
+	@After(pattern="EntityService.open", eval="result?.type == 'INDIVIDUAL'")
+	public void afterOpen( evt ) {
+		def parms = evt.args[0];
+		def entity = evt.result;
+		if( !parms?.loaded ) {
+			def e = em.read( [objid: entity.objid ] )
+			if (e){
+				entity.putAll (e);
+				loadData( entity );
+			}
+		}
+	}
+
+	@After(pattern="IndividualEntityService.open")
+	public void showInfo( evt ) {
+		def entity = evt.result;
+		loadData( entity );
+	}
+
+	@After(pattern="EntityService.getTypes", index=0)
+	public void addTypes( evt ) {
+		def types = evt.result;
+		types << "INDIVIDUAL";
+	}
+
+	@After(pattern="EntityService.getPhoto") 
+	public void loadPhoto( evt ) {
+		def params = evt.args[0];
+		def nfo = em.findPhoto( params ); 
+		if ( nfo?.photo ) { 
+			evt.result.photo = nfo.photo; 
+		} 
+	}
+}

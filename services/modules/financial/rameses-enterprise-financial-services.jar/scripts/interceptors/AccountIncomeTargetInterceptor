@@ -1,0 +1,34 @@
+import com.rameses.annotations.*;
+
+class AccountIncomeTargetInterceptor {
+	
+	@DataContext('account_incometarget')
+	def main_db;
+
+	@DataContext('vw_account_incometarget')
+	def vw_db;
+
+	@Before(pattern="PersistenceService.create", eval="#{ args[0]._schemaname == 'account_incometarget' }")
+	public void beforeCreate( evt ) {
+		def o = evt.args[0]; 
+
+		if ( o.itemid == null ) o.itemid = o.item?.objid; 
+	} 
+
+	@After(pattern="PersistenceService.create", eval="#{ args[0]._schemaname == 'account_incometarget' }")
+	public void afterCreate( evt ) {
+		def res = evt.result; 
+		loadInfo( res ); 
+	} 
+
+	@After(pattern="PersistenceService.open", eval="#{ args[0]._schemaname == 'account_incometarget' }")
+	public void afterOpen( evt ) {
+		def res = evt.result; 
+		loadInfo( res ); 
+	} 
+
+	void loadInfo( res ) {
+		def o = vw_db.find([ objid: res.objid ]).first(); 
+		if ( o ) res.putAll( o );  
+	}
+} 

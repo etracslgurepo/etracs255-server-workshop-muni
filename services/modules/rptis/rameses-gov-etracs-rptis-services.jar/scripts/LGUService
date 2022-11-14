@@ -1,0 +1,123 @@
+import com.rameses.annotations.*
+import com.rameses.services.extended.*
+import java.rmi.server.UID
+
+class LGUService
+{
+    @Env
+    def env 
+
+	@ActiveDB('lgu')
+	def em
+
+	@Service('BarangayLookupService')
+	def brgySvc 
+
+	@Service('MunicipalityLookupService')
+	def muniSvc 
+	
+	@Service('ProvinceLookupService')
+	def provSvc 
+
+	@Service('CityLookupService')
+	def citySvc 
+
+	@Service('DistrictLookupService')
+	def distSvc
+
+
+    @ProxyMethod
+    public def getLgus(){
+        def orgclass = env.ORGCLASS 
+        def orgid = env.ORGID 
+        if ('PROVINCE'.equalsIgnoreCase(orgclass)) {
+            return lookupMunicipalities([:])
+        }
+        else if ('MUNICIPALITY'.equalsIgnoreCase(orgclass)) {
+            return [lookupMunicipalityById(orgid)]
+        }
+        else if ('CITY'.equalsIgnoreCase(orgclass)) {
+            return [lookupCityById(orgid)]
+        }
+        return []
+    }
+    
+
+    @ProxyMethod
+    public def lookupBarangays(params) {
+    	return brgySvc.getList(params)
+    }
+
+    @ProxyMethod
+    public def getBarangaysByParentId( parentid ) {
+        return brgySvc.getListByRootId(parentid)
+    }
+
+
+    @ProxyMethod
+    public def lookupBarangayById( objid ) {
+    	return brgySvc.getById(objid) 
+    }
+
+    @ProxyMethod
+    public def lookupBarangaysByParentid(parentid) {
+        if (!parentid) parentid = '%'
+        return brgySvc.getListByParentid(parentid)
+    }    
+
+    @ProxyMethod
+    public def lookupBarangaysByRootId(rootid) {
+        if (!rootid) rootid = '%'
+        return brgySvc.getListByRootId(rootid)
+    }
+
+    @ProxyMethod
+    public def lookupMunicipalities(params) {
+    	return muniSvc.getList(params)
+    }
+
+
+    @ProxyMethod
+    public def lookupMunicipalityById( objid ) {
+    	return muniSvc.getById(objid)
+    }
+
+
+    @ProxyMethod
+    public def lookupCities(params) {
+    	return citySvc.getList(params)
+    }
+
+
+    @ProxyMethod
+    public def lookupCityById( objid ) {
+    	return citySvc.getById(objid)
+    }
+
+
+    @ProxyMethod
+    public def lookupDistricts(params) {
+    	return distSvc.getList(params)
+    }
+
+    @ProxyMethod
+    public def lookupDistrictsByParentid(parentid) {
+        return distSvc.getListByParentid( parentid )
+    }
+
+
+    @ProxyMethod
+    public def lookupDistrictById( objid ) {
+    	return distSvc.getById(objid)
+    }
+	
+	@ProxyMethod
+    public def lookupProvinces(params) {
+    	return provSvc.getList(params)
+    }
+	
+	@ProxyMethod
+    public def lookupProvinceById( objid ) {
+    	return provSvc.getById(objid)
+    }
+}

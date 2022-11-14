@@ -1,0 +1,30 @@
+import com.rameses.annotations.*
+
+class SchemaService {
+
+	@PersistenceContext
+	def db;
+
+	@ProxyMethod
+	public def getSchema( def o ) {
+		if( !o.name )
+			throw new Exception("SchemaService.getSchema. Please indicate a schema name [name]");
+
+		def elem = db.schemaManager.getElement( o.name );
+
+		String adapter = o.adapter;
+		if(!adapter) adapter = elem.properties.adapter;
+		if(!adapter) adapter =  elem.schema.properties.adapter;
+		if(!adapter ) adapter = "main";
+		
+		if( !adapter )
+			throw new Exception("QueryService.getSchema. Please indicate an adapter");
+		def em = db.lookup( adapter );			
+		em.name = o.name;
+		if ( o.colnames ) {
+			return em.getSchema( o.colnames ); 
+		} else { 
+			return em.getSchema(); 
+		}
+	}
+}

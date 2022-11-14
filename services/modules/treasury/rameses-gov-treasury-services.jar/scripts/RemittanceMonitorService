@@ -1,0 +1,28 @@
+import com.rameses.annotations.*;
+
+class RemittanceMonitorService {
+	
+	@ActiveDB('remittance_monitor') 
+	def monitor_db; 
+
+	@Service('DateService') 
+	def dateSvc; 
+
+	@ProxyMethod 
+	public def getColumns( params ) {
+		return [
+			[name:'collector.name', caption:'Collector'],
+			[name:'lastremittanceno', caption:'Last Remittance No'],
+			[name:'lastremittancedate', caption:'Last Remittance Date', type:'date', outputFormat:'yyyy-MM-dd HH:mm:ss'],
+			[name:'amount', caption:'Unremitted Amount', type:'decimal', width:150, maxWidth:200],
+			[name:'dummy-column', caption:' '] 
+		]; 
+	} 
+
+	@ProxyMethod 
+	public def getList( params ) { 
+		def m = [ rundate: dateSvc.getServerDate() ]; 
+		return monitor_db.getUnremittedSummaries( m );  
+	} 
+
+}

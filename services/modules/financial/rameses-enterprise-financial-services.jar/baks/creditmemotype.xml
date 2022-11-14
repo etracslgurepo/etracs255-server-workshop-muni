@@ -1,0 +1,12 @@
+<schema>
+	<element tablename="creditmemotype" >
+		<field name="objid" primary="true" />
+		<field name="title" required="true" />
+		<field name="issuereceipt" required="true" />
+		<field name="handler" required="true" />
+		<field name="sortorder" required="true" />
+		<field name="fund_objid" required="true" />
+		<field name="fund_code" required="true" />
+		<field name="fund_title" required="true" />
+	</element>
+</schema>

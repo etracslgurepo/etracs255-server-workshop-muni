@@ -1,0 +1,10 @@
+<schema>
+	<element tablename="entity_mapping">
+		<field name="objid" primary="true" />
+		<field name="parent_objid" required="true" />
+		<field name="org_objid" />
+	</element>
+</schema>
+
+
+

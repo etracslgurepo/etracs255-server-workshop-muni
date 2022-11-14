@@ -1,0 +1,11 @@
+<schema adapter="queue">
+    <element tablename="queue_number">
+		<field name="objid" primary="true" prefix="QN"/> 
+		<field name="txndate" required="true"/> 
+		<field name="state" required="true"/> 
+		<field name="groupid" required="true"/> 
+		<field name="sectionid" required="true"/> 
+		<field name="seriesno" required="true"/> 
+		<field name="ticketno" required="true"/> 
+    </element> 
+</schema>

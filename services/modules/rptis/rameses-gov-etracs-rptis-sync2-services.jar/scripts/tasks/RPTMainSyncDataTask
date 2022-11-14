@@ -1,0 +1,22 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+
+class RPTMainSyncDataTask {
+
+	@DataContext('rpt_syncdata')
+	def em_syncdata
+
+	@Service('RPTMainSyncDataService')
+	def svc 
+
+	@Schedule(interval=5)
+	public void processItemsForSync(task) {
+		svc.processItemsForSync()
+	}
+
+	@Schedule(interval=10)
+	public void cleanupCompleted(task) {
+		em_syncdata.deleteCompleted();
+	}
+
+}

@@ -1,0 +1,28 @@
+<schema>
+	<element tablename="batchgr">
+		<field name="objid" primary="true" prefix="BG" />
+		<field name="state" required="true" caption="State" />
+		<field name="ry" required="true" caption="Revision Year" searchable="true" indexed="true" />
+		<field name="txntype_objid" required="true" />
+		<field name="txnno" required="true" caption="Txn No." searchable="true" indexed="true" />
+		<field name="txndate" required="true" caption="Txn Date" />
+		<field name="effectivityyear" required="true" type="integer" caption="Effectivity Year" />
+		<field name="effectivityqtr" required="true" type="integer" caption="Effectivity Qtr" />
+		<field name="memoranda" />
+		<field name="rputype"  caption="Kind" searchable="true" indexed="true" />
+		<field name="section" caption="Section" searchable="true"  />
+		<field name="originlgu_objid" required="true" />
+		<complex name="lgu" ref="sys_org" jointype="many-to-one" 
+			required="true" includefields="code,name,orgclass" >
+				<key field="lgu_objid" target="objid" />
+		</complex>
+		<complex name="barangay" ref="barangay" jointype="many-to-one" 
+			required="true" includefields="code,name,indexno,pin" >
+				<key field="barangay_objid" target="objid" />
+		</complex>
+		<complex name="classification" ref="propertyclassification" jointype="many-to-one" 
+			required="false" includefields="code,name" >
+				<key field="classification_objid" target="objid" />
+		</complex>
+	</element>
+</schema>

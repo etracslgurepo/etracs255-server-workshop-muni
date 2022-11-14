@@ -1,0 +1,33 @@
+<schema>
+	<element name="bankaccount" tablename="bankaccount">
+		<field name="objid" primary="true" prefix="=BNKACCT"/>
+		<field name="state" required="true" visible="false" defaultValue="DRAFT"/>
+		<field name="code" required="true" caption="Acct No" searchable="true"/>
+		<field name="title" required="true" caption="Title" searchable="true"/>
+		<field name="accttype" visible="false" lov="BANK_ACCOUNT_TYPES"/>
+		<field name="description" visible="false"/>
+		<field name="acctid"/>
+
+		<complex name="bank" ref="bank" jointype="many-to-one">
+			<key field="bank_objid" target="objid"/>
+		</complex>
+
+		<field name="bank_code" required="true" caption="Bank Code"/>
+		<field name="bank_name" required="true" searchable="true"/>
+		
+		<field name="fund_objid" required="true" />
+		<field name="fund_code" required="true" caption="Fund code"/>
+		<field name="fund_title" required="true" caption="Fund Title" searchable="true"/>
+		
+		<field name="currency" required="true" visible="false" lov="CURRENCY_TYPES"/>
+		
+		<complex name="account" ref="itemaccount" jointype="many-to-one" includefields="code,title" required="false">
+			<key field="acctid" target="objid" />
+		</complex>
+
+	</element>
+	
+	
+</schema>
+
+

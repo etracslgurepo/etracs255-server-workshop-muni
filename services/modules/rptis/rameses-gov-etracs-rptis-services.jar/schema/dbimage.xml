@@ -1,0 +1,20 @@
+<schema>
+	<element name="header" tablename="image_header">
+		<field name="objid" primary="true"/>
+		<field name="refid" />
+		<field name="parentid" />
+		<field name="title" />
+		<field name="filesize"/>
+		<field name="extension" />
+	</element>
+
+	<element name="chunk" tablename="image_chunk">
+		<field name="objid" primary="true"/>
+		<field name="parentid"/>
+		<field name="fileno" />
+		<field name="byte"/>
+	</element>
+</schema>
+
+
+

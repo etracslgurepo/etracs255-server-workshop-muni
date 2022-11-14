@@ -1,0 +1,66 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+import java.rmi.server.UID
+
+class RPTReportFaasTitledListingService
+{
+    @Env
+    def env 
+
+    @ActiveDB('rptreport_titledfaaslisting')
+    def em
+
+    @Service('NumberService')
+    def numSvc 
+
+
+    @Async
+    @ProxyMethod
+    public def buildReport(params){
+    	params.lguid = (params.lgu ? params.lgu.objid  : '%')
+        params.barangayid = (params.barangay ? params.barangay.objid : '%') 
+        params.section = (params.section ? params.section : '%')
+        params.taxpayerid = (params.taxpayer ? params.taxpayer.objid : '%') 
+
+        def list = em.getTitledProperties(params)
+		if ( !list ) throw new Exception('There are no records found.')
+
+        list.each{
+            if (it.administrator && it.administrator.name){
+                it.owner.name = it.owner.name + '\nAdministrator: ' + it.administrator.name 
+            }
+
+            if (isAgricultural(it))
+                it.area = numSvc.format('#,##0.000000', it.totalareaha) + ' ha'
+            else 
+                it.area = numSvc.format('#,##0.00', it.totalareasqm)
+        }
+
+        def forlguname = env.ORGCLASS + ' OF ' + env.ORGNAME 
+        if (params.lgu){
+            forlguname = params.lgu.lgutype.toUpperCase() + ' OF ' + params.lgu.name
+        }
+
+        def p = [
+            TITLE      : 'LIST OF TITLED PROPERTIES', 
+            FORLGUNAME : forlguname,
+            BARANGAY   : (params.barangay ? params.barangay.name : 'ALL'),
+            BYTAXPAYER : params.taxpayer != null, 
+        ]
+
+		return [
+            parameters : p,
+            reportdata : list
+        ]
+    }
+
+    def isAgricultural(item){
+        if (item.classcode?.toUpperCase().matches('A|AGR')) 
+            return true
+        if (item.classification?.toUpperCase().matches('AGRICULTURAL')) 
+            return true
+        return false 
+    }
+
+}

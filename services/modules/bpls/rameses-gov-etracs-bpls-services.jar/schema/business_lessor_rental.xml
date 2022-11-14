@@ -1,0 +1,19 @@
+<schema>
+	<element tablename="business_lessor">
+		<field name="objid" primary="true"/>
+		<field name="lessor_orgtype" caption="Org Type" required="true"/>
+		<field name="lessor_objid" visible="false"/>
+		<field name="lessor_name" searchable="true" indexed="true" caption="Owner Name"/>
+		<field name="lessor_address_text" visible="false"/>
+		<field name="lessor_address_objid" visible="false"/>
+		<field name="government" required="true" defaultValue="0" type="integer" visible="false"/>
+		<field name="bldgno" caption="Bldg No"/>
+		<field name="bldgname" required="true" searchable="true" indexed="true" caption="Bldg Name"/>
+		<field name="street"  required="true" indexed="true" caption="Street"/>
+		<field name="subdivision" indexed="true" caption="Subdivision"/>
+		<field name="barangay_objid" visible="false"/>
+		<field name="barangay_name" indexed="true" caption="Barangay"/>
+		<field name="pin" caption="PIN"/>
+	</element>
+</schema>			
+

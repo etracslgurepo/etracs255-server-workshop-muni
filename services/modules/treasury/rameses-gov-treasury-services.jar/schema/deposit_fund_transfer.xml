@@ -1,0 +1,11 @@
+<schema>
+
+	<element  tablename="deposit_fund_transfer">
+		<field name="objid" primary="true" prefix="DPFT"/>
+		<field name="amount" type="decimal"/>
+		<field name="todepositvoucherfundid" />
+		<field name="fromdepositvoucherfundid" />
+	</element>
+
+</schema>	
+

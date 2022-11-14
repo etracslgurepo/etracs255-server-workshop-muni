@@ -1,0 +1,20 @@
+<schema>
+
+	<element tablename="sys_usergroup">
+		<field name="objid" primary="true" prefix="ROL"/>	
+		<field name="title" caption="Title"/>
+		<field name="domain" caption="Domain" indexed="true" searchable="true"/>
+		<field name="userclass"/>
+		<field name="orgclass"/>
+		<field name="role" caption="Role" indexed="true" searchable="true"/>
+
+		<complex name="permissions" ref="sys_usergroup_permission" jointype="one-to-many">
+			<key field="objid" target="usergroup_objid" />
+		</complex>	
+
+		<complex name="securitygroups" ref="sys_securitygroup" jointype="one-to-many">
+			<key field="objid" target="usergroup_objid" />
+		</complex>	
+	</element>
+
+</schema> 

@@ -1,0 +1,15 @@
+<schema adapter="main">
+
+	<element tablename="entityindividual_physical">
+		<field name="objid" primary="true"/>
+		<field name="height"/>
+		<field name="weight"/>
+		<field name="eyecolor"/>
+		<field name="haircolor"/>
+		<field name="photo_objid"/>
+		<field name="fingerprint_objid"/>
+		<field name="signature_objid"/>
+	</element>
+
+
+</schema>

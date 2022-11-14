@@ -1,0 +1,5 @@
+provider=script
+app.host=${app_server_ip}:${@@osiris3:port}
+app.cluster=osiris3
+app.context=etracs25
+readTimeout=60000

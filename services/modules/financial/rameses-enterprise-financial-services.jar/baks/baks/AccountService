@@ -1,0 +1,90 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.common.*
+
+import com.rameses.services.extended.*
+
+class AccountService extends ActiveCrudNodeService {
+
+	@ActiveDB('account')
+	def em;
+
+	@Service(value='NGASAccountService', connection='etracsorg.osiris3')
+	def acctSvc;
+
+	public void afterNode( def selectedNode, def list ) {
+		list.each { 
+			it.caption = it.code + " (" + it.title + ") ";
+			it.filetype = "account-"+it.type;
+			it.children = [  
+				[caption:'Account Group', filetype: 'account-group'],
+				[caption:'Account Detail', filetype: 'account-detail']
+			]
+		}
+	}
+
+	@ProxyMethod
+	public def getColumns( def o ) {
+		def cols = [
+			[name:'code', caption:'Acct Code' ],
+			[name:'title', caption:'Acct Title' ],
+			[name:'type', caption:'Type' ],
+			[name:'target', caption:'Target' ],
+		];
+		return cols;
+	}
+
+	public def open(o) {
+		return em.findInfo(o);
+	}
+
+	public void beforeList( def p ) {
+		if(p.name == "search") {
+			p._listMethod = "getSearch";
+		}
+		if( p._tag ) {
+			p._listMethod = "getLookup";
+			p.type = p._tag;
+			if(!p.parentid) p.parentid = '%';
+		}
+
+	}
+	
+	public void afterList( def p, def list ) {
+		list.each { 
+			it.filetype = 'account-'+it.type;
+		}
+	}
+	
+    @ProxyMethod
+    public def getSubAccounts(o) {
+    	return em.getSubaccounts( o );
+    }
+    
+  	@ProxyMethod
+    public def saveSubAccount(o) {
+    	return em.save( o );
+    }
+
+	@ProxyMethod
+    public def changeParent(o) {
+    	return em.changeParent( o );
+    }
+
+    @ProxyMethod 
+    public void syncFromCloud() {
+    	def list = []
+    	def start = 0
+    	while(true){
+    		list = acctSvc.getList([searchtext: '%', _start:start, _limit: 25]);
+    		if(! list ) break;
+
+    		list.each { 
+    			em.save(it);
+    		}
+    		start += 25
+    	}
+    }
+
+}

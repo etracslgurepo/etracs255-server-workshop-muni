@@ -1,0 +1,162 @@
+import com.rameses.annotations.*;
+import com.rameses.rules.common.*;
+import com.rameses.util.*;
+import com.rameses.services.extended.*;
+import rptis.landtax.facts.*;
+import rptis.landtax.actions.*;
+
+
+public class RPTLedgerRuleService
+{
+	@Resource('RuleService')
+	def ruleSvc
+
+	@Service('Var')
+	def var
+
+	@Service('DateService')
+	def dtSvc
+
+	@Service('NumberService')
+	def numSvc
+
+	@Service('RPTUtil')
+	def util 
+
+	@ActiveDB('rule')
+	def ruleDB
+
+	@Service('RPTLedgerService')
+	def ledgerSvc 
+
+	@DataContext('rpttaxincentive_item')
+	def em_incentive_item 
+
+	@DataContext('rptledger_faas')
+	def em_ledger_faas
+
+
+	def RULESET 			= 'rptledger'
+	def FACT_PACKAGE 		= 'rptledger.'
+	
+
+	@ProxyMethod 
+	public def buildItems(ledger, yr){
+		def request = buildRequest(ledger, yr);
+		executeRules(request)
+		return request.items 
+	}
+
+	void executeRules(request){
+		def grps = ruleDB.getRulegroups( [ruleset: RULESET] );
+		grps.each{g ->
+			ruleSvc.execute( RULESET, request.facts, request.actions, g.name);
+		}
+	}
+
+	def buildRequest(ledger, yr){
+		util.required('Ledger faases', ledger.faases)
+		util.required('year', yr)
+		def request = [items:[]]
+		request.facts = buildFacts(ledger, yr)
+		request.actions = buildActions(ledger, request)
+		return request
+	}
+
+	def buildFacts(ledger, yr){
+		def currdate = dtSvc.parseCurrentDate()
+		if (ledger._billdate) {
+			currdate = dtSvc.parseDate(ledger._billdate, null)
+		}
+		
+		def facts = []
+		facts << new CurrentDate(currdate.date)
+		facts << new EffectiveDate(currdate.date)
+		def ledgerfact = new RPTLedgerFact(ledger)
+		facts << ledgerfact 
+
+		def faases = [];
+		if (util.isTrue(var.rptledger_rule_include_ledger_faases)) {
+			faases = em_ledger_faas.select('faasid,tdno,fromyear,fromqtr,toyear,toqtr,idleland,txntype.objid,assessedvalue,classification.objid,actualuse.objid,faas.totalmv')
+							.find([rptledgerid: ledger.objid, state:'APPROVED'])
+							.list()
+			faases.each {
+				facts << new RPTLedgerFaasFact(it)
+			}
+		}
+
+		ledger.faases.each{faas ->
+			def item = [:]
+			item.objid = faas.objid 
+			item.classification = faas.classification?.objid 
+			item.actualuse = faas.actualuse?.objid 
+			item.rputype = ledger.rputype 
+			item.txntype = faas.txntype.objid 
+		    item.year = yr 
+			item.fromqtr = null
+			item.fromqtr = null
+			if ( yr <= currdate.year && (yr == faas.fromyear || yr == faas.toyear)) {
+				item.fromqtr = faas.fromqtr
+				item.toqtr = (faas.toqtr == 0 ? 4 : faas.toqtr)	
+			}
+		    item.av = faas.assessedvalue
+			def lf = faases.find{it.faasid == item.objid}
+			item.mv = lf && lf.faas ? lf.faas.totalmv : faas.assessedvalue
+		    item.basicav = item.av 
+		    item.sefav = item.av 
+		    item.taxdifference = faas.taxdifference 
+
+		    def params = [
+							ledger: ledger, faases: faases, ledgerfaas: faas, yr: yr, av: item.av,
+							classification: faas.classification,
+							actualuse: faas.actualuse
+						]
+
+		    ledgerSvc.calcLedgerItemAssessedValue(params)
+		    item.av = params.av 
+				item.basicav = params.basicav
+		    item.sefav = params.sefav
+		    item.idleland = faas.idleland
+
+		    def classification = new Classification(faas.classification)
+			   def actualuse = new ActualUse(faas.actualuse ? faas.actualuse : faas.classification)
+			   facts << classification
+			   facts << actualuse
+		    facts << new AssessedValue(item, classification, actualuse)
+		}
+
+		buildIncentiveFacts(facts, ledgerfact)
+		buildTags(facts, ledger)
+
+		return facts
+	}
+
+	def buildActions(ledger, request){
+		def actions = new RuleAction();
+		actions.addCommand('add-basic', new AddTax(request:request, revtype:'basic', priority:10000))
+		actions.addCommand('add-sef', new AddTax(request:request, revtype:'sef', priority:10000))
+		actions.addCommand('add-basicidle', new AddTax(request:request, revtype:'basicidle', priority:3000))
+		actions.addCommand('add-sh', new AddTax(request:request, revtype:'sh', priority:2000))
+		actions.addCommand('add-firecode', new AddTax(request:request, revtype:'firecode', priority:1000))
+		actions.addCommand('update-av', new UpdateAV(numSvc:numSvc))
+		actions.addCommand('update-basicav', new UpdateBasicAV(numSvc:numSvc))
+		actions.addCommand('update-sefav', new UpdateSefAV(numSvc:numSvc))
+		actions.addCommand('calc-tax', new CalcTax(numSvc:numSvc))
+		actions.addCommand('apply-incentive', new ApplyIncentive(numSvc:numSvc))
+		return actions 
+	}
+
+	void buildIncentiveFacts(facts, ledgerfact){
+		def incentives = em_incentive_item.find([rptledgerid:ledgerfact.objid]).list()
+		incentives.each{
+			facts << new RPTIncentive(ledgerfact, it)
+		}
+	}
+
+	void buildTags(facts, ledger) {
+		def tags = ledgerSvc.getTags(ledger)
+		tags.each {
+			facts << new RPTLedgerTag(it.tag)
+		}
+	}
+}

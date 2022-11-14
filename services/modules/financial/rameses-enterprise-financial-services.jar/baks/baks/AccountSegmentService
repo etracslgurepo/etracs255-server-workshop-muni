@@ -1,0 +1,50 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.common.*
+
+class AccountSegmentService {
+
+	@ActiveDB("accountsegment")
+	def em;
+
+
+	@ProxyMethod
+	public def getSegments(def p) {
+		if(!p.objectname) throw new Exception("Please indicate objectname in AccountSegment.getSegments");
+			
+		def list = em.getSegments(p);
+		list.each {
+			try {
+				p.segment = it.name;
+				p.source = it.source;
+				p.objectname = p.objectname;
+				def result = em.findSegment(p);
+				if(result) {
+					it.value = result.code + "-" + result.title;
+					it.acctid = result.objid;
+				}
+			}
+			catch(e){;}
+		}
+		return list;
+	}
+	
+	@ProxyMethod
+	public def addSegment(def p) {
+		if(!p.objectname) throw new Exception("Please indicate objectname in AccountSegment.addSegment");
+		if(!p.segment) throw new Exception("Please indicate segment in AccountSegment.addSegment");
+		if(!p.objid) throw new Exception("Please indicate objid in AccountSegment.addSegment");
+		em.removeSegment(p);
+		if(p.acctid) em.addSegment( p );
+	}
+	
+	@ProxyMethod
+	public def removeSegment(def p) {
+		if(!p.objectname) throw new Exception("Please indicate objectname in AccountSegment.addSegment");
+		if(!p.segment) throw new Exception("Please indicate segment in AccountSegment.addSegment");
+		if(!p.objid) throw new Exception("Please indicate objid in AccountSegment.addSegment");
+		em.removeSegment(p);
+	}
+
+}

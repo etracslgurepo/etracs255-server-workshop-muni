@@ -1,0 +1,5 @@
+<schema>
+	<element  tablename="religion">
+		<field name="objid" primary="true"/>
+	</element>
+</schema>

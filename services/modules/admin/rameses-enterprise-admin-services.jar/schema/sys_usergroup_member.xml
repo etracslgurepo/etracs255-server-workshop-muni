@@ -1,0 +1,22 @@
+<schema>
+
+	<element tablename="sys_usergroup_member">
+		<field name="objid" primary="true"/>	
+		<field name="user_username" />
+		<field name="user_firstname" />
+		<field name="user_lastname" />
+		<field name="org_objid" />
+		<field name="org_name" />
+		<field name="org_orgclass" />
+		<field name="securitygroup_objid"/>
+		<field name="exclude" />
+		<field name="displayname" />
+		<complex name="user" ref="sys_user" jointype="many-to-one"> 
+			<key field="user_objid" target="objid" />
+		</complex>		
+		<complex name="group" ref="sys_usergroup" jointype="many-to-one"> 
+			<key field="usergroup_objid" target="objid" />
+		</complex>
+	</element>
+
+</schema>

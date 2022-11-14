@@ -1,0 +1,14 @@
+<schema>
+
+	<element tablename="account_incometarget">
+		<field name="objid" primary="true"/>
+		<field name="itemid" required="true" indexed="true"/>
+		<field name="year" required="true"/>
+		<complex name="item" ref="account" jointype="many-to-one" 
+			includefields="code,title,maingroupid,group.*">
+			<key field="itemid" target="objid" />
+		</complex>	
+		<field name="target" required="true" type="decimal"/>
+	</element>
+
+</schema>

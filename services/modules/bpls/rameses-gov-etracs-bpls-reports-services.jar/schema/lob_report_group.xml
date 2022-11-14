@@ -1,0 +1,6 @@
+<schema>
+	<element tablename="lob_report_group">
+		<field name="objid" primary="true" caption="objid" visible="true"/>
+		<field name="title" required="true" caption="Title"/>
+	</element>
+</schema>

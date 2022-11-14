@@ -1,0 +1,158 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class RPTCertificationLandService 
+{
+    @ActiveDB('rptcertification')
+    def em
+
+
+    @Service('RPTCertificationService')
+    def certSvc 
+
+
+	
+    @ProxyMethod
+    public void validateLandWithImprovement(params){
+    	def result = em.findImprovementCount(params)
+    	def bldgland = em.findBldgLandCount(params)
+    	def plant = em.findPlantTreeCount(params)
+    	if (result.improvcount == 0 && bldgland.improvcount == 0 && plant.improvcount == 0)
+    		throw new Exception("Selected Land has no existing improvements.")
+    }
+
+    @ProxyMethod
+    public def validateLandWithNoImprovement( params ) {
+    	def result = em.findImprovementCount(params)
+    	if (result.improvcount > 0)
+    		throw new Exception("Selected Land has existing improvements.")
+		
+		def bldglands = em.getBldgLands(params)
+		if (bldglands.size() > 0 ){
+			def msg = "Selected Land has existing improvements.\n"
+			msg += 'Building with TD No. ' + bldglands.tdno.join(',') + ' are erected or occupying portion of the land.'
+    		throw new Exception(msg)    		
+		}
+    }
+
+
+    @ProxyMethod
+	public def createLandWithNoImprovement( cert ) {
+		certSvc.createCertification(cert)
+		cert.items = getLandItems(cert)
+		loadFaasInfo(cert)
+		return cert 
+	}
+
+	@ProxyMethod
+	public def createLandWithNoImprovementPortion(cert) {
+        validateSoldArea(cert)
+        return createLandWithNoImprovement(cert)
+    }
+
+
+    @ProxyMethod
+	public def createLandWithImprovement( cert ) {
+		cert = certSvc.createCertification(cert)
+		certSvc.buildFilter(cert)
+		em.insertLandImprovements(cert)
+		em.insertLandImprovementFromBldgLand(cert)
+		cert.items = getLandItems(cert)
+		loadFaasInfo(cert)
+		return cert 
+	}
+
+
+	@ProxyMethod
+	public def openCertification(objid) {
+		def cert = certSvc.openCertification(objid)
+		if (! cert ) 
+			throw new Exception('Certification does not exist or has already been deleted.')
+		cert.items = getLandItems(cert)
+		loadFaasInfo(cert)
+		return cert 
+	}
+
+	void loadFaasInfo(cert){
+		def faas = certSvc.getFaasInfo(cert.faasid)
+		if (faas) {
+			faas.street = (faas.street ? faas.street : faas.barangay.name)
+			def certid = cert.objid 
+			cert.putAll( faas )
+			cert.objid = certid
+			if (!cert.items)
+				cert.items = []
+		}
+		certSvc.makeHtmlSafe(cert)
+	}
+
+	def getLandItems(cert){
+		def list = em.getLandItems(cert).each{
+			it.street = (it.street ? it.street : it.barangay)
+		}
+
+		if (list) {
+			buildImprovementInfo(list)
+			return list 
+		}
+		if (cert.faasid){
+			return em.getFaasInfo(cert)
+		}
+	}
+
+
+	void buildImprovementInfo(list){
+		def infos = []
+		list.each{
+			if ('bldg'.equalsIgnoreCase(it.rputype)){
+				infos = em.getBldgInfos(it).each{bi-> bi.info = bi.bldgtype + ' - ' + bi.bldgkind.name}
+				if (infos){
+					it.description = infos.info.join(',')
+				}
+			}
+			else if ('mach'.equalsIgnoreCase(it.rputype)){
+				infos = em.getMachInfos(it)
+				if (infos){
+					it.description = infos.machine.name.join(',')
+				}
+			}
+			else if ('planttree'.equalsIgnoreCase(it.rputype)){
+				infos = em.getPlantTreeInfos(it)
+				if (infos){
+					it.description = infos.planttree.name.join(',')
+				}
+			}
+			else if ('misc'.equalsIgnoreCase(it.rputype)){
+				infos = em.getMiscInfos(it)
+				if (infos){
+					it.description = infos.miscitem.name.join(',')
+				}
+			}
+		}
+	}
+
+	def getItems(cert){
+		return em.getLandItems(cert).each{
+			it.street = (it.street ? it.street : it.barangay)
+		}
+	}
+
+    void validateSoldArea(cert) {
+		def faas = certSvc.getFaasInfo(cert.faasid) 
+        if (!faas) throw new Exception('FAAS does not exist or has already been deleted')
+        def areatype = cert.properties.areatype.code
+        def areasold = cert.properties.areasold
+
+        if ( areatype == 'sqm' && areasold >= faas.totalareasqm) 
+            throw new Exception('Area sold should be less than ' + areaToString(faas.totalareasqm, areatype))
+        
+        if ( areatype != 'sqm' && areasold >= faas.totalareaha) 
+            throw new Exception('Area sold should be less than ' + areaToString(faas.totalareaha, areatype))
+    }
+
+    def areaToString(area, areatype) {
+        def format = areatype == 'sqm' ? '#,##0.00' : '#,##0.0000'
+        return new java.text.DecimalFormat(format).format(area) + " " + areatype + "."
+    }
+}

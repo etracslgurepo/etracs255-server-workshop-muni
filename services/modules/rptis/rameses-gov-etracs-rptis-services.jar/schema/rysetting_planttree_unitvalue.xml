@@ -1,0 +1,15 @@
+<schema>
+	<element tablename="planttreeunitvalue" >
+        <field name="objid" primary="true" />
+        <field name="planttreerysettingid" required="true"/>
+        <field name="planttree_objid" required="true"/>
+        <field name="code" required="true"/>
+        <field name="name" required="true"/>
+        <field name="unitvalue" type="decimal" required="true"/>
+        <field name="previd" />
+        <complex name="planttree" ref="planttree" jointype="many-to-one" required="true">
+            <key field="planttree_objid" target="objid" />
+        </complex>
+	</element>
+	
+</schema>

@@ -1,0 +1,47 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import java.rmi.server.UID;
+import com.rameses.util.*;
+
+class BusinessCaptureInterceptor22B {
+	
+	@ActiveDB(value="etracs22", em="etracs22")
+	def em;
+
+	@Service("DateService")
+	def dateSvc;
+
+	@After(pattern="BusinessCaptureService.getReceivables", eval="#{ args[0].source == 'etracs22' }", index=1) 
+	public void loadReceivables( evt ) {
+		def p = evt.args[0];
+		def result = evt.result;
+
+		def resolveAmounts = { o-> 
+			if ( !o.interest ) o.interest = 0.0;
+			if ( !o.surcharge ) o.surcharge = 0.0;
+			if ( !o.discount ) o.discount = 0.0;
+			if ( !o.amtpaid ) o.amtpaid = 0.0; 
+			if ( !o.amount ) o.amount = 0.0; 
+		}
+
+		def computeBalance = { o-> 
+			o.interest = 0.0;
+			o.surcharge = 0.0;
+			o.discount = 0.0; 
+			if ( o.amtpaid > o.amount ) { 
+				o.amtpaid = o.amount; 
+			} 			
+			return (o.amount - o.amtpaid); 
+		} 
+
+		def receivables = em.getReceivables([ businessid: p.oldbusinessid, activeyear: p.activeyear ]); 
+		if ( receivables ) {
+			receivables.each { resolveAmounts( it ) }  
+			receivables.each{ o-> 
+				o.objid = 'BR' + new UID(); 				
+				o.total = computeBalance(o); 
+			}
+			result.receivables = receivables; 
+		} 
+	} 
+}

@@ -1,0 +1,29 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.rules.common.*;
+import com.rameses.osiris3.common.*;
+
+
+public class RequirementRuleService  {
+
+	@Service("RuleExecutorService")	
+	def ruleSvc;
+
+	@Env
+	def env;
+
+	@ProxyMethod
+	public def execute(def o) throws Exception {
+		if(!o.ruleset) 
+			throw new Exception("ruleset is required in RequirementRuleService");
+
+		def ruleset = o.ruleset;
+		def facts = env.facts;
+	
+		def result = ruleSvc.execute( ruleset, facts, null, null );
+		return [requirements: result.requirements];
+	}
+	
+}
+

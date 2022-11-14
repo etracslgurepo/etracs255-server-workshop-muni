@@ -1,0 +1,252 @@
+import com.rameses.annotations.*;
+import com.rameses.http.*;
+
+class RPTSmsHandler {
+	
+	@Service("SMSService")
+	def smsSvc;
+
+	@ActiveDB("rpt_sms")
+	def em;
+
+
+	@Service('RPTSmsService')
+	def rptSmsSvc
+
+
+	@Service("DateService")
+	def dateService;
+
+	def SMS_COST = 2.0
+
+	def keywords = ['RPTHELP', 'RPTENROLL', 'RPTINFO', 'RPTBAL', 'RPTSTOP', 'RH', 'RE', 'RI', 'RB', 'RT', 'RTS', 'RS']
+
+//	@OnMessage(value="sms_listener", eval="#{data.keyword.toUpperCase().startsWith('xRPT')}")
+	public void checkKeyword(def params) {
+		def validKeyword = false
+		def info = parseInfo(params)
+		
+		if (info.keyword) {
+			for(int i = 0; i < keywords.size(); i++){
+				if (info.keyword.equalsIgnoreCase(keywords[i])){
+					validKeyword = true
+					break
+				}
+			}
+		}
+
+		if (!validKeyword){
+			println 'Invalid command -> '+ params.keyword + 'message -> ' + params.message
+			def reply = createReply(params)
+			reply.message = 'Invalid request format.\n'
+			reply.message += getHelpInfo()
+			smsSvc.send(reply)
+		}
+	}
+
+	
+	//@OnMessage(value="sms_listener", eval="#{data.keyword.toUpperCase().matches('RH|RPTHELP')}")
+	public void handleHelp(def params) 
+	{
+		def reply = createReply(params)
+		reply.message = getHelpInfo()
+		sendReply(reply)
+	} 
+
+	//@OnMessage(value="sms_listener", eval="#{data.keyword.toUpperCase().matches('RE|RPTENROLL')}")
+	public void handleEnroll(def params) 
+	{
+		def reply = createReply(params)
+		def info = parseInfo(params)
+
+		if (!info.refno) {
+			setError(reply, 'TD No. must be specified. Please text RPTENROLL <tdno>.')
+		}
+		else {
+			try{
+				reply.message = rptSmsSvc.enrollFaas(info)
+			}
+			catch(e){
+				setError(reply, getErrorCause(e))
+			}
+		}
+		sendReply(reply)
+	} 
+
+	
+	//@OnMessage(value="sms_listener", eval="#{data.keyword.toUpperCase().matches('RI|RPTINFO')}")
+	public void handleInfo(def params) 
+	{
+		def reply = createReply(params)
+		def info = parseInfo(params)
+		try{
+			reply.message = rptSmsSvc.getInfo(info)
+		}
+		catch(e){
+			setError(reply, getErrorCause(e))
+		}
+		sendReply(reply)
+	} 
+
+
+	//@OnMessage(value="sms_listener", eval="#{data.keyword.toUpperCase().matches('RB|RPTBAL')}")
+	public void handleBalanceInquiry(def params) 
+	{
+		def reply = createReply(params)
+		def info = parseInfo(params)
+
+		if (!info.refno) {
+			setError(reply, 'TD No. must be specified. Please text RPTBAL <tdno>.')
+		}
+		else {
+			try{
+				reply.message = rptSmsSvc.generateBillByTdNo(info)
+			}
+			catch(e){
+				setError(reply, getErrorCause(e))
+			}
+		}
+		sendReply(reply)
+	} 
+
+
+	//@OnMessage(value="sms_listener", eval="#{data.keyword.toUpperCase().matches('RS|RPTSTOP')}")
+	public void handleStop(def params) 
+	{
+		def reply = createReply(params)
+		def info = parseInfo(params)
+		try{
+			if (info.refno)
+				reply.message = rptSmsSvc.deleteRegisteredTdNo(info)
+			else 
+				reply.message = rptSmsSvc.deleteAllRegistration(info)
+		}
+		catch(e){
+			setError(reply, getErrorCause(e))
+		}
+		sendReply(reply)
+	} 
+
+
+
+	//@OnMessage(value="sms_listener", eval="#{data.keyword.toUpperCase().matches('RT|RPTTRACK')}")
+	public void handleRPTTracking(def params) 
+	{
+		def reply = createReply(params)
+		def info = parseInfo(params)
+
+		if (!info.refno) {
+			setError(reply, 'Tracking No. must be specified. Please text RPTTRACK <trackingno>.')
+		}
+		else {
+			try{
+				reply.message = rptSmsSvc.enrollTrackingNo(info)
+			}
+			catch(e){
+				setError(reply, getErrorCause(e))
+			}
+		}
+		sendReply(reply)
+	} 
+
+	//@OnMessage(value="sms_listener", eval="#{data.keyword.toUpperCase().matches('RTS|RPTSTATUS')}")
+	public void handleTrackingStatusRequest(def params) 
+	{
+		def reply = createReply(params)
+		def info = parseInfo(params)
+
+		if (!info.refno) {
+			setError(reply, 'Tracking No. must be specified.')
+		}
+		else {
+			try{
+				reply.message = rptSmsSvc.getTrackingStatus(info)
+			}
+			catch(e){
+				setError(reply, getErrorCause(e))
+			}
+		}
+		sendReply(reply)
+	} 
+
+
+
+	def createReply(params){
+		println 'Processing SMS request -> ' + params.keyword + ' from ' + params.phoneno
+		return [
+			objid 		: params.objid,
+			phoneno		: params.phoneno,
+			refid 		: params.objid,
+			keyword 	: params.keyword,
+			retcode 	: 'OK',
+		]
+	}
+
+
+	def parseInfo(params){ 
+		if (!params.message) params.message = ''
+		def tokens = params.message.tokenize(' ')
+		return [
+			keyword		: params.keyword.toUpperCase(),
+			phoneno 	: params.phoneno,
+			refno		: (tokens.size() != 0 ? tokens[0] : null ),
+		]
+	}
+
+
+	void setError(reply, message){
+		reply.retcode = 'ERROR'
+		reply.message = message 
+		println '='*50
+		println 'SMS ERROR: ' + message
+		println '='*50
+	}
+
+
+    String getErrorCause(Exception e){
+    	if (e.cause == null)
+    		return e.message
+
+        def t = e.cause
+        while ( t.cause != null)
+            t = t.cause
+        return t.message
+    }
+
+
+	def getHelpInfo(){
+		def help = 'RPT SMS Services: \n'
+		help += '(a) RE <tdno> - enrolls tdno to avail SMS services\n'
+		help += '(b) RI - receive info for each enrolled properties\n'
+		help += '(c) RI <tdno> - receive tdno info\n'
+		help += '(d) RB <tdno> - inquire current balance of tdno.\n'
+		help += '(e) RT <trackingno> - enroll a tracking no.\n'
+		help += '(f) RTS <trackingno> - inquire document status.\n'
+		help += '(g) RS - unregister all properties\n'
+		help += '(h) RS <tdno> - unregister tdno.\n'
+		return help 
+	}
+	
+	void sendReply(reply){
+		try{
+			def smsreply = smsSvc.send(reply)
+
+			//save sms reply
+			def sms = [objid:'SR' + new java.rmi.server.UID()];
+			sms.logdate = dateService.serverDate;
+			sms.traceid = smsreply.traceid;
+			sms.message = reply.message;
+			sms.phoneno = reply.phoneno;
+			sms.action = reply.keyword;
+			sms.amount = SMS_COST * (reply.creditcount == null ? 1 : reply.creditcount);
+			sms.amtpaid = 0.0;
+			sms.status = reply.retcode 
+			em.create(sms);
+		}
+		catch(e){
+			println '='*50
+			e.printStackTrace()
+		}
+	}
+
+}

@@ -1,0 +1,24 @@
+
+import com.rameses.annotations.*;
+
+class ChannelLoaderTask {	
+
+	final static def CHANNELS = ['user', 'group', 'others']; 
+
+	@Service('NotificationChannelService') 
+	def svc; 
+
+	@Schedule(interval=0, immediate=true) 
+	public void loadChannels( task ) { 
+		if (!task.properties.loaded) { 
+			CHANNELS.each {
+				try {
+					svc.register([ channel: it ]);  
+				} catch(Throwable t) {
+					println 'failed to load channel caused by '+ t.message; 
+				} 
+			} 
+			task.properties.loaded = true; 
+		} 
+	} 
+} 

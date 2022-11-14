@@ -1,0 +1,74 @@
+import com.rameses.annotations.*;
+
+class AFControlExportImportService {
+
+	@DataContext('af')
+	def af_db;
+
+	@DataContext('af_control')
+	def afc_db;	
+
+	@DataContext('af_control_detail')
+	def afd_db;	
+
+	@ActiveDB('afcontrol_export_import')
+	def adb; 
+
+	@Env
+	def env;
+
+
+	@ProxyMethod 
+	public def getAFTypes() {
+		return af_db.where('1=1').list(); 
+	}
+
+	@ProxyMethod 
+	public def getOpenList( params ) { 
+		return adb.getOpenList([ ownerid: env.USERID, afid: params.formno ]); 
+	} 
+
+	@ProxyMethod 
+	public def buildExportData( params ) {
+		if ( !params.objid ) throw new Exception('objid parameter is required'); 
+
+		def mparam = [ controlid: params.objid ]; 
+		def afcinfo = adb.findAFControl( mparam );
+		// build data compliant to older versions 
+		def data = [:]; 
+		data.putAll( afcinfo ); 
+		data.inventory = adb.findAFInventory( mparam ); 
+		data.inventorydetails = adb.getAFInventoryDetails( mparam ); 
+		data.inventorydetails.each{ it.lineno = it.indexno } 
+
+		// build data compliant to newer versions 
+		data.af_control = afcinfo; 
+		data.af_control_detail = adb.getAFControlDetails( mparam ); 
+		data.af_control_detail.each{
+			it.aftxnid = null; 
+			it.aftxnitemid = null; 
+		}
+		afc_db.find([ objid: params.objid ]).update([ txnmode: 'REMOTE' ]); 
+		return data; 
+	}
+
+	@ProxyMethod
+	public void postImportData( data ) {
+		if ( !data.objid ) throw new Exception('objid parameter is required');  
+
+		if ( afc_db.find([ objid: data.objid ]).select('objid').first())
+			throw new Exception('Series has already been posted'); 
+
+		if ( !data.af_control ) throw new Exception('Invalid data format specification'); 
+		if ( !data.af_control_detail ) throw new Exception('Invalid data format specification'); 
+
+		def currentdetailid = data.af_control.remove('currentdetailid'); 
+
+		afc_db.create( data.af_control ); 
+		data.af_control_detail.each { 
+			it.parent = [objid: it.controlid];  
+			afd_db.create( it ); 
+		}
+		afc_db.find([ objid: data.af_control.objid ]).update([ currentdetailid: currentdetailid ]);  
+	} 
+}

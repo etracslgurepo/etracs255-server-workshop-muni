@@ -1,0 +1,44 @@
+<schema>
+
+	<element  tablename="checkpayment">
+		<field name="objid" primary="true" prefix="CHKPMT"/>	
+		<field name="state" required="true" defaultValue="PENDING"/>	
+
+		<complex name="bank" ref="bank" jointype="many-to-one" required="true" includefields="objid,name,code,deposittype">
+			<key field="bankid" target="objid" />
+		</complex>	
+
+		<field name="refno" required="true" searchable="true"  caption="Check No"/>	
+		<field name="refdate" required="true"  caption="Check Date"/>
+		<field name="amount" required="true" type="decimal"  caption="Amount"/>	
+		<field name="bank_name" required="true"  caption="Bank Name"/>
+		<field name="receivedfrom" required="true"  caption="Received From"/>
+		
+		<!-- amount issued. If this becomes equal to amount then this check is already closed. This starts at 0 --> 
+		<field name="amtused" required="true" type="decimal" defaultValue="0"/>	
+
+		<!-- these fields refer to deposit -->
+		<field name="depositvoucherid" />
+		<field name="fundid" />
+		<field name="depositslipid" />
+		<field name="split"  type="integer" defaultValue="0"/>
+
+		<field name="balance" expr="amount - amtused" type="decimal" caption="Amount Balance"/>
+
+		<complex name="fund" ref="fund" jointype="many-to-one" required="false" includefields="objid,code,name">
+			<key field="fundid" target="objid" />
+		</complex>		
+
+		<!-- collector info -->
+		<field name="collector_objid" />
+		<field name="collector_name" caption="Collector"/>
+
+		<!-- sub collector info -->
+		<field name="subcollector_objid" />
+		<field name="subcollector_name" caption="Subcollector"/>
+
+
+		<field name="deposited" expr="CASE WHEN depositslipid IS NULL THEN 0 ELSE 1 END" />
+		<field name="external" />
+	</element>
+</schema>

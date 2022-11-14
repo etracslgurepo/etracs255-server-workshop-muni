@@ -1,0 +1,9 @@
+<schema>
+    <element tablename="consolidatedland">
+        <field name="objid" primary="true" />
+        <field name="consolidationid" required="true" />
+        <field name="landfaasid" required="true" />
+        <field name="rpuid" required="true" />
+        <field name="rpid" required="true" />
+    </element>
+</schema>

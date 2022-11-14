@@ -1,0 +1,63 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import com.rameses.services.extended.*
+
+class RPTReceiptPostShareService 
+{
+	@DataContext('cashreceipt_rpt_share_forposting')
+	def em 
+
+	@DataContext('cashreceipt_rpt_share_forposting_repost')
+	def em_repost
+
+	@Service('RPTReceiptCityPostShareService')
+	def citySvc
+
+	@Service('RPTReceiptProvincePostShareService')
+	def provSvc
+
+	@Service('RPTReceiptMunicipalityPostShareService')
+	def muniSvc
+
+	@DataContext('sys_org')
+	def em_org 
+
+	@ProxyMethod
+	public def postShares(items) {
+		if (!items) return;
+
+		items.each{item ->
+			postShare(item);
+		}
+	}	
+
+	@ProxyMethod
+	public void postShare(item) {
+		def org = em_org.find([root: 1]).first()
+
+		if ('city'.equalsIgnoreCase(org.orgclass.toString())){
+			doPostShare(item, citySvc)
+		} else if ('province'.equalsIgnoreCase(org.orgclass.toString())){ 
+			doPostShare(item, provSvc)
+		} else if ('municipality'.equalsIgnoreCase(org.orgclass.toString())){ 
+			doPostShare(item, muniSvc)
+		}
+	}
+
+	void doPostShare(item, svc) {
+		try {
+			svc.postShares(item)
+			em.delete(item)
+			em_repost.delete(item)
+			println 'Receipt ' + item.receiptid + ' tax share posted.'
+		} catch(e) {
+			e.printStackTrace()
+			item.error = 1 
+			item.msg = e.message 
+			em.update(item)
+			em_repost.update(item)
+			println 'Error posting shares for receipt '  + item.objid 
+		}
+	}
+}
+

@@ -1,0 +1,80 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+
+class UserRoleService  {
+
+	@DataContext("sys_user_role")
+	def userRoleEm;
+
+	@Env
+	def env;
+
+	@ActiveDB(value='userrole', em='admin') 
+	def em;
+
+	@ProxyMethod 
+	public def getUsers( o ) {
+		if ( !o.roles ) throw new Exception("Please indicate roles separated by comma"); 
+		if ( !o.domain ) throw new Exception("Please indicate domain"); 
+
+		//specify list of roles and return list of users
+		//return objid of user, lastname, firstname, txncode, and jobtitle
+		def roles = o.roles.split(",");
+		o.roles = "'" + roles.join( "','" ) + "'";
+		return em.getUsers(o).each{ 
+			it.name = it.firstname +" "+ (it.middlename? it.middlename+" ": "") + it.lastname; 
+		} 
+	}
+
+	@ProxyMethod 
+	public def getRolesByUser( def o ) {
+		if (!o.userid) throw new Exception("userid is required on UserRoleService.findTxnCode");
+
+		o.filter = '';
+		if( o.orgid ) {
+			o.filter = ''' AND ugm.org_objid=$P{orgid} ''';
+		} else {
+			o.filter = ''' AND ugm.org_objid is null ''';
+		}
+		return em.getRolesByUser( o );
+	}
+
+
+	@ProxyMethod
+	public def getUserRoles( def o  ) {
+		def userid = o.userid;
+		def orgid = o.orgid;
+
+		if(!userid) userid = env.USERID;
+		
+		def strWhere;
+		def parm = [:];
+
+		if( orgid == null ) {
+			strWhere = " respcenter.objid IS NULL ";
+		}
+		else {
+			strWhere = " respcenter.objid = :orgid ";
+			parm.orgid = orgid;
+		}
+
+		def roles = [:];
+		//userRoleEm.debug = true;
+		def userRoles =  userRoleEm.find( [objid: userid] ).where( strWhere, parm ).list();
+		userRoles.each {
+			roles.put( it.domain + "." + it.role, ((!it.exclude)?null:it.exclude)  );
+		}
+		return roles;
+	}
+
+	@ProxyMethod
+	public def getRolesString(def o) {
+		if( !o.containsKey("orgid") ) {
+			o.orgid = (env.ORGROOT==1) ? null: env.ORGID;			
+		}
+		def z = getUserRoles( o );
+		def userRoles = z*.key;
+		return "'" + userRoles.join("','") + "'";
+	}
+
+}

@@ -1,0 +1,116 @@
+import com.rameses.annotations.* 
+import com.rameses.services.extended.*
+
+class OnlineLandTaxBillingService 
+{
+	@Env
+	def env 
+
+	@Service('RPTBillingService')
+    def billSvc
+
+    
+    def BARCODE_PREFIX = '56001:'
+
+
+    @ProxyMethod
+    public def getBilling( params ) { 
+        def bill = generateBill(params)
+        def rptledger = bill.rptledger
+
+        def data = [:]
+        data.info = [
+            billid: bill.objid,
+            billno: bill.barcode,
+            billdate: bill.billdate,
+            billtoyear: bill.billtoyear,
+            billtoqtr: bill.billtoqtr,
+            billperiod: buildPeriod(rptledger),
+            rptledgerid: rptledger.objid,
+            taxpayer: rptledger.taxpayer,
+            tdno: rptledger.tdno, 
+            fullpin: rptledger.fullpin, 
+            rputype: rptledger.rputype, 
+            lguname: rptledger.lguname, 
+            barangay: rptledger.barangay, 
+            titleno: rptledger.titleno, 
+            classification: rptledger.classification, 
+            cadastrallotno: rptledger.cadastrallotno, 
+            administrator: rptledger.administrator, 
+            owner: rptledger.owner, 
+            taxpayer: rptledger.taxpayer, 
+            totalav: rptledger.totalav, 
+            totalmv: rptledger.totalmv, 
+            totalareaha: rptledger.totalareaha, 
+            totalareasqm: rptledger.totalareaha * 10000, 
+            totals: bill.totals,
+            items: rptledger.billitems,
+            amount: bill.totals.total,
+            fromyear: rptledger.fromyear,
+            fromqtr: rptledger.fromqtr,
+            toyear: rptledger.toyear,
+            toqtr: rptledger.toqtr,
+            validuntil: bill.validuntil,
+        ]
+        data.amount = bill.totals.total;
+        data.info.txntypename = 'Real Property Tax'; 
+        return data;
+    }
+
+    @ProxyMethod
+	public def getEmailAttachments( eor ) {
+        return []
+    }
+
+    def generateBill(params){
+        def bill = [:]
+        if (!env.ORGID) env.ORGID = params.orgcode 
+
+        if (params.refno.startsWith(BARCODE_PREFIX)){
+            params.barcodeid = params.refno 
+            bill = billSvc.getBillByBarcode(params)
+            bill._forpayment = true
+            bill = billSvc.generateBill(bill)
+        }
+        else{
+            params.tdno = params.refno 
+            if (params.billtoyear) params.billtoyear = toInt(params.billtoyear)
+            if (params.billtoqtr) params.billtoqtr = toInt(params.billtoqtr)
+            bill = billSvc.generateBillByTdNo(params)
+        }
+        bill.rptledger = bill.remove('ledgers')[0]
+        return bill 
+    }
+
+
+    def buildPeriod(rptledger){
+        def period = ''
+        if (rptledger.fromyear == rptledger.toyear && rptledger.fromqtr == 1 && rptledger.toqtr == 4){
+            period = '' + rptledger.fromyear 
+        } 
+        else if (rptledger.fromyear == rptledger.toyear && rptledger.fromqtr == rptledger.toqtr){
+            period = rptledger.fromqtr + 'Q, ' + rptledger.fromyear 
+        }
+        else if (rptledger.fromyear == rptledger.toyear){
+            period = rptledger.fromqtr + '' + rptledger.toqtr +  'Q, ' + rptledger.fromyear 
+        }
+        else if (rptledger.fromqtr == 1 && rptledger.toqtr == 4){
+            period = 'FULL ' + rptledger.fromyear + ' - ' + rptledger.toyear
+        }
+        else {
+            period = rptledger.fromqtr + 'Q, ' + rptledger.fromyear + ' - ' + rptledger.toqtr + 'Q, ' + rptledger.toyear
+        }
+
+        return period
+    }
+
+    int toInt(val){
+        if (val instanceof Integer) return val 
+        try{
+            return new BigDecimal(val+'').intValue()
+        }
+        catch(e){
+            return 0 
+        }
+    }
+}

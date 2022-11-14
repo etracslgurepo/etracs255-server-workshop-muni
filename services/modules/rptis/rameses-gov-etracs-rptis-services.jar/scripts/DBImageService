@@ -1,0 +1,98 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+import java.io.ByteArrayOutputStream;
+
+
+class DBImageService
+{
+	@ActiveDB(value='dbimage', em="image")
+	def em 
+
+	@DataContext(value='dbimage_header', adapter='image')
+	def em_header
+
+	@DataContext(value='dbimage_chunk', adapter='image')
+	def em_chunk
+
+	@Service('LogService')
+	def logSvc 
+
+
+
+	@ProxyMethod
+	public def resendImage(params) {
+		if (!params.refid) throw new Exception('refid must be specified')
+		if (!params.lguid) throw new Exception('lguid must be specified')
+		
+		return params;
+	}
+
+
+	@ProxyMethod
+	public def saveHeader( image ) {
+		em.save(image);
+		def action = (image.title == 'SKETCH' ? 'sketch-update' : 'attachment')
+		def ref = (image.title == 'SKETCH' ? 'faas' : 'attachment')
+		logSvc.log(action, ref, image.refid )
+	}
+
+	@ProxyMethod
+	public def openHeader( image ) {
+		return em.read(image)
+	}
+
+	@ProxyMethod
+	public void deleteImage( image ) {
+		em.deleteItems(image)
+		em.delete(image)	
+	}
+
+	@ProxyMethod
+	public void deleteAllImages( param ) {
+		em.deleteAllItems(param)
+		em.deleteAllHeaders(param)	
+	}
+
+	@ProxyMethod
+	public def getImages( param ) {
+		return em.getImages(param)	
+	}
+
+
+	@ProxyMethod
+	public def saveItem( item ) {
+		em.save(item, 'chunk')	
+	}
+
+
+	@ProxyMethod
+	public def getImageItems( param ) {
+		return em.getItems(param)
+	}
+
+	@ProxyMethod
+	public def getImageBytes(param){
+		def header = em_header.find([refid:param.objid]).first() 
+		if (!header){
+			return null
+		}
+
+		def baos = null
+		try{
+			baos = new ByteArrayOutputStream()
+			em_chunk.find([parentid:header.objid]).orderBy('fileno').list().each{
+				baos.write(it.byte)
+			}
+			return baos.toByteArray()
+		} catch(e){
+			println 'getImageBytes [ERROR] ' + e.message 
+		} finally {
+			try{ baos.close() }catch(e){}
+		}
+
+		return null
+	}
+
+}
+

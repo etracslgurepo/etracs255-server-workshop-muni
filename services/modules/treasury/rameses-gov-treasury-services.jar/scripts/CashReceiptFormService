@@ -1,0 +1,21 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.common.*
+import com.rameses.services.extended.*
+
+class CashReceiptFormService extends ActiveCrudListService {
+
+	@ActiveDB("cashreceiptform")
+	def em;
+
+	@ProxyMethod
+	public def getColumns( def o ) {
+		return[
+			[name:'objid', caption:'Name' ],
+			[name:'title', caption:'Title' ],
+		];
+	}
+
+		
+}

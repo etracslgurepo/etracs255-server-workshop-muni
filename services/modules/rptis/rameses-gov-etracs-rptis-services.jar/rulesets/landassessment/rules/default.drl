@@ -1,0 +1,143 @@
+package landassessment;
+
+import rptis.facts.*;
+import rptis.land.facts.*;
+import rptis.planttree.facts.*;
+import java.util.*;
+import com.rameses.rules.common.*;
+
+global RuleAction action;
+
+
+rule "calc-area"
+	agenda-group "PRE-ASSESSMENT"
+	salience 500000
+	no-loop
+	when
+		LD  : LandDetail()
+	then	
+		Map map = new HashMap();
+		map.put("landdetail", LD);
+		action.execute( "calc-preassess-info", map, drools );
+end
+
+rule "initial-bmv"
+	agenda-group "INITIAL"
+	salience 500000
+	no-loop
+	when
+		LD  : LandDetail(AREA:area, UV:unitvalue)
+	then	
+		Map bindings = new HashMap();
+		bindings.put("AREA", AREA);
+		bindings.put("UV", UV);
+
+		Map map = new HashMap();
+		map.put("landdetail", LD);
+		map.put( "expr", (new ActionExpression("AREA * UV", bindings)) );
+		action.execute( "calc-bmv", map, drools );
+end
+
+
+rule "calc-landvalue-adj"
+	agenda-group "AFTER-BASEMARKETVALUE"
+	salience 500000
+	no-loop
+	when
+		LD   : LandDetail($classificationid:classificationid)
+		ADJ  : LandAdjustment(type == 'LV', appliedtolist contains $classificationid)
+	then	
+		Map bindings = new HashMap();
+		bindings.put("SYS_BASE_MARKET_VALUE", LD.getBasemarketvalue());
+		bindings.put("SYS_MARKET_VALUE", LD.getMarketvalue());
+		bindings.put("SYS_BASE_VALUE", LD.getBasevalue());
+		bindings.put("SYS_UNIT_VALUE", LD.getUnitvalue());
+		bindings.put("SYS_AREA", LD.getArea());
+		bindings.put("SYS_ASSESSED_VALUE", LD.getAssessedvalue());
+		bindings.putAll(ADJ.getParams());
+
+		Map map = new HashMap();
+		map.put("adjustment", ADJ);
+		map.put("landdetail", LD);
+		map.put("bindings", bindings);
+		map.put( "expr", (new ActionExpression(ADJ.getExpr(), bindings)) );
+		action.execute( "calc-adj", map, drools );
+end
+
+
+rule "calc-actualuse-adj"
+	agenda-group "AFTER-BASEMARKETVALUE"
+	salience 500000
+	no-loop
+	when
+		LD   : LandDetail()
+		ADJ  : LandAdjustment(type == 'AU', landdetail == LD)
+	then	
+		Map bindings = new HashMap();
+		bindings.put("SYS_BASE_MARKET_VALUE", LD.getBasemarketvalue());
+		bindings.put("SYS_MARKET_VALUE", LD.getMarketvalue());
+		bindings.put("SYS_BASE_VALUE", LD.getBasevalue());
+		bindings.put("SYS_UNIT_VALUE", LD.getUnitvalue());
+		bindings.put("SYS_AREA", LD.getArea());
+		bindings.put("SYS_ASSESSED_VALUE", LD.getAssessedvalue());
+		bindings.putAll(ADJ.getParams());
+
+		Map map = new HashMap();
+		map.put("adjustment", ADJ);
+		map.put("landdetail", LD);
+		map.put( "expr", (new ActionExpression(ADJ.getExpr(), bindings)) );
+		action.execute( "calc-adj", map, drools );
+end
+
+
+
+rule "initial-mv"
+	agenda-group "MARKETVALUE"
+	salience 500000
+	no-loop
+	when
+		LD  : LandDetail(BMV:basemarketvalue, ADJ:adjustment)
+	then	
+		Map bindings = new HashMap();
+		bindings.put("BMV", BMV);
+		bindings.put("ADJ", ADJ);
+
+		Map map = new HashMap();
+		map.put("landdetail", LD);
+		map.put( "expr", (new ActionExpression("@ROUND(BMV + ADJ)", bindings)) );
+		action.execute( "calc-mv", map, drools );
+end
+
+
+rule "initial-assess-level"
+	agenda-group "ASSESSLEVEL"
+	salience 500000
+	no-loop
+	when
+		LD  : LandDetail()
+	then	
+		Map map = new HashMap();
+		map.put("landdetail", LD);
+		action.execute( "calc-al", map, drools );
+end
+
+
+rule "initial-assess-value"
+	agenda-group "ASSESSEDVALUE"
+	salience 500000
+	no-loop
+	when
+		LD  : LandDetail(MV:marketvalue,AL:assesslevel, taxable==true)
+	then	
+
+		Map bindings = new HashMap();
+		bindings.put("LD", LD );
+		bindings.put("MV", MV );
+		bindings.put("AL", AL );
+
+		Map map = new HashMap();
+		map.put("landdetail", LD);
+		map.put( "expr", (new ActionExpression("@ROUNDTOTEN( MV * AL / 100.0 )", bindings)) );
+		action.execute( "calc-av", map, drools );
+end
+

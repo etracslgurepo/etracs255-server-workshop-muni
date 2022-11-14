@@ -1,0 +1,60 @@
+import com.rameses.annotations.*;
+
+class BillingInfoHandler {
+	
+	@ProxyMethod 
+	public def getHeaderInfo( params ) {
+		if ( !params.rulename ) throw new Exception("'rulename' parameter is required in BillingInfoHandler.getHeaderInfo"); 
+		if ( !params.params ) throw new Exception("'params' parameter is required in BillingInfoHandler.getHeaderInfo"); 
+
+		return [:]; 
+	}
+
+	@ProxyMethod 
+	public def getBillItems( params ) {
+		if ( !params.rulename ) throw new Exception("'rulename' parameter is required in BillingInfoHandler.getBillItems"); 
+		if ( !params.params ) throw new Exception("'params' parameter is required in BillingInfoHandler.getBillItems"); 		
+		if ( !params.headerinfo ) throw new Exception("'headerinfo' parameter is required in BillingInfoHandler.getBillItems"); 		
+		
+		return []; 
+	}
+
+	@ProxyMethod 
+	public def getCreditItems( params ) {
+		if ( !params.rulename ) throw new Exception("'rulename' parameter is required in BillingInfoHandler.getCreditItems"); 
+		if ( !params.params ) throw new Exception("'params' parameter is required in BillingInfoHandler.getCreditItems"); 		
+		if ( !params.headerinfo ) throw new Exception("'headerinfo' parameter is required in BillingInfoHandler.getCreditItems"); 		
+
+		return []; 
+	}
+
+	@ProxyMethod 
+	public void beforeExecute( params ) {
+	} 
+
+	@ProxyMethod 
+	public void validateReceiptInfo( params ) {
+		//Override this and throw an error if it does not pass validation 
+	} 
+
+	@ProxyMethod 
+	public def formatReceiptInfo( params ) {
+		return [:]; 
+	}	
+
+	@ProxyMethod 
+	public def formatCreditPaymentInfo( params ) {
+		return [:]; 
+	}	
+
+
+	@ProxyMethod 
+	public void validateBillingInfo( params ) {
+		//Override this and throw an error if it does not pass validation 
+	} 
+
+	@ProxyMethod 
+	public def formatBillingInfo( params ) {
+		return params; 
+	} 
+} 

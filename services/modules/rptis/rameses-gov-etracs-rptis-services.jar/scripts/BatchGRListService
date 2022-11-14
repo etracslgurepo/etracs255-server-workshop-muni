@@ -1,0 +1,88 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class BatchGRListService extends ActiveListService
+{
+    @Env 
+    def env 
+    
+	@ActiveDB('batchgr')
+	def em
+	
+	@Service('ListUtilService')
+	def listSvc 
+
+
+    @Service('NumberService')
+    def numSvc
+	
+    @ProxyMethod
+    public def getColumns(params) {
+        return [
+            [name:"state", caption:"State", width:100],
+            [name:"txnno", caption:"Txn No.", width:100],
+            [name:"ry", caption:"RY", width:50, type:'integer', format:'0000'],
+            [name:"txndate", caption:"Txn Date", width:140],
+            [name:"effectivityyear", caption:"Effectivity Year", width:120, type:'integer', format:'0000'],
+            [name:"effectivityqtr", caption:"Effectivity Qtr", width:120, type:'integer', format:'0'],
+            [name:"lgu.name", caption:"LGU", width:120],
+            [name:"barangay.name", caption:"Barangay", width:120],
+            [name:"barangay.pin", caption:"PIN"],
+            [name:"section", caption:"Section"],
+            [name:"rputype", caption:"Kind"],
+            [name:"classification.name", caption:"Class"],
+        ]
+    }
+
+    @ProxyMethod
+    public def getNodes(o) {
+        def nodes = []
+        nodes << [name:'all', caption:'All']
+        nodes += em.getNodes();
+        nodes << [name:'mytask', caption:'My Tasks']
+        nodes << [name:'unassigned', caption:'Unassigned Tasks']
+
+        nodes.each{
+            it.leaf = true
+            it.folder = true 
+            it.allowSearch = true 
+        }
+        return nodes
+    }  
+
+    void beforeList( params ) {
+        params.state = (params.state ? params.state : '%')
+        params.lguid = (params.lgu ? params.lgu.objid : '%')
+        params.barangayid = (params.barangay ? params.barangay.objid : '%')
+ 		params.searchtext = (params.searchtext ? params.searchtext : '%')
+ 		params._pagingKeys = ' s.objid '
+ 		params.filters = '';
+
+		def whereclause = ''
+
+        switch(params.name) {
+            case 'all':
+                break;
+            case 'mytask':
+                params.userid = env.USERID 
+                if (whereclause) whereclause += ' AND ' 
+                whereclause += ' tsk.assignee_objid = $P{userid} '
+                break;
+            case 'unassigned':
+                if (whereclause) whereclause += ' AND ' 
+                whereclause += " tsk.state like 'assign%'"
+                break;
+            default:
+                params.taskstate = params.name
+                if (whereclause) whereclause += ' AND ' 
+                whereclause += ' tsk.state = $P{taskstate} AND tsk.enddate IS NULL  '
+        }
+
+        if (whereclause) {
+            params.filters = ' AND ' + whereclause
+        }
+    }   
+
+}
+

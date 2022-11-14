@@ -1,0 +1,62 @@
+<!-- 
+
+if object_id('dbo.vw_cashreceiptpayment_noncash_liquidated', 'V') IS NOT NULL 
+  drop table dbo.vw_cashreceiptpayment_noncash_liquidated 
+
+go 
+
+create view vw_cashreceiptpayment_noncash_liquidated 
+as 
+select 
+	nc.*, v.objid as void_objid, 
+	(case when v.objid is null then 0 else 1 end) as voided, 
+	c.receiptno as receipt_receiptno, c.receiptdate as receipt_receiptdate, c.amount as receipt_amount, 
+	c.collector_objid as receipt_collector_objid, c.collector_name as receipt_collector_name, c.remittanceid, 
+	r.objid as remittance_objid, r.controlno as remittance_controlno, r.controldate as remittance_controldate, 
+	r.collectionvoucherid, cv.objid as collectionvoucher_objid, cv.controlno as collectionvoucher_controlno, 
+	cv.controldate as collectionvoucher_controldate, cv.depositvoucherid 
+from collectionvoucher cv 
+	inner join remittance r on r.collectionvoucherid = cv.objid 
+	inner join cashreceipt c on c.remittanceid = r.objid 
+	inner join cashreceiptpayment_noncash nc on nc.receiptid = c.objid 
+	left join cashreceipt_void v on v.receiptid = c.objid 
+go 
+
+--> 
+<schema>
+	<element tablename="vw_cashreceiptpayment_noncash_liquidated">
+		<field name="objid" primary="true"/> 
+		<field name="receiptid" required="true"/> 
+		<field name="refno" required="true"/> 
+		<field name="refdate" required="true"/> 
+		<field name="reftype" required="true"/> 
+		<field name="amount" required="true"/> 
+		<field name="particulars" required="true"/> 
+		<field name="account_objid" required="true"/> 
+		<field name="account_code" required="true"/> 
+		<field name="account_name" required="true"/> 
+		<field name="account_fund_objid" required="true"/> 
+		<field name="account_fund_name" required="true"/> 
+		<field name="account_bank" required="true"/> 
+		<field name="fund_objid" required="true"/> 
+		<field name="refid" required="true"/> 
+		<field name="checkid" required="true"/> 
+		<field name="voidamount" required="true"/> 
+		<field name="void_objid" required="true"/> 
+		<field name="voided" required="true"/> 
+		<field name="receipt_receiptno" required="true"/> 
+		<field name="receipt_receiptdate" required="true"/> 
+		<field name="receipt_amount" required="true"/> 
+		<field name="receipt_collector_objid" required="true"/> 
+		<field name="receipt_collector_name" required="true"/> 
+		<field name="remittanceid" required="true"/> 
+		<field name="remittance_objid" required="true"/> 
+		<field name="remittance_controlno" required="true"/> 
+		<field name="remittance_controldate" required="true"/> 
+		<field name="collectionvoucherid" required="true"/> 
+		<field name="collectionvoucher_objid" required="true"/> 
+		<field name="collectionvoucher_controlno" required="true"/> 
+		<field name="collectionvoucher_controldate" required="true"/> 
+		<field name="depositvoucherid" required="true"/> 
+	</element>
+</schema>

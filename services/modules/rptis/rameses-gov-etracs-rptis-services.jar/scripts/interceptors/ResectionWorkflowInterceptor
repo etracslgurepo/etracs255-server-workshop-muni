@@ -1,0 +1,130 @@
+import com.rameses.annotations.*
+import com.rameses.eserver.*;
+import com.rameses.common.*;
+
+class ResectionWorkflowInterceptor
+{
+	@Env 
+	def env 
+
+
+	@ActiveDB('resection')
+	def em
+
+	@ActiveDB('rpt_requirement')
+	def em_requirement
+
+	@Service('ResectionWorkflowService')
+	def workflowSvc
+
+	@Service('ResectionService')
+	def svc
+
+	@Service('RPTUtil')
+	def util
+
+	@Service('RPTRequirementRuleService')
+    def ruleReqSvc
+
+	@Service('RPTRequirementService')
+	def reqSvc
+
+	@Service('ExaminationService')
+	def examinationSvc
+
+	@Service('Var')
+	def var 
+
+
+	@After(pattern='ResectionService.create')
+	public void afterCreate(evt){
+		def resection = evt.result 
+		def info = evt.args[0] 
+
+		resection.task = workflowSvc.start([refid:resection.objid, data:resection])[0]
+		resection.taskid = resection.task.objid 
+		resection.taskstate = resection.task.state
+		resection.assignee = resection.task.assignee
+		svc.update(resection)
+
+		def requirements = ruleReqSvc.getRequirements([
+			txntype 		: resection.txntype,
+			attributes		: info.attributes 
+		])
+		if (requirements) {
+			requirements.unique().each{
+				em_requirement.create([
+					objid  				: 'R' + new java.rmi.server.UID(),
+					requirementtypeid 	: it.objid,
+					handler 			: it.handler,
+					refid 				: resection.objid,
+					value_objid 		: null,
+					value_txnno			: null,
+					value_txndate 		: null,
+					value_txnamount 	: 0.0,
+					value_remarks 		: null,
+					complied 			: 0,
+				])
+			}
+		}
+
+	}
+
+
+	@After(pattern="ResectionWorkflowService.openTask") 
+	public void handleWorkflowOpen( evt ) {
+		def task = evt.result 
+		if ( ! task.refid ) throw new Exception('RefId is required.')
+		task.data = svc.open([objid: task.refid])
+		task.data.taskid = task.objid 
+		task.data.taskaction = task.state
+		task.data.assignee = task.assignee 
+	}
+
+
+	@Before(pattern="ResectionWorkflowService.signal", eval="#{args[0].state.equalsIgnoreCase('receiver') && args[0].action != 'delete'}", index=10) 
+	public void validateReceiveInfo( evt ) {
+		def resection = evt.args[0].data
+		reqSvc.checkCompliance(resection.objid)
+	}
+
+	@After(pattern="ResectionWorkflowService.signal", eval="#{args[0].action =='delete'}", index=10) 
+	public void afterDelete( evt ) {
+		def resection = evt.args[0].data
+		svc.delete(resection)
+	}
+
+	@Before(pattern="ResectionWorkflowService.signal", eval="#{args[0].state.equalsIgnoreCase('examiner') && !args[0].action?.matches('return.*')}", index=10) 
+	public void validateExaminationInfo( evt ) {
+		def resection = evt.args[0].data
+		def findings = examinationSvc.getFindings(resection.objid)
+		if (!findings)
+			throw new Exception('Examination Finding is required.')
+	}
+
+
+	@Before(pattern="ResectionWorkflowService.signal", eval="#{args[0].state.equalsIgnoreCase('taxmapper') && !args[0].action?.matches('return.*')}", index=10) 
+	public void validateTaxmappingInfo( evt ) {
+		def resection = evt.args[0].data
+
+		//verify there is at least one resectioned faas 
+		if (!resection.items.find{it.newfaas.objid}) {
+			throw new Exception('Unable to submit record. At least one resectioned FAAS is required.')
+		}
+		
+		//verify that all improvements have newfaas
+		resection.items.each{
+			if (it.newfaas?.rpid) {
+				if (!it.newfaas.objid) throw new Exception('New Suffix for improvement ' + it.faas.tdno + ' must be specified.')
+			}
+		}
+
+	}
+
+	@Before(pattern="ResectionWorkflowService.signal", eval="#{args[0].state.matches('appraiser|provappraiser') &&  ! args[0].action?.matches('return.*')}", index=15)
+	public void validateAppraisalInfo( evt ) {
+		def resection = evt.args[0].data
+	}
+
+}
+

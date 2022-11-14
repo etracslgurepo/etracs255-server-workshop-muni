@@ -1,0 +1,53 @@
+import com.rameses.annotations.*;
+
+class PaymentOrderListPaidInterceptor {
+
+	@After(pattern="QueryService.getNodeList", eval="#{ args[0]._schemaname == 'paymentorder_paid' }")
+	public void getNodes( evt ) { 
+		def result = evt.result;
+		result << [  title: 'Draft', state:'DRAFT' ];
+		result << [  title: 'Open', state:'OPEN' ];
+		result << [  title: 'Paid',   state:'PAID',   _schemaname:'paymentorder_paid' ];
+		result << [  title: 'Closed', state:'CLOSED', _schemaname:'paymentorder_paid' ];
+		result << [  title: 'Cancelled', state:'CANCELLED', _schemaname:'paymentorder_cancelled' ];
+	}
+	
+	@Before(pattern="QueryService.getList", eval="#{args[0]._schemaname == 'paymentorder_paid'}")
+	public void beforeGetList( evt ) {
+		def param = evt.args[0];
+		if ( !param.node?.state ) return;
+
+		def wherelist = [];
+		def wheremap = [:];
+
+		wherelist << " state = :state ";
+		wheremap.state = param.node.state;
+
+		def typeids = ""; 
+		if ( param.types instanceof List ) {
+			typeids = param.types.join("','"); 
+		}
+		wherelist << "typeid IN ('"+ typeids +"')"; 
+
+		def orderlist = []; 
+		orderlist << 'txndate DESC'; 
+
+		if ( param.orderBy ) {
+			orderlist << param.orderBy;
+		}
+		if ( orderlist ) {
+			param.orderBy = orderlist.join(',');
+		}
+
+		if ( param.where ) {
+			wherelist << param.where[0];
+			wheremap.putAll( param.where[1] );
+
+			param.where[0] = wherelist.join(' AND ');
+			param.where[1] = wheremap;
+		}
+		else {
+			param.where = [ wherelist.join(' AND '), wheremap ]; 
+		} 
+	} 
+}

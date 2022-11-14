@@ -1,0 +1,45 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import java.rmi.server.UID;
+import com.rameses.util.*;
+import com.rameses.io.*;
+import com.rameses.services.extended.*;
+
+class UsergroupMemberService extends ActiveCrudService {
+
+	@ActiveDB(value='usergroup', em='admin')
+	def	em; 
+
+	@ActiveDB(value='securitygroup', em='admin')
+	def	secGrp; 
+
+	String subSchemaName = "member";
+	
+	
+	public void afterOpen( def o ) {
+		if(o.securitygroup?.objid) {
+			o.securitygroup = secGrp.read( [objid: o.securitygroup.objid] );
+		}
+	}
+
+	public void beforeCreate(o) {
+		if(!o.user?.objid) throw new Exception("Please specify user");
+		if(!o.usergroup?.objid) throw new Exception("Please specify usergroup");
+
+		def items = null;
+		def p = [:];
+		p.userid = o.user.objid;
+		p.usergroupid = o.usergroup.objid;
+		if( o.org?.objid ) {
+			p.orgid = o.org.objid;
+			items = em.findDuplicateWithOrg(p);
+		}
+		else {
+			items = em.findDuplicateWithoutOrg(p);
+		}
+		if(items)
+			throw new Exception("Entry already exists");
+	}
+}
+
+

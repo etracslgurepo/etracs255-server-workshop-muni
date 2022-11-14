@@ -1,0 +1,37 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class FaasAssessmentNoticeInterceptor
+{
+	@Service('DateService')
+	def dtSvc
+
+	@Service('RPTAssessmentNoticeService')
+	def svc 
+
+
+	@After(pattern="PersistenceService.read", eval="#{args[0]._schemaname=='assessmentnotice'}") 
+	public void afterOpen( evt ) {
+		def entity = evt.result 
+		entity.putAll(svc.open(entity))
+	}
+
+	@After(pattern="QueryService.getList", eval="#{args[0]._schemaname=='vw_assessment_notice'}") 
+	public void afterList( evt ) {
+		def list = evt.result 
+		def currdate = dtSvc.serverDate 
+		list.each {
+			if ('open'.equalsIgnoreCase(it.state )){
+	        	it.deliverydays = 31 - dtSvc.getDaysDiff(it.txndate, currdate) 
+	        	if (it.deliverydays < 0 ) {
+	        		it.deliverydays = 0
+	        	}
+        	} else {
+        		it.deliverydays = null 
+        	}
+		}
+	}
+
+}
+

@@ -1,0 +1,195 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+import com.rameses.util.*;
+
+class RemittanceImportExportService  {
+
+	@ActiveDB("remittance_import_export")
+	def adb
+
+	@Service('RemittanceService')
+	def remSvc 
+
+	@Service("CashReceiptService")
+	def crSvc;
+
+	@Service("CashReceiptVoidService")
+	def voidSvc;
+
+	@PersistenceContext("main")
+	def em;
+
+	@DataContext('cashreceipt_reprint_log') 
+	def reprintLog_db; 
+
+	@DataContext('bank') 
+	def bank_db; 
+
+
+	@ProxyMethod
+	public def exportRemittance(objid) {
+		def data = [ vertype : 'v255' ];
+		def rem = [ remittanceid: objid ]; 
+		data.entity = adb.findRemittanceByid( rem ); 
+		if ( !data.entity ) throw new Exception('remittance record not found'); 
+
+		data.entity.remotetxn = true; 
+		data.entity.vertype = data.vertype;
+		data.entity.remittancefunds = adb.getRemittanceFund( rem ); 
+		data.entity.remittanceafs = adb.getRemittanceAF( rem ); 
+
+		data.cashreceipts = adb.getCashReceipt( rem );
+		data.cashreceiptitems = adb.getCashReceiptItem( rem ); 
+		data.cashreceiptvoids = adb.getCashReceiptVoid( rem ); 
+		data.cashreceiptnoncashpayments = adb.getCashReceiptNoncashPayment( rem ); 
+		data.cashreceiptshares = adb.getCashReceiptShare( rem ); 
+		data.cashreceiptcancelseries = adb.getCashReceiptCancelSeries( rem ); 
+		data.cashreceiptreprintlogs = adb.getCashReceiptReprintLog( rem ); 
+		data.cashreceiptcashtickets = adb.getCashTicket( rem ); 
+		data.checkpayments = adb.getCheckPayment( rem ); 
+
+		data.entity.cashreceipts = data.cashreceipts*.objid; 
+		data.entity.cashbreakdown = decodeCashBreakdown( data.entity.cashbreakdown ) ;
+		data.entity.remittancefunds.each{ 
+			it.cashbreakdown = decodeCashBreakdown( it.cashbreakdown ); 
+		}
+
+		data.entity.txnno = data.entity.controlno; 
+		data.entity.remittancedate = data.entity.controldate;  
+		return data; 
+	} 
+
+	private def decodeCashBreakdown( value ) {
+		if ( value instanceof String ) {
+			return em.serializer.read( value ) ;
+		} else {
+			return value; 
+		}
+	}
+
+	
+	@Async
+	@ProxyMethod
+	public def importRemittance( data ) { 
+		checkDuplicatePosting( data.entity ); 
+
+		if ( data.vertype.toString() == 'v255' ) {
+			importDataV255( data ); 
+		} else {
+			importDataOldVersion( data ); 
+		} 
+		return "OK";
+	}
+
+	void checkDuplicatePosting(rem){
+		if ( adb.findRemittanceByid([remittanceid:rem.objid])){
+			throw new Exception('Remittance has already been posted.')
+		}
+	}
+
+	private void importDataOldVersion( data ) {
+		data.cashreceipts.groupBy{ it.controlid }.each{ k,v-> 
+			v.sort{ it.series } 
+			v.each{ rct-> 
+				if ( rct.checks == null ) rct.checks = []; 
+				if ( rct.paymentitems == null ) rct.paymentitems = []; 
+
+				if ( rct.paymentitems ) {
+					def funds = []; 
+					rct.items.collect{ it.item?.fund?.objid }.findAll{( it )}.unique().each{ 
+						funds << [objid: it]; 
+					} 
+
+					rct.paymentitems.each{ nc-> 
+						nc.refid = "CRPMT-"+ new java.rmi.server.UID(); 
+						nc.voidamount = 0.0; 
+					} 
+
+					rct.paymentitems.findAll{( it.reftype == 'CHECK' )}.each{ 
+						it.checkid = it.refid; 
+
+						if ( it.fund == null ) { 
+							it.fund = (funds ? funds.first() : [:]); 
+						}
+
+						def chk = [
+							objid: it.checkid, bankid: it.bankid, 
+							refno: it.refno, refdate: it.refdate, 
+							amount: it.amount, amtused: 0.0, 
+							receivedfrom: rct.paidby, state: 'PENDING', 
+							split: 0, external: 0 
+						]; 
+						chk.bank = bank_db.find([ objid: it.bankid ]).select('objid,name').first(); 
+						rct.checks << chk; 
+					} 
+				}
+
+				def voided = rct.remove('voided');
+				crSvc.post( rct )
+
+				if ( voided && voided == 1) {
+					voidSvc.post([ receipt:rct, reason: rct.voidreason ]);
+				}
+			}
+		} 
+
+		data.entity.cashreceipts = data.cashreceipts*.objid;
+		data.entity.cashbreakdown = em.serializer.read( data.entity.cashbreakdown ) ;
+		if ( data.entity.txnno ) data.entity.txnno = data.entity.txnno + '-R'; 
+		
+		data.entity.controlno = data.entity.txnno;
+		data.entity.controldate = data.entity.remittancedate; 
+		data.entity.totalcheck  = data.entity.totalnoncash;
+		data.entity.totalcr = 0.0;
+		remSvc.importData( data.entity );
+	}
+
+	private void importDataV255( data ) { 
+		data.cashreceipts.groupBy{ it.controlid }.each{ k,v-> 
+			v.sort{ it.series } 
+			v.each{ a-> 
+				def rct = [:]; 
+				rct.putAll( a ); 
+				rct.items = data.cashreceiptitems.findAll{( it.receiptid == rct.objid )}				
+				rct.sharing = data.cashreceiptshares.findAll{( it.receiptid == rct.objid )} 
+				rct.paymentitems = data.cashreceiptnoncashpayments.findAll{( it.receiptid == rct.objid )} 
+
+				rct.checks = []; 
+				def checkids = rct.paymentitems.findAll{( it.reftype == 'CHECK' )}.collect{ it.checkid }.findAll{( it )} 
+				checkids.unique().each{ chkid-> 
+					def chk = data.checkpayments.find{( it.objid == chkid )} 
+					if ( chk ) rct.checks << chk; 
+				} 
+
+				rct.shares = rct.sharing;
+				rct.remove('remittanceid');
+
+				if ( rct.checks ) { 
+					rct.checks.each{ 
+						it._imported_ = true; 
+					}
+				}
+				if ( rct.paymentitems ) { 
+					rct.paymentitems.each{ 
+						it._imported_ = true; 
+					}
+				}
+
+				crSvc.post( rct ); 
+
+				def cv = data.cashreceiptvoids.find{( it.receiptid == rct.objid )} 
+				if ( cv ) { 
+					cv.receipt = rct; 
+					cv._imported_ = true; 
+					voidSvc.post( cv ); 
+				} 
+			} 
+		} 
+
+		data.cashreceiptreprintlogs.each { 
+			reprintLog_db.create( it ); 
+		} 
+
+		remSvc.importData( data.entity ); 
+	}
+}

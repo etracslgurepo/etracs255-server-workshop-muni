@@ -1,0 +1,244 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+import java.rmi.server.UID
+
+class LandTaxReportAbstractTaxCollectionService { 
+
+    @ActiveDB('landtaxreport_abstractofcollection')
+    def em;
+
+    @ActiveDB('landtaxreport_remittance')
+    def remittance_report;
+
+    @Service('DateService')
+    def dtsvc;
+
+    @Service('NumberService')
+    def numSvc
+
+    @Env 
+    def env 
+
+
+    @ProxyMethod
+    public def generateAbstractOfRPTCollectionByRemittance( entity, municityname ) {
+        def remyr = dtsvc.getYear(entity.dtposted)
+
+        def params = [objid:entity.objid, year:remyr, collectorid:'%', filter:'']
+        params.municityname = municityname ? municityname : '%'
+        if ( params.municityname=='%' ) {
+            //do nothing 
+        } else if ( env.ORGCLASS.equalsIgnoreCase('city') ) {
+            params.filter += ' AND c.name=$P{municityname} ' 
+        } else { 
+            params.filter += ' AND m.name=$P{municityname} ' 
+        }       
+
+        def items = remittance_report.getAbstractOfRPTCollection(params).each{ buildPeriod(it) }
+        def advitems = remittance_report.getAbstractOfRPTCollectionAdvance(params).each{ buildPeriod(it) }
+        if( !items &&  !advitems) throw new Exception('No records found.')
+
+        def header = [:]
+        header.TITLE = 'ABSTRACT OF REAL PROPERTY TAX COLLECTION'
+        header.PERIOD = ''
+        header.REMITTANCENO = entity.txnno
+        header.dtposted = dtsvc.format('MMMMM dd, yyyy', entity.dtposted )
+        header.REMITTANCEAMOUNT = entity.amount
+        header.COLLECTORNAME = entity.collector.name
+        header.COLLECTORTITLE = entity.collector.title
+        header.LIQUIDATINGOFFICER = entity.liquidatingofficer.name
+        header.LIQUIDATINGOFFICERTITLE = entity.liquidatingofficer.title
+        header.DATEPOSTED =  entity.dtposted 
+        header.AMTINWORDS = numSvc.convertDouble( entity.amount )
+
+        return  [ header:header, items:items, advitems:advitems]
+    }
+
+
+    @ProxyMethod 
+    def generateAbstractOfRPTCollectionDetail(entity) {
+        def remyr = dtsvc.getYear(entity.dtposted)
+
+        def params = [remittanceid:entity.objid]
+        def items = em.getAbstractOfRPTCollectionDetail(params)
+        if(! items ) throw new Exception('No records found.     ')
+
+        items.each{
+            if (entity.period == 'ANNUAL') {
+                it.items = em.getAbstractOfRPTCollectionDetailItemAnnual(it)
+            } else {
+                it.items = em.getAbstractOfRPTCollectionDetailItem(it)
+            } 
+        }   
+        
+        def header = [:]
+        header.TITLE = 'ABSTRACT OF REAL PROPERTY TAX COLLECTION DETAIL'
+        header.PERIOD = ''
+        header.REMITTANCENO = entity.controlno; 
+        header.dtposted = dtsvc.format('MMMMM dd, yyyy', entity.controldate )
+        header.REMITTANCEDATE = header.dtposted;
+        header.REMITTANCEAMOUNT = entity.amount
+        header.COLLECTORNAME = entity.collector.name
+        header.COLLECTORTITLE = entity.collector.title
+        header.LIQUIDATINGOFFICER = entity.liquidatingofficer.name
+        header.LIQUIDATINGOFFICERTITLE = entity.liquidatingofficer.title
+        header.DATEPOSTED =  entity.controldate ;
+        header.AMTINWORDS = numSvc.convertDouble( entity.amount )
+
+        return  [ header:header, items:items]
+    }
+
+
+    @ProxyMethod 
+    def generateAbstractOfRPTCollectionSummary(entity) {
+        def remyr = dtsvc.getYear(entity.dtposted)
+
+        def params = [remittanceid:entity.objid]
+        def items = em.getAbstractOfRPTCollectionSummary(params)
+
+        if(! items ) throw new Exception('No records found.     ')
+        def header = [:]
+        header.TITLE = 'ABSTRACT OF REAL PROPERTY TAX COLLECTION SUMMARY'
+        header.PERIOD = ''
+        header.REMITTANCENO = entity.controlno; 
+        header.dtposted = dtsvc.format('MMMMM dd, yyyy', entity.controldate )
+        header.REMITTANCEDATE = header.dtposted;
+        header.REMITTANCEAMOUNT = entity.amount
+        header.COLLECTORNAME = entity.collector.name
+        header.COLLECTORTITLE = entity.collector.title
+        header.LIQUIDATINGOFFICER = entity.liquidatingofficer.name
+        header.LIQUIDATINGOFFICERTITLE = entity.liquidatingofficer.title
+        header.DATEPOSTED =  entity.controldate ;
+        header.AMTINWORDS = numSvc.convertDouble( entity.amount )
+
+        return  [ header:header, items:items]
+    }
+
+
+    @ProxyMethod
+    def generateAbstractOfRPTCollection( params ){ 
+
+        String period;
+        String title = 'Abstract of Real Property Tax Collection';
+        if (params.collector)
+            title += ' (' + params.collector.name + ')'
+
+        params.collectorid = params.collector? params.collector.objid : '%';
+
+        if(params.period=='Daily'){
+            params.fromdate = dtsvc.parse("yyyy-MM-dd",params.date);
+            params.todate = dtsvc.add(params.fromdate,"1d");
+            params.year = dtsvc.getYear(params.fromdate);
+            period = 'For ' + dtsvc.format('MMMMM dd, yyyy', params.fromdate);
+        }
+        if(params.period=='Monthly'){
+            String idx = (params.month.index+'').padLeft(2, '0')
+            params.fromdate = dtsvc.parse('yyyy-MM-dd', params.year+"-"+idx+"-01");
+            params.todate = dtsvc.getMonthEndDate(dtsvc.parse("yyyy-MM-dd",params.fromdate));
+            params.todate = dtsvc.add(dtsvc.parse("yyyy-MM-dd",params.todate),"1d");
+            period = 'For the Month of ' + dtsvc.format('MMMMM, yyyy', params.fromdate);
+        }
+        if(params.period=='Range'){
+            params.fromdate = dtsvc.parse('yyyy-MM-dd', params.startdate);
+            def todate = dtsvc.parse("yyyy-MM-dd",params.enddate)
+            params.todate = dtsvc.add(todate,"1d");
+            params.year = dtsvc.getYear(params.fromdate);
+            period = 'For the Period ' + dtsvc.format('MMMMM dd, yyyy', params.fromdate) 
+            period += ' - ' + dtsvc.format('MMMMM dd, yyyy', todate);
+        }
+
+        params.pdate = dtsvc.parseDate(params.fromdate, null)
+
+        params.filter = ' liquidationdate >= $P{fromdate} AND liquidationdate < $P{todate} '
+        if (params.postingtype && params.postingtype.code == 'byrem'){
+            params.filter = ' remittancedate >= $P{fromdate} AND remittancedate < $P{todate} '
+        }
+
+        def items = [];
+        def advitems = [];
+        
+        if (!params.collectiontype) {
+            items = em.getAbstractOfRPTCollection(params).each{buildPeriod(it)};
+            advitems = em.getAbstractOfRPTCollectionAdvance(params).each{buildPeriod(it)};
+        } else if ('advance' == params.collectiontype.code) {
+            advitems = em.getAbstractOfRPTCollectionAdvance(params).each{buildPeriod(it)};
+        } else if ('current' == params.collectiontype.code) {
+            params.collyear = params.pdate.year
+            params.filter += ' AND rpi.year = $P{collyear}'
+            items = em.getAbstractOfRPTCollection(params).each{buildPeriod(it)};
+        } else if ('previous' == params.collectiontype.code) {
+            params.collyear = params.pdate.year
+            params.filter += ' AND rpi.year < $P{collyear}'
+            items = em.getAbstractOfRPTCollection(params).each{buildPeriod(it)};
+        } else if ('currprev' == params.collectiontype.code) {
+            params.collyear = params.pdate.year
+            params.filter += ' AND rpi.year <= $P{collyear}'
+            items = em.getAbstractOfRPTCollection(params).each{buildPeriod(it)};
+        }
+
+        def collectionTitle = ''
+        if (params.collectiontype && 'advance' != params.collectiontype.code ) {
+            collectionTitle = params.collectiontype.caption + ' ' + 'Collection'
+        }
+        
+        def header = [ 
+            TITLE: title, 
+            PERIOD: period, 
+            COLLECTIONTYPE: params.collectiontype?.title,
+            COLLECTION: collectionTitle 
+        ]; 
+        return  [ header:header, items:items, advitems:advitems ]; 
+    }
+
+    void buildPeriod(item){
+        def maxyear = item.maxyear 
+        def maxqtr = item.maxqtr 
+        def partialledyear = 0
+        def partialledqtr = 0
+
+        if (item.partialled == 1){
+            if (item.minyear == item.maxyear && item.minqtr == 1 && item.maxqtr == 4)
+                item.period = 'Partial ' + item.maxyear
+            else if (item.minyear == item.maxyear && item.minqtr == item.maxqtr)
+                item.period = 'Partial ' + item.minqtr + 'Q, ' + item.maxyear
+            else if (item.minyear == item.maxyear)
+                item.period = item.minqtr + '' + (item.maxqtr - 1) + 'Q,' + item.maxyear + ' (Partial ' + item.maxqtr + 'Q,' + item.maxyear + ')' 
+            else if (item.minqtr == 1 && item.maxqtr == 4)
+                item.period = item.minyear + '-' + (item.maxyear - 1) + '(Partial ' + item.maxyear + ')'
+            else if (item.minqtr == 1 && item.maxqtr != 4)
+                item.period = item.minyear + '-' + (item.maxqtr - 1) + 'Q,' + item.maxyear + ' (Partial ' + item.maxqtr + 'Q,' + item.maxyear + ')'
+            else if (item.minqtr != 1 && item.maxqtr == 4)
+                item.period = item.minqtr + 'Q,' + item.minyear + ' (Partial ' + item.maxyear + ')'
+            else if (item.maxqtr == 1)
+                item.period = item.minqtr + 'Q,' + item.minyear + '-' + (item.maxyear - 1) + '  (Partial 1Q,' + item.maxyear + ')'
+            else if (item.maxqtr != 4)
+                item.period = item.minqtr + 'Q,' + item.minyear + '-' + (item.maxqtr - 1) + 'Q,' + (item.maxyear - 1) + '  (Partial ' + item.maxqtr + 'Q,' + item.maxyear + ')'
+            else 
+                item.period = 'Partial (' + item.minqtr + 'Q,' + item.minyear + '-' + item.maxqtr + 'Q,' + item.maxyear + ')'
+        }
+        else {
+            if (item.minyear == item.maxyear && item.minqtr == 1 && item.maxqtr == 4)
+                item.period = item.maxyear
+            else if (item.minyear == item.maxyear && item.minqtr == item.maxqtr)
+                item.period = item.minqtr + 'Q, ' + item.maxyear
+            else if (item.minyear == item.maxyear)
+                item.period = item.minqtr + '' + item.maxqtr + 'Q, ' + item.maxyear 
+            else if (item.minqtr == 1 && item.maxqtr == 4)
+                item.period = item.minyear + '-' + item.maxyear 
+            else if (item.minqtr == 1 && item.maxqtr != 4)
+                item.period = item.minyear + '-' + item.maxqtr + 'Q,' + item.maxyear 
+            else if (item.minqtr != 1 && item.maxqtr == 4)
+                item.period = item.minqtr + 'Q,' + item.minyear + '-' + item.maxyear
+            else 
+                item.period = item.minqtr + 'Q,' + item.minyear + '-' + item.maxqtr + 'Q,' + item.maxyear
+        }
+    }
+
+
+    @ProxyMethod 
+    def getMuniCityByRemittance( remittanceid ) {
+        def list = em.getMuniCityByRemittance([remittanceid:remittanceid])
+        return list*.municityname 
+    }
+}

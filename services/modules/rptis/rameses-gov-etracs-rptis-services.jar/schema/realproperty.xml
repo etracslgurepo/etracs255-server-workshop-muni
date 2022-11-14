@@ -1,0 +1,32 @@
+<schema>
+	<element tablename="realproperty">
+		<field name="objid" primary="true" />
+		<field name="state" required="true" />
+		<field name="autonumber" required="true" />
+		<field name="pintype" required="true" />
+		<field name="pin" required="true" />
+		<field name="section"  />
+		<field name="parcel"  />
+		<field name="ry" required="true" />
+		<field name="claimno"  />
+		<field name="purok"  />
+		<field name="surveyno"  />
+		<field name="cadastrallotno" />
+		<field name="blockno"  />
+		<field name="street"  />
+		<field name="barangayid" required="true" />
+		<field name="north" />
+		<field name="east" />
+		<field name="south" />
+		<field name="west" />
+		<field name="lgutype" required="true" />
+		<field name="lguid" />
+		<field name="previd" />
+		<field name="stewardshipno" />
+		<field name="portionof" />
+		<complex name="barangay" ref="barangay" 
+			jointype="many-to-one" required="true" includefields="objid,state,indexno,pin,name">
+			<key field="barangayid" target="objid" />
+		</complex>
+	</element>
+</schema>

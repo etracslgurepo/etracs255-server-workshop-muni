@@ -1,0 +1,34 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+
+class WebAccountService
+{
+	@ActiveDB(value='session', em='admin')
+	def session;
+
+	@ActiveDB(value='user', em='admin')
+	def user;
+
+	@ProxyMethod
+	public Map getAccountInfo( params ) { 
+		def sessinfo = session.read([sessionid: params.sessionid]); 
+		if (!sessinfo) throw new Exception('INVALID_SESSION'); 
+
+		def userinfo = [:];
+		def username = sessinfo.username;
+		if ("sa".equalsIgnoreCase(username+'')) {
+			sessinfo.roles = '';			
+			sessinfo.user = [
+				objid:username, username:username, 
+				name:'System Administrator', 
+				lastname:'System Administrator'
+			];
+		} else { 
+			userinfo = user.read([objid: sessinfo.userid]);
+			def usergroups = user.getUsergroups([objid: userinfo.objid]); 
+			sessinfo.roles = usergroups.collect{ it.usergroup?.title }.join(', ');
+			sessinfo.user  = userinfo; 
+		} 
+		return sessinfo; 
+	} 
+} 

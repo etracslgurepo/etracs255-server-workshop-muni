@@ -1,0 +1,114 @@
+import com.rameses.annotations.*
+import com.rameses.eserver.*;
+import com.rameses.common.*;
+
+class MCSettlementTaskInterceptor
+{
+	@Service('MCSettlementService')
+	def svc 
+
+	@Service('RPTTaskService')
+	def taskSvc
+
+    @Service('RPTWorkflowService')
+    def workflowSvc 
+
+    @Service(value="GroupNotificationService", connection="notification_proxy")
+    def notificationSvc
+
+	@Env
+	def env 
+
+	def DOC_NAME = 'Multiple Claim Settlement'
+	def TXN_TYPE = 'MS'
+
+
+	@Before(pattern="MCSettlementService.deleteEntity") 
+	public void deleteEntity( evt ) {
+		def entity = evt.args[0]
+		taskSvc.delete(entity)
+	}
+
+
+	def createTask(entity, wf){
+		return [
+			objid		: entity.objid,
+			refno		: entity.txnno,
+			docname		: DOC_NAME,
+			filetype	: 'mcsettlement',
+			action 		: wf.tostate,
+			status		: wf.message,
+			signatory 	: wf.signatory,
+			workflowid  : wf.workflowid,
+		]
+	}
+
+	@After(pattern="MCSettlementService.create") 
+	public void create( evt ) {
+		def entity = evt.result
+		def startwf = workflowSvc.findStart([docname:DOC_NAME, appliedto:TXN_TYPE, fromstate:null])
+		def task = createTask(entity, startwf)
+		task = taskSvc.createTask(task)
+		taskSvc.assignTask(task)
+		updateSignatoryFromTask(entity, task)
+	}
+
+
+	@After(pattern="MCSettlementService.open") 
+	public void open( evt ) {
+		def mcs = evt.result
+		mcs.taskaction = null
+		try{
+			def task = taskSvc.findCurrentTask(mcs.objid)
+			if (task){
+				mcs.taskaction = task.action 
+				mcs.taskmsg = task.msg 
+			}
+		}
+		catch(e){
+			// ignore 
+		}
+
+		//add tracking no 
+		def tracking = em.findTrackingNo(mcs)
+		mcs.trackingno = tracking.trackingno
+	}
+
+
+	@After(pattern="MCSettlementService.approve") 
+	public void approve( evt ) {
+		taskSvc.closeTask([objid:evt.result.objid])
+	}
+
+	@After(pattern="MCSettlementService.disapprove") 
+	public void disapprove( evt ) {
+		taskSvc.closeTask([objid:evt.result.objid])
+	}
+
+
+	@After(pattern="RPTTaskService.(createNextUserTask|assignTaskToMe)", eval="#{result.filetype == 'mcsettlement'}") 
+	public void updateSignatoryInfo( evt ) {
+		def task = evt.result 
+		def entity = svc.open(task.objid)
+		updateSignatoryFromTask(entity, task)
+		try{
+			notificationSvc?.removeMessage([objid:entity.objid])
+		}
+		catch(e){
+			println 'Notification Error ==================================================='
+			println e.message
+		}
+	}
+
+	void updateSignatoryFromTask(entity, task){
+		if (! entity[task.signatory]) 
+			entity[task.signatory] = [:]
+
+		entity[task.signatory].dtsigned = task.startdate 
+		entity[task.signatory].name = task.assignedto.name 
+		entity[task.signatory].title = task.assignedto.title
+		svc.update(entity) 
+	}	
+
+}
+

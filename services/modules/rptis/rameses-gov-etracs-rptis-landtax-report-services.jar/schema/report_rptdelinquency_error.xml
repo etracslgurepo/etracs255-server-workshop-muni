@@ -1,0 +1,11 @@
+<schema>
+	<element tablename="report_rptdelinquency_error">
+		<field name="objid" primary="true" prefix="RPI" />
+		<field name="barangayid" required="true" />
+		<field name="error"/>
+		<field name="ignored" type="boolean" required="true" />
+		<complex name="rptledger" ref="rptledger" jointype="many-to-one" includefields="tdno">
+			<key field="objid" target="objid" />
+		</complex>
+	</element>
+</schema>

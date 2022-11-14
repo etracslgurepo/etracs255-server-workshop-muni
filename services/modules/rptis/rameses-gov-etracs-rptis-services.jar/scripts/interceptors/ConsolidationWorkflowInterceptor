@@ -1,0 +1,152 @@
+import com.rameses.annotations.*
+import com.rameses.eserver.*;
+import com.rameses.common.*;
+
+class ConsolidationWorkflowInterceptor
+{
+	@Env 
+	def env 
+
+	@ActiveDB('consolidation')
+	def em
+
+	@ActiveDB('rpt_requirement')
+	def em_requirement
+
+	@Service('ConsolidationWorkflowService')
+	def workflowSvc
+
+	@Service('ConsolidationService')
+	def consolidationSvc
+
+	@Service('RPTUtil')
+	def util
+
+	@Service('RPTRequirementRuleService')
+    def ruleReqSvc
+
+	@Service('RPTRequirementService')
+	def reqSvc
+
+	@Service('ExaminationService')
+	def examinationSvc
+
+	@Service('Var')
+	def var 
+
+	@Service('RPTLedgerService')
+	def ledgerSvc 
+
+	@Service('NotificationService')
+	def notificationService
+
+	@DataContext('rpu_assessment')
+	def em_rpu_assessment
+
+
+	@After(pattern='ConsolidationService.create')
+	public void afterCreate(evt){
+		def consolidation = evt.result 
+		def info = evt.args[0] 
+
+		consolidation.task = workflowSvc.start([refid:consolidation.objid, data:consolidation])[0]
+		consolidation.taskid = consolidation.task.objid 
+		consolidation.taskaction = consolidation.task.state
+	}
+
+
+	@After(pattern="ConsolidationWorkflowService.openTask") 
+	public void handleWorkflowOpen( evt ) {
+		def task = evt.result 
+		if ( ! task.refid ) throw new Exception('RefId is required.')
+		task.data = consolidationSvc.open([objid: task.refid])
+		task.data.taskid = task.objid 
+		task.data.taskstate = task.state
+		task.data.assignee = task.assignee 
+
+		//clear user notification
+		notificationService?.removeMessage([objid:task.refid])
+	}
+
+
+	@Before(pattern="ConsolidationWorkflowService.signal", eval="#{args[0].state.equalsIgnoreCase('receiver') && args[0].action != 'delete'}", index=10) 
+	public void validateReceiveInfo( evt ) {
+		def consolidation = evt.args[0].data
+		reqSvc.checkCompliance(consolidation.objid)
+	}
+
+	@Before(pattern="ConsolidationWorkflowService.signal", eval="#{args[0].action =='delete'}", index=10) 
+	public void beforeDeleteConsolidation( evt ) {
+		def consolidation = evt.args[0].data
+		consolidationSvc.delete(consolidation)
+	}
+
+	@After(pattern="ConsolidationWorkflowService.signal", eval="#{args[0].action =='delete'}", index=10) 
+	public void afterDeleteConsolidation( evt ) {
+		def consolidation = evt.args[0].data
+		em.deleteTasks(consolidation)
+        em.deleteRequirements(consolidation)
+	}
+
+	@Before(pattern="ConsolidationWorkflowService.signal", eval="#{args[0].state.equalsIgnoreCase('examiner') && !args[0].action?.matches('return.*')}", index=10) 
+	public void validateExaminationInfo( evt ) {
+		def consolidation = evt.args[0].data
+		def findings = examinationSvc.getFindings(consolidation.objid)
+		if (!findings )
+			throw new Exception('Examination Finding is required.')
+	}
+
+
+	@Before(pattern="ConsolidationWorkflowService.signal", eval="#{args[0].state.equalsIgnoreCase('taxmapper') && !args[0].action?.matches('return.*')}", index=10) 
+	public void validateTaxmappingInfo( evt ) {
+		def consolidation = evt.args[0].data
+
+		//check landpin count, at least 2
+		def lands = em.getConsolidatedLands([consolidationid:consolidation.objid])
+		if (lands.size() <= 1)
+			throw new Exception('Consolidation requires at least two (2) consolidated lands.')
+
+		//check all affected rpus are assigned with new PIN
+		def nopinRpus = em.getAffectedRpuWithNoPin(consolidation)
+		if (nopinRpus)
+			throw new Exception('Affected RPU ' + nopinRpus[0].fullpin + ' is not yet assigned with a new suffix.');
+
+		consolidationSvc.updateConsolidatedFaasPreviousInfo(consolidation)
+	}
+
+
+	@After(pattern="ConsolidationWorkflowService.signal", eval="#{args[0].state.equalsIgnoreCase('taxmapper') }", index=11) 
+	public void afterTaxmapping( evt ) {
+		def consolidation = evt.args[0].data
+		consolidationSvc.updateConsolidatedFaasPreviousInfo(consolidation)
+	}
+
+
+
+	@Before(pattern="ConsolidationWorkflowService.signal", eval="#{args[0].state.equalsIgnoreCase('appraiser') && !args[0].action?.matches('return.*')}", index=15) 
+	public void validateAppraisalInfo( evt ) {
+		def consolidation = evt.args[0].data
+		consolidation = consolidationSvc.open(consolidation)
+
+		def assessment = em_rpu_assessment.find([rpuid:consolidation.newrpuid]).first()
+		if (!assessment) throw new Exception('Consolidated FAAS is not yet appraised.')
+
+		validateArea(consolidation);
+
+	}
+
+	void validateArea(consolidation){
+        if (util.isTrue(var.consolidation_allow_equal_area_only)) {
+            def consolidatedLands = em.getConsolidatedLands([consolidationid: consolidation.objid])
+            def consolidatedFaasArea = consolidation.rpu.totalareasqm
+            def consolidatedLandsArea = consolidatedLands ? consolidatedLands.sum{ it.rpu.totalareasqm } : 0
+
+            if (consolidatedFaasArea != consolidatedLandsArea){
+                throw new Exception("Consolidated FAAS Area must be equal to ${consolidatedLandsArea} sq.m. or ${consolidatedLandsArea / 10000.0} ha.")
+            }
+        }
+    }    
+
+
+}
+

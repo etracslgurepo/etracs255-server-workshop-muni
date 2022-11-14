@@ -1,0 +1,10 @@
+<schema adapter="tracsdb">
+
+	<element tablename="etracs25_capture_lob">
+		<field name="oldlob_objid" primary="true"/>
+		<field name="oldlob_name" required="true"/>
+		<field name="lob_objid" required="true"/>
+		<field name="lob_name" required="true"/>
+	</element>
+
+</schema>

@@ -1,0 +1,134 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import com.rameses.services.extended.*
+
+
+/*----------------------------------------------------------------
+* FAAS Synchronization support shared 
+* between province and municipalities 
+-----------------------------------------------------------------*/
+class FAASSyncDataInterceptor
+{
+    @Env
+    def env
+
+    @Service('RPTMainSyncDataService')
+    def mainSyncSvc
+
+    @Service('RPTSyncDataService')
+    def syncSvc
+
+    @Service('FAASSyncDataService')
+    def faasSync 
+
+    @Service('FAASService')
+    def faasSvc 
+
+    /*---------------------------------------------------------
+    *
+    * SCHEDULING SUPPORT
+    *
+    ---------------------------------------------------------*/
+
+    @After(pattern="FAASService.approveFaas", eval="#{result.datacapture == 1 || result.datacapture == true}", index=50000) 
+    public void createDataCapturedFAAS( evt ) {
+        def faas = evt.result 
+        mainSyncSvc.createDataForSync(getDataForSync(faas, 'FAAS-DATACAPTURE'))
+    }   
+
+    @After(pattern="MunicipalityFAASService.resendToProvince", index=50000) 
+    public void resendCaptureToProvince( evt ) {
+        def faas = evt.result 
+        if (faas.state == 'CURRENT') {
+            mainSyncSvc.createDataForSync(getDataForSync(faas, 'FAAS-DATA'))
+        } else if (faas.datacapture || faas.datacapture == 1) {
+            mainSyncSvc.createDataForSync(getDataForSync(faas, 'FAAS-DATACAPTURE'))
+        } else {
+            mainSyncSvc.createDataForSync(getDataForSync(faas, 'FAAS-PROVINCE-APPROVAL'))
+        }
+    }   
+
+    @After(pattern="FAASWorkflowService.signal", eval="#{args[0].state == 'approver' && args[0].action == 'approve'}", index=50000) 
+    public void createOnlineApprovedFAAS( evt ) {
+        def faas = evt.args[0].data 
+        faas.putAll(faasSvc.approveFaas(faas))
+        mainSyncSvc.createDataForSync(getDataForSync(faas, 'FAAS-APPROVAL'))
+    }   
+    
+    @After(pattern="FAASService.resendToMunicipality", index=50000) 
+    public void resendToMunicipality( evt ) {
+        def faas = evt.result
+        mainSyncSvc.createDataForSync(getDataForSync(faas, 'FAAS-APPROVAL'))
+    }   
+
+    @After(pattern="FAASWorkflowService.signal", eval="#{args[0].state == 'recommender' && args[0].action == 'submit_to_province'}", index=50000) 
+    public void createProvinceApproval( evt ) {
+        def faas = evt.args[0].data 
+        mainSyncSvc.createDataForSync(getDataForSync(faas, 'FAAS-PROVINCE-APPROVAL'))
+    }       
+
+    @After(pattern="MunicipalityFAASService.resendToProvince", eval="#{result.datacapture == false && result.taskstate == 'provapprover'}", index=50000) 
+    public void resendForApprovalToProvince( evt ) {
+        def faas = evt.result 
+        mainSyncSvc.createDataForSync(getDataForSync(faas, 'FAAS-PROVINCE-APPROVAL'))
+    }   
+
+    @After(pattern="MunicipalityFAASService.resendRequirements", eval="#{result.datacapture == false && result.taskstate == 'provapprover'}", index=50000) 
+    public void resendRequirementsToProvince( evt ) {
+        def faas = evt.result 
+        mainSyncSvc.createDataForSync(getDataForSync(faas, 'FAAS-REQUIREMENTS'))
+    }   
+
+
+    @After(pattern="FAASService.deleteFaas") 
+    public void createDeleteFaas( evt ) {
+        def faas = evt.args[0]
+        if (faas) {
+            mainSyncSvc.createDataForSync(getDataForSync(faas, 'FAAS-DELETE'))
+        }
+    }
+
+    @After(pattern="FAASService.revertToInterim") 
+    public void createRevertToInterim( evt ) {
+        def faas = evt.result
+        mainSyncSvc.createDataForSync(getDataForSync(faas, 'FAAS-REVERT-TO-INTERIM'))
+    }
+
+
+    /* scheduler */
+    @After(pattern="RPTMainSyncDataService.scheduleSync", eval="#{result.action.matches('FAAS-.*')}", index=50000) 
+    public void scheduleFAASForSync( evt ) {
+        def data = evt.result 
+        faasSync.schedule(data)
+    }   
+
+
+    /*---------------------------------------------------------
+    *
+    * UPLOAD/DOWNLOAD SUPPORT
+    *
+    ---------------------------------------------------------*/
+    @After(pattern="RPTMainSyncDataService.asyncSend", eval="#{args[0].action.matches('FAAS-.*')}") 
+    public void send( evt ) {
+        faasSync.send(evt.args[0])
+    }   
+
+    @After(pattern="RPTMainSyncDataService.receive", eval="#{args[0].action.matches('FAAS-.*')}") 
+    public void receiveData(evt){
+        faasSync.receive(evt.args[0])
+    }
+
+
+    def getDataForSync(faas, action) {
+        def data = [:]
+        data.objid = faas.objid
+        data.reftype = 'faas'
+        data.refno = (faas.tdno ? faas.tdno : faas.utdno)
+        data.action = action
+        data.orgid = env.ORGID
+        data.remote = syncSvc.getRemoteOrg(faas)
+        data.info = faas.info
+        return data
+    }
+}
+

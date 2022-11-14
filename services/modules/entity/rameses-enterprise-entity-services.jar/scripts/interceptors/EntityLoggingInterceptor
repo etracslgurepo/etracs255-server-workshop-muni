@@ -1,0 +1,39 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import java.rmi.server.UID;
+import com.rameses.util.*;
+import com.rameses.io.*;
+
+class EntityLoggingInterceptor  {
+
+	@DataContext("entity")
+	def entityEm;
+
+	@Service('LogService')
+	def logSvc 
+
+	//LOGGING METHODS
+	@Before(pattern="PersistenceService.removeEntity", eval="#{args[0]._schemaname.matches('entity.*')}", index=100)
+	public void logBeforeRemove(def evt ) {
+		def o = evt.args[0];
+		def z = entityEm.find([objid: o.objid]).select("entityno,entityname").first();
+		logSvc.logA(evt.methodName, o._schemaname, o.objid, z.toString() );
+	}
+
+	//log after creating
+	@After(pattern="PersistenceService.create", eval="#{args[0]._schemaname.matches('entity.*')}", index=100)
+	public void logAfterCreate(def evt ) {
+		def o = evt.args[0];
+		logSvc.log(evt.methodName, o._schemaname, o.objid )
+	}
+
+	//log after creating
+	@After(pattern="PersistenceService.update", eval="#{args[0]._schemaname.matches('entity.*')}", index=100)
+	public void logAfterUpdate(def evt ) {
+		def o = evt.args[0];
+		logSvc.logA(evt.methodName, o._schemaname, o.objid, o.toString() );
+	}
+
+
+
+}

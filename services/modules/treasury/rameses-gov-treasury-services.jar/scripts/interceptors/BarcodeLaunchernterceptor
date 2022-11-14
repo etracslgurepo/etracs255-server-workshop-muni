@@ -1,0 +1,14 @@
+import com.rameses.annotations.*;
+
+class BarcodeLaunchernterceptor {
+
+	@Before(pattern="PersistenceService.create", eval="#{args[0]._schemaname == 'barcode_launcher'}")
+	public void beforeCreate( evt ) { 
+		def arg = evt.args[0];
+		if ( !arg ) return;
+
+		if ( arg.paymentorder == null ) {
+			arg.paymentorder = 0; 
+		}
+	} 
+}

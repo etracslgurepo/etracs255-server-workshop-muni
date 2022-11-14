@@ -1,0 +1,52 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.services.extended.*;
+import java.text.*;
+
+public class VerifyEmailService {
+
+	@Service("SmtpService")
+	def smtpSvc;
+
+	@Service("SMSService")
+	def smsSvc;
+
+	@Service 
+	def self;
+
+	@ProxyMethod
+	public def verifyEmail( data ) { 
+		if( !data.email ) throw new Exception("Please provide an email");
+
+		Random rand = new Random();
+		def otp = rand.nextInt(100000000);
+		def skey = String.format("%06d", otp).substring(0,6);
+
+		println "generating key " + skey;
+
+		def msg = " Your 6 digit validation key is " + skey;
+		self.sendMail([ to: data.email, subject:msg, message: msg ]); 
+
+		if ( data.phoneno ) { 
+			self.sendSMS([ 
+				phoneno: data.phoneno, message: msg, 
+				txnid: data.txnid, txnno: data.txnno, txntype: data.txntype 
+			]); 
+		} 
+
+		return [ key: skey ];
+	}
+
+	@Async
+	@ProxyMethod 
+	public void sendMail( m ) {
+		smtpSvc.send([ to: m.to, subject: m.subject, message: m.message ]);
+	}
+
+	@Async
+	@ProxyMethod 
+	public void sendSMS( m ) {
+		smsSvc.send([ phoneno: m.phoneno, message: m.message ]);  
+	}
+}

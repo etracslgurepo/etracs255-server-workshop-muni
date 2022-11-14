@@ -1,0 +1,26 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import com.rameses.eserver.*;
+import java.rmi.server.UID;
+
+public class RPTTaxpayerLookupService
+{
+
+	@ProxyMethod
+	public def lookupTaxpayers( params ) {
+		return [
+			[objid:'E-4795cca5:13cec253f5f:-7ecb', acctno:'0001', name:'PETER SANTOS', address:'CEBU CITY'],
+			[objid:'T001', acctno:'0002', name:'ROBERT DINERO', address:'CEBU CITY'],
+			[objid:'T002', acctno:'0003', name:'SHARON STONE', address:'CEBU CITY'], 
+		]
+	}
+
+	@ProxyMethod
+	public def openTaxpayer( objid ) {
+		def list = lookupTaxpayers();
+		def taxpayer = list.find{it.taxpayerid == objid}
+		if ( ! taxpayer ) taxpayer = [:]
+		return taxpayer 
+	}
+	
+}

@@ -1,0 +1,875 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+import com.rameses.util.*;
+import groovy.lang.GroovyShell;
+import groovy.lang.Binding;
+import java.math.BigDecimal;
+
+class RPTUtil
+{
+    @Env 
+    def env 
+    
+    @PersistenceContext('main')
+    def em
+
+    @Service('DateService')
+    def dtSvc 
+
+    @Service('NumberService')
+    def numSvc
+
+    @Service('SequenceService')
+    def seqSvc
+
+    @Service('DBImageService')
+    def imageSvc
+
+    @Service('OrgService')
+    def orgSvc
+
+    @Service('Var')
+    def varSvc
+
+    @DataContext('org')
+    def em_org 
+
+    @ActiveDB(value='userrole')
+    def em_userrole;
+
+
+    @ProxyMethod
+    public def sum( list, field  ) {
+        def total = 0.0;
+        total = list."$field".sum()
+        if (total == null) total = 0.0
+        return total
+    }
+
+    @ProxyMethod
+    public def getNextSequence(key){
+        def orgcode = env.ORGCODE.replaceAll('-','')
+        return orgcode + seqSvc.getNextFormattedSeries(key + '-' + orgcode)
+    }
+
+    @ProxyMethod
+    public def generateId( prefix ){
+        return prefix + (new java.rmi.server.UID())
+    }
+
+    @ProxyMethod
+    public void required( caption, value ) {
+        def msg = caption + ' is required.'
+        if (isEmpty(value)) {
+            throw new Exception(msg )
+        }
+    }
+
+    @ProxyMethod
+    public def isEmpty( value ) {
+        if (value == null ) 
+            return true;
+        if (value.toString().trim().length() == 0)
+            return true;
+        return false;
+    }
+
+
+    @ProxyMethod
+    public boolean isTrue(value) {
+        return toBoolean(value, false) == true 
+    }
+
+    @ProxyMethod
+    public boolean isFalse(value) {
+        return toBoolean(value, true) == false
+    }
+
+
+    @ProxyMethod
+    public boolean toBoolean(value, defvalue){
+        if (value == null) 
+            return defvalue;
+
+        if (value instanceof Boolean) 
+            return value;
+
+        if ('1/y/yes/t/true'.indexOf(value.toString().trim()) >= 0 ) 
+            return true;
+        
+        return false;
+    }
+
+
+    @ProxyMethod
+    public def getListFromQuery( namedQuery , filters, params, pagingKeys ) {
+        def result = []
+        if (!params) params = [:]
+        
+        def qry = em.sqlContext.createNamedQuery( namedQuery )
+        
+        for (int i = 0; i< filters.size(); i++) {
+            params.filters = filters[i]
+            qry.setVars(params)
+            
+            if (pagingKeys) qry.setPagingKeys(pagingKeys)
+            
+            if (params._start != null) qry.setFirstResult( params._start )
+            if (params._limit != null) qry.setMaxResults( params._limit)
+            
+            result = qry.setParameters( params ).resultList
+
+            if (result) break
+        }
+        return result 
+    }
+
+
+    @ProxyMethod
+    public def buildSystemFieldBindings( info ) {
+        return [
+            SYS_BASE_MARKET_VALUE       : info.basemarketvalue,
+            SYS_MARKET_VALUE            : info.marketvalue,
+            SYS_BASE_VALUE              : (info.basevalue != null ? info.basevalue : 0.0),
+            SYS_UNIT_VALUE              : (info.unitvalue != null ? info.unitvalue : 0.0),
+            SYS_AREA                    : (info.area != null ? info.area : 0.0) ,
+            SYS_ASSESSED_VALUE          : info.assessedvalue,
+        ]
+    }
+
+
+    @ProxyMethod
+    public def buildParamBindings( info ) {
+        def binding = [:]
+        info.params.each {
+            def value = (it.intvalue != null ? it.intvalue : it.decimalvalue)
+            binding[it.param.name] = value
+        }
+        return binding 
+    }
+
+
+    @ProxyMethod
+    public def evaluateExpr( expr, bindings ) {
+        return (new GroovyShell( new Binding( bindings) )).evaluate( expr )
+    }
+
+
+    @ProxyMethod
+    public def toDecimal(value){
+        return toDecimal2(value, 0)
+    }
+
+    @ProxyMethod
+    public def toDecimal2(value, defvalue){
+        if (value == null) {
+            value = defvalue 
+        }
+        if (value instanceof BigDecimal ) {
+            return value
+        }
+        def val = defvalue
+        try {
+            val = new BigDecimal(value.toString())
+        } catch (e) {
+            e.printStackTrace()
+        }
+        return val
+    }
+    
+
+    @ProxyMethod
+    public def toInteger(value){
+        return toInteger2(value, 0)
+    }
+
+    @ProxyMethod
+    public def toInteger2(value, defvalue){
+        if (value == null) {
+            value = defvalue
+        }
+        if (value instanceof Integer) {
+            return value
+        }
+
+        def val = defvalue
+        try {
+            val = new BigDecimal(value.toString()).intValue();
+        } catch (e) {
+            e.printStackTrace()
+        }
+        return val
+    }
+
+
+
+    /*-------------------------------------------
+    *
+    * TIMESTAMP SUPPORT 
+    *
+    ------------------------------------------*/
+    @ProxyMethod
+    public List getMonths( qtr ) {
+        def months = [
+            [name:'JANUARY',    month:1, qtr:1 ],
+            [name:'FEBRUARY',   month:2, qtr:1 ],
+            [name:'MARCH',      month:3, qtr:1 ],
+            
+            [name:'APRIL',  month:4, qtr:2 ],
+            [name:'MAY',    month:5, qtr:2 ],
+            [name:'JUNE',   month:6, qtr:2 ],
+            
+            [name:'JULY',       month:7, qtr:3 ],
+            [name:'AUGUST',     month:8, qtr:3 ],
+            [name:'SEPTEMBER',  month:9, qtr:3 ],
+            
+            [name:'OCTOBER',    month:10, qtr:4 ],
+            [name:'NOVEMBER',   month:11, qtr:4 ],
+            [name:'DECEMBER',   month:12, qtr:4 ],
+        ]
+        
+        if( ! qtr ) return months 
+        return months.findAll{ it.qtr == qtr }
+    }
+
+
+    @ProxyMethod
+    public def getMonthName( month ) {
+        def months = getMonths( null )
+        def mon = months.find{ it.month == month }
+        if( mon ) return mon.name 
+        throw new Exception("Month $month is not defined." )
+    }
+    
+
+    @ProxyMethod
+    public def getQuarterName( qtr ) {
+        if( qtr == 1 ) return '1ST QUARTER'
+        else if( qtr == 2 ) return '2ND QUARTER'
+        else if( qtr == 3 ) return '3RD QUARTER'
+        return '4TH QUARTER'
+    }
+
+
+    @ProxyMethod
+    public def buildPeriod( def params ) { 
+        if (params.month) {
+            def monthno = (params.month?.month ? params.month.month : params.month?.index)
+            def month = getMonthName(monthno)
+            def smonth = month[0].toUpperCase() + month.substring(1).toLowerCase()
+            if( params.month && params.day ) return 'For the day of ' + smonth + ' ' + params.day + ', ' + params.year 
+            if( params.month ) return 'For the Month of ' + smonth + ', ' + params.year 
+        }
+        if( params.qtr ) return 'For the ' + getQuarterName( params.qtr ) + ' of ' + params.year 
+        return 'For the Year ' + params.year 
+    }   
+
+    @ProxyMethod
+    public def buildQuarterlyPeriod( year, qtr ) {
+        def period = 'JAN - MAR, ' + year 
+        if( qtr == 2 ) period = 'APR - JUN, ' + year 
+        else if( qtr == 3 ) period = 'JUL - SEP, ' + year 
+        else if( qtr == 4 ) period = 'OCT - DEC, ' + year 
+        return period 
+    }
+
+
+    @ProxyMethod
+    public def calculateCurrentTimeStamp(year, qtr, month ) {
+        if( month && month > 0 ) {
+            return resolveTimeStamp( year, qtr, month, null )
+        }
+        return resolveTimeStamp( year, qtr, null, null )
+    }
+
+    @ProxyMethod
+    public def calculateEndingTimeStamp(year, qtr, month ) {
+        if( month && month > 0 ) {
+            return calculateEndingMonthTimeStamp(year, qtr, month )
+        }
+        else {
+            return calculateEndingQtrTimeStamp( year, qtr)
+        }
+    }
+
+
+    @ProxyMethod
+    public def calculateEndingMonthTimeStamp( year, qtr, month ) {
+        def imonth  = ( month + 1 > 12 ? 1 : month + 1 )
+        def iqtr    = dtSvc.getQtrByMonth( imonth )
+        def iyear   = (month + 1 > 12 ? year + 1 : year )
+        
+        return resolveTimeStamp( iyear, iqtr, imonth, 1)
+    }
+    
+
+    @ProxyMethod
+    public def calculateEndingQtrTimeStamp( year, qtr  ) {
+        def iqtr    = ( qtr + 1 > 4 ? 1 : qtr + 1 )
+        def iyear   = ( qtr + 1 > 4 ? year + 1 : year )
+        
+        return resolveTimeStamp( iyear, iqtr, null, null)
+    }
+
+
+    @ProxyMethod
+    public def resolveTimeStamp( year, qtr, month, day ) {
+        //build timestamp progressively based on the passed values, e.g.,
+        //if month is null then timestamp is resolve upto the qtr info, such as "20111%" for 1st qtr
+        //if month is notnull thne it is resolve upto the month, such as "2011102%" for 2nd qtr 
+        def timestamp = year + '' + qtr 
+        if( month != null ) timestamp += padLeft( month, 2 )
+        if( day != null ) timestamp += padLeft( day, 2 )
+        if( month == null  || day == null ) timestamp += '%'
+        return timestamp
+    }
+
+
+    /* build filter based on year,qtr,month,day of faas record */
+    @ProxyMethod
+    public void buildReportTitlePeriod( title, params) {
+        required('Year', params.year)
+        if (params.qtr != null){
+            params.title       = 'QUARTERLY ' + title
+            params.period      = buildQuarterlyPeriod( params.year, params.qtr )
+            params.periodtype  = 'QUARTER'
+        }
+        
+        if( params.month && params.month.index > 0 ) {
+            params.title = 'MONTHLY ' + title 
+            params.period = getMonthName( params.month.index ) + ', ' + params.year 
+            params.periodtype = 'MONTH' 
+        }
+    }
+
+    /* build filter based on year,qtr,month,day of faas record */
+    @ProxyMethod
+    public void buildReportFormalTitlePeriod( title, params) {
+        required('Year', params.year)
+
+        if( params.month && params.month.index > 0 ) {
+            params.title = 'MONTHLY ' + title
+            params.period = 'FOR THE MONTH OF ' + getMonthName( params.month.index ) + ', ' + params.year 
+            params.periodtype = 'MONTH' 
+        }
+        else if (params.qtr != null){
+            params.title       = 'QUARTERLY ' + title 
+            params.period      = 'FOR THE ' + getQuarterName( params.qtr ) + ' OF ' + params.year 
+            params.periodtype  = 'QUARTER'            
+        }
+        else{
+            params.title       = 'ANNUAL ' + title 
+            params.period      = 'FOR THE YEAR ' + params.year 
+            params.periodtype  = 'ANNUAL'
+        }
+    }    
+
+
+    /* build preceeding filter based on year,qtr,month,day */
+    @ProxyMethod
+    public void buildPreceedingPeriodFilter(params) {
+        required('Year', params.year)
+        required('Qtr', params.qtr)
+        params.monthno = params.month?.index
+        
+        params.filter = ''
+
+        if (params.lguid)
+            params.filter += ' f.lguid like $P{lguid} AND '
+        if (params.barangayid)
+            params.filter += ' rp.barangayid = $P{barangayid} AND '
+
+        params.filter += '(f.year < $P{year} '
+        if (params.month)
+            params.filter += ' OR (f.year = $P{year} and f.month < $P{monthno} )' 
+        else if (params.qtr != null)
+            params.filter += ' OR (f.year = $P{year} and f.qtr < $P{qtr} )' 
+        params.filter += ')'
+    }
+
+    /* build current filter based on year,qtr,month,day */
+    @ProxyMethod
+    public void buildCurrentPeriodFilter(params) {
+        required('Year', params.year)
+        params.monthno = params.month?.index
+        
+        params.filter = ''
+
+        if (params.lguid)
+            params.filter += ' f.lguid like $P{lguid} AND '      
+
+        if (params.barangayid)
+            params.filter += ' rp.barangayid = $P{barangayid} AND '
+
+        if (params.month)
+            params.filter += ' (f.year = $P{year} and f.month = $P{monthno} )' 
+        else if (params.qtr != null)
+            params.filter += ' (f.year = $P{year} and f.qtr = $P{qtr} )' 
+        else 
+            params.filter += ' f.year = $P{year}' 
+    }    
+
+    @ProxyMethod
+    public void buildCurrentCancelledPeriodFilter(params) {
+        required('Year', params.year)
+        params.monthno = params.month?.index
+        
+        params.filter = ''
+
+        if (params.lguid)
+            params.filter += ' f.lguid like $P{lguid} AND '      
+
+        if (params.barangayid)
+            params.filter += ' rp.barangayid = $P{barangayid} AND '
+
+        if (params.month)
+            params.filter += ' (f.cancelledyear = $P{year} and f.cancelledmonth = $P{monthno} )' 
+        else if (params.qtr != null)
+            params.filter += ' (f.cancelledyear = $P{year} and f.cancelledqtr = $P{qtr} )' 
+        else 
+            params.filter += ' f.cancelledyear = $P{year}' 
+    }   
+
+
+    /* build ending filter based on year,qtr,month,day */
+    @ProxyMethod
+    public void buildEndingPeriodFilter(params) {
+        required('Year', params.year)
+        params.monthno = params.month?.index
+        
+        params.filter = ''
+        
+        if (params.lguid)
+            params.filter += ' f.lguid like $P{lguid} AND '
+
+        if (params.barangayid)
+            params.filter += ' rp.barangayid = $P{barangayid} AND '
+
+        params.filter += '(f.year < $P{year} '
+        if (params.month != null)
+            params.filter += ' OR (f.year = $P{year} and f.month <= $P{monthno} )' 
+        else if (params.qtr != null)
+            params.filter += ' OR (f.year = $P{year} and f.qtr <= $P{qtr} )' 
+        else 
+            params.filter += ' OR (f.year = $P{year})' 
+        params.filter += ')'
+    }
+
+
+
+
+    String padLeft( val, len ) {
+        return "$val".padLeft( len, '0' )
+    }
+
+    @ProxyMethod
+    public def formalizeNumber( num ) {
+        def snum = numSvc.format('#0', num )
+        if (snum.matches('11|12|13')) return snum + 'th'
+        else if (snum[-1] == '1') return snum + 'st'
+        else if (snum[-1] == '2') return snum + 'nd'
+        else if (snum[-1] == '3') return snum + 'rd'
+        else return snum + 'th'
+    }
+
+    @ProxyMethod
+    public def formalizeDate( date,  format ){
+        def dt = new java.text.SimpleDateFormat( format ).format(dtSvc.parse('yyyy-MM-dd', date)).toString();
+        
+        if( 'd'.equals(format) || 'dd'.equals(format)){
+            if( dt.matches('01|1|21|31') )
+                return dt + 'st';
+            else if( dt.matches('02|2|22') )
+                return dt + 'nd';
+            else if(dt.matches('03|3|23')) 
+                return dt + 'rd';
+            else return dt + 'th';
+        }
+        return dt;
+    } 
+
+
+    @ProxyMethod 
+    public void buildPeriodCovered(items){
+        items.each{
+            def toyear = it.toyear 
+            def toqtr = (it.toqtr == null ? 4 : it.toqtr)
+            def partialledyear = 0
+            def partialledqtr = 0
+
+
+            if (it.partialled == 1){ 
+                if (it.fromyear == it.toyear && it.fromqtr == toqtr)
+                    it.period = 'Partial ' + it.fromqtr + 'Q, ' + it.toyear
+                else if (it.fromyear == it.toyear && (toqtr - it.fromqtr) == 1 )
+                    it.period = 'Q' + it.fromqtr + ',' + it.fromyear + ' (Partial' + toqtr + 'Q,' + it.toyear + ')' 
+                else if (it.fromyear == it.toyear)
+                    it.period = 'Q' + it.fromqtr + '' + (toqtr-1) + ',' + it.fromyear + ' (Partial ' + toqtr + 'Q,' + it.toyear + ')' 
+
+                else if ((it.toyear - it.fromyear) == 1 && toqtr == 1)
+                    it.period = (it.fromyear) + ' (Partial ' + toqtr + 'Q,' + it.toyear + ')' 
+                else if ((it.toyear - it.fromyear) > 1 && toqtr == 1)
+                    it.period = it.fromyear + '-' + (it.toyear-1) + ' (Partial ' + toqtr + 'Q,' + it.toyear + ')' 
+                else 
+                    it.period = it.fromyear + '-' + (toqtr-1) + 'Q,'+ it.toyear + ' (Partial ' + toqtr + 'Q,' + it.toyear + ')' 
+            }
+            else {
+                if (it.fromyear == it.toyear && it.fromqtr == 1 && toqtr == 4)
+                    it.period = it.toyear + ''
+                else if (it.fromyear == it.toyear && it.fromqtr == toqtr)
+                    it.period = it.fromqtr + 'Q, ' + it.toyear
+                else if (it.fromyear == it.toyear)
+                    it.period = it.fromqtr + '' + toqtr + 'Q, ' + it.toyear 
+                else if (it.fromqtr == 1 && toqtr == 4)
+                    it.period = it.fromyear + '-' + it.toyear 
+                else if (it.fromqtr == 1 && toqtr != 4)
+                    it.period = it.fromyear + '-' + toqtr + 'Q,' + it.toyear 
+                else if (it.fromqtr != 1 && toqtr == 4)
+                    it.period = it.fromqtr + 'Q,' + it.fromyear + '-' + it.toyear
+                else 
+                    it.period = it.fromqtr + 'Q,' + it.fromyear + '-' + toqtr + 'Q,' + it.toyear
+            }
+        }
+    }    
+
+    @ProxyMethod 
+    public void buildBuildPeriod(items){
+        items.each{
+            def toyear = it.toyear 
+            def toqtr = (it.toqtr == null ? 4 : it.toqtr)
+            def partialledyear = 0
+            def partialledqtr = 0
+
+
+            if (it.fromyear == it.toyear && it.fromqtr == 1 && toqtr == 4)
+                it.period = it.toyear
+            else if (it.fromyear == it.toyear && it.fromqtr == toqtr)
+                it.period = it.fromqtr + 'Q, ' + it.toyear
+            else if (it.fromyear == it.toyear)
+                it.period = it.fromqtr + '' + toqtr + 'Q, ' + it.toyear 
+            else if (it.fromqtr == 1 && toqtr == 4)
+                it.period = it.fromyear + '-' + it.toyear 
+            else if (it.fromqtr == 1 && toqtr != 4)
+                it.period = it.fromyear + '-' + toqtr + 'Q,' + it.toyear 
+            else if (it.fromqtr != 1 && toqtr == 4)
+                it.period = it.fromqtr + 'Q,' + it.fromyear + '-' + it.toyear
+            else 
+                it.period = it.fromqtr + 'Q,' + it.fromyear + '-' + toqtr + 'Q,' + it.toyear
+        }
+    }    
+
+    @ProxyMethod
+    public void buildEmptyRows( data, listlimitsize) {
+        for(int i=data.size + 1; i<=listlimitsize; i++) {
+            data.add( [taxable:true] )
+        }
+    }   
+
+
+    @ProxyMethod
+    public def getImageData(refids){
+        def headers = []
+        refids.each{refid ->
+            headers += imageSvc.getImages([refid:refid])
+        }
+        def chunks = []
+        headers.each{
+            chunks += imageSvc.getImageItems(it)
+        }
+        return [headers:headers, chunks:chunks]
+    }
+
+
+    @ProxyMethod
+    public String getParentCode(){
+        def root = em_org.find([root: 1]).first()
+        if ('MUNICIPALITY'.equalsIgnoreCase(root.orgclass)){
+            def prov = em_org.find([objid:root.parent.objid]).first()
+            if(prov) {
+                return prov.code.replaceAll('-','')
+            }
+        }
+        return env.ORGCODE.replaceAll('-.*','')
+    }
+
+    @ProxyMethod
+    public def buildOrgCodeFromLguId(lguid){
+        def org = orgSvc.open([objid:lguid])
+        if (!org)
+            throw new Exception('buildOrgCode [Error]: Invalid LGUID ' + lguid + '.')
+        return org.code.replaceAll('-', '');
+    }
+
+    @ProxyMethod
+    public def buildEnvMap(env){
+        def envmap = [:]
+        envmap.putAll(env);
+        envmap.remove('prevtask')
+        envmap.remove('action')
+        envmap.remove('data')
+        return envmap 
+    }
+
+
+    @ProxyMethod
+    public void buildPin(entity){       
+        def newpin = new StringBuilder();
+
+        def provcity = entity.barangay?.provcity;
+        def munidistrict = entity.barangay?.munidistrict;
+
+        if( provcity ) {
+            newpin = provcity.indexno + '-';
+        }
+        else {
+            newpin = '000-';
+        }
+
+        if( munidistrict ) {
+            newpin += munidistrict.indexno + '-';
+        }
+        else {
+            newpin += '00-';
+        }
+
+
+        if( entity.barangay && entity.barangay.oldindexno == null) {
+            entity.barangay.oldindexno = entity.barangay.indexno ;
+        }
+
+        if( entity.barangay && entity.pintype == 'new') {
+            newpin += entity.barangay?.indexno + '-';
+        }
+        else if( entity.barangay && entity.pintype == 'old') {
+            newpin += entity.barangay?.oldindexno + '-';
+        }
+        else {
+            entity.pintype = 'new'
+            newpin += ( entity.pintype == 'new' ? '0000' : '000') + '-';
+        }        
+        
+        def ssection = '';
+        def sparcel = '';
+
+        def sectionlen = getSectionLength(varSvc.pin_section_length, entity.pintype)
+        def parcellen = getParcelLength(varSvc.pin_parcel_length, entity.pintype)
+        
+        if( entity.isection > 0 ) {
+            ssection = entity.isection.toString();
+            ssection = ssection.padLeft(sectionlen,'0');
+            entity.section = ssection;
+            newpin += ssection + '-';
+        }
+        else {
+            ssection = ssection.padLeft(sectionlen,'0');
+            entity.section = ssection;
+            newpin += ssection + '-';
+        }
+
+        
+        if( entity.iparcel > 0 ) {
+            sparcel = entity.iparcel.toString();
+            sparcel = sparcel.padLeft(parcellen,'0')
+            entity.parcel = sparcel;
+            newpin += sparcel;
+        }
+        else {
+            sparcel = sparcel.padLeft(parcellen,'0')
+            entity.parcel = sparcel;
+            newpin += sparcel ;
+        }
+        if (entity.rputype != 'land'){
+            if (validSuffix(entity)) {
+                newpin += '-' + entity.suffix;
+                if (entity.subsuffix) {
+                    newpin += '-' + entity.subsuffix;
+                }
+            }
+        }
+
+        if (entity.claimno){
+            newpin += '-' + entity.claimno
+        }
+        entity.pin= newpin;
+        entity.fullpin = newpin;
+
+    }
+
+    def validSuffix(entity) {
+        def valid = false
+        if (entity.rputype == 'bldg' && entity.suffix >= 1001 && entity.suffix <= 1999) 
+            valid = true
+        else if (entity.rputype == 'mach' && entity.suffix >= 2001 && entity.suffix <= 2999) 
+            valid = true
+        else if (entity.rputype == 'planttree' && entity.suffix >= 3001 && entity.suffix <= 4999) 
+            valid = true
+        else if (entity.rputype == 'misc' &&  (entity.suffix >= 5001 && entity.suffix <= 5999) || (entity.suffix >= 7001 && entity.suffix <= 7999)  )
+            valid = true
+        if (!valid)
+            throw new Exception('Invalid Suffix.')
+        return valid
+    }
+
+    int getParcelLength(parcellen, pintype){
+        int len = 3; //default old 
+        try{
+            len = new java.math.BigDecimal(parcellen).intValue();
+        }
+        catch(e){
+            if (pintype.equalsIgnoreCase('new'))
+            len = 2;
+        }
+        return len;
+    }
+    
+    
+        
+    int getSectionLength(sectionlen, pintype){
+        int len = 2; //default old 
+        try{
+            len = new java.math.BigDecimal(sectionlen).intValue();
+        }
+        catch(e){
+            e.printStackTrace();
+            if (pintype.equalsIgnoreCase('new'))
+            len = 3;
+        }
+        return len;
+    }
+
+    @ProxyMethod
+    public def capitalize(s) { 
+        if (!s) return ''
+        if (s.length() == 1) return s.toUpperCase();
+        return s[0].toUpperCase() + s[1..-1].toLowerCase() 
+    }
+
+
+    @ProxyMethod
+    public void buildStartEndDateFilter(params){
+        if (params.day != null){
+            def sdt = params.year + '-' + params.month.index.toString().padLeft(2,'0') + '-' + params.day.toString().padLeft(2,'0') 
+            params.startdate = dtSvc.parse('yyyy-MM-dd', sdt)
+            params.enddate = params.startdate + 1
+        }
+        else if (params.month != null){
+            def sdt = params.year + '-' + params.month.index.toString().padLeft(2,'0') + '-01'
+            params.startdate = dtSvc.parse('yyyy-MM-dd', sdt)
+            params.enddate = dtSvc.getMonthEndDate(params.startdate) + 1
+        }
+        else if (params.qtr != null){
+            params.startdate = dtSvc.getBeginningQtrDate(params.qtr, params.year, 0)
+            params.enddate = dtSvc.getQtrEndDate(params.qtr, params.year) + 1   
+        }
+        else {
+            params.startdate = dtSvc.getBeginningQtrDate(1, params.year, 0)
+            params.enddate = dtSvc.getQtrEndDate(4, params.year) + 1      
+        }
+    }
+
+
+    @ProxyMethod
+    public def calcDuration(secs ) {
+        def mins = 1
+        def hrs = 0
+        def days = 0 
+        def months = 0
+        def yrs = 0 
+        
+        def tmins = 0 
+        def thrs = 0
+        def tdays = 0 
+        def tmonths = 0
+        
+        tmins = secs.intdiv(60)
+        
+        if (tmins > 0){
+            if (tmins < 60){
+                mins = tmins + 1 
+            }
+            else {
+                mins = (tmins % 60) + 1 
+                thrs = tmins.intdiv(60)
+            }
+        }
+        
+        if (thrs > 0){
+            if (thrs < 24){
+                hrs = thrs
+            }
+            else{
+                hrs = thrs % 24
+                tdays = thrs.intdiv(24)
+            }
+        }
+        
+        if (tdays > 0){
+            if (tdays < 30){
+                days = tdays
+            }
+            else{
+                days = tdays % 30 
+                tmonths = tdays.intdiv(30)
+                months = tmonths % 12
+                yrs = tmonths.intdiv(12)
+            }
+        }
+
+        def s = ' '
+        if (yrs > 0) s += yrs + (yrs == 1 ? ' yr' : ' yrs') + ' '
+        if (months > 0) s += months + (months == 1 ? ' month' : ' months') + ' '
+        if (days > 0) s += days + (days == 1 ? ' day' : ' days') + ' '
+        if (hrs > 0) s += hrs + (hrs == 1 ? ' hr' : ' hrs') + ' '
+        if (mins > 0) s += mins + (mins== 1 ? ' min' : ' mins') + ' '
+        
+        return s.trim()
+    }
+
+
+    @ProxyMethod
+    public def isNull(val, newval) {
+        if (val == null) {
+            return newval 
+        }
+        return val 
+    }
+
+    @ProxyMethod
+    public def partition(array, size) {
+        def partitions = []
+        int partitionCount = array.size() / size
+
+        partitionCount.times { partitionNumber ->
+            def start = partitionNumber * size 
+            def end = start + size - 1
+            partitions << array[start..end]    
+        }
+
+        if (array.size() % size) partitions << array[partitionCount * size..-1]
+        return partitions    
+    }
+    
+    
+	@ProxyMethod
+	public def checkUserAllowedAction(param) {
+        if(!param.action) throw new Exception("action is required");
+		def tokens = param.action.split("\\.");
+		def mu = [:];
+		mu.userid = param.userid ? param.userid : env.USERID;
+        mu.object = tokens[0];
+		mu.action = tokens[1];
+
+		def zu = em_userrole.findPermissionExist(mu);
+        if (!zu) return false;
+
+        if( zu.roleexclude ) {
+            if( param.action.matches(zu.roleexclude ) ) return false;
+        }
+        if( zu.securitygroupexclude ) {
+            if( param.action.matches(zu.securitygroupexclude ) ) return false;
+        }
+
+        return true;
+	}
+
+}

@@ -1,0 +1,23 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class RevenueItemAccountService extends ActiveCrudListService {
+
+	@ActiveDB("revenueitem")
+	def em;
+
+	@ProxyMethod
+	def findAccount(o) {
+		if(! o.objid ) throw new Exception("'objid' is required    ")
+		return em.findAccount( o)
+	}
+
+	@ProxyMethod
+	public def getAccountsByTag( def o ) {
+		return em.getAccountsByTag(o);
+	}
+
+}

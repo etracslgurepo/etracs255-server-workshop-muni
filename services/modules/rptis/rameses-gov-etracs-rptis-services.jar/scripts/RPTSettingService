@@ -1,0 +1,31 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+
+class RPTSettingService
+{
+	@PersistenceContext('main')
+	def em
+
+	@ProxyMethod
+	public def getSettings( params ) {
+		def start = (params.page - 1) * params.rowcount 
+		def qry =  em.sqlContext.createNamedQuery('rptsetting:getSettingsByCategory')
+
+		qry.setPagingKeys('name')
+		return qry.setFirstResult(start)
+					.setMaxResults(params.rowcount)
+					.setParameter('category', params.category)
+					.resultList	
+	}
+
+	@ProxyMethod
+	public def updateSettings(settings) {
+		settings.each{
+			em.sqlContext.createNamedExecutor('rptsetting:updateSetting')
+				.setParameter('name', it.name)
+				.setParameter('value', it.value?.toString())
+				.execute()
+		}
+	}
+
+}

@@ -1,0 +1,100 @@
+import com.rameses.annotations.*;
+
+public class BatchCaptureMgmtService {
+
+	@ActiveDB('batchcapturemgmt')
+	def db;
+
+	@DataContext('af_control')
+	def afc_db;
+
+	@DataContext('af')
+	def af_db;
+
+	@DataContext('batchcapture_collection')
+	def bcc_db;
+
+	@Service('AFControlService')
+	def serialControlSvc;
+
+
+	@ProxyMethod
+	public def getAfSerials() { 
+		def list = af_db.where('formtype = :formtype', [formtype: 'serial']).orderBy('objid').list(); 
+		list.each{ it.formno = it.objid } 
+		return list; 
+	} 
+
+	@ProxyMethod
+	public def getOpenAfSerials( params ) { 
+		def wheres = []; 
+		wheres << " owner_objid = :userid "; 
+		wheres << " afid = :formno ";
+		wheres << " currentseries <= endseries ";
+		wheres << " owner_objid = assignee_objid ";
+		return afc_db.where( wheres.join(' AND '), params ).orderBy('afid,startseries').list(); 
+	}
+
+	@ProxyMethod
+	public def getAssignedAfSerials( params ) {
+		def wheres = []; 
+		wheres << " owner_objid = :userid "; 
+		wheres << " afid = :formno ";
+		wheres << " currentseries <= endseries ";
+		wheres << " owner_objid <> assignee_objid ";
+		return afc_db.where( wheres.join(' AND '), params ).orderBy('afid,startseries').list(); 
+	}
+
+	@ProxyMethod
+	public void assignToSubcollector( params ) { 
+		def bcc = bcc_db.find([ controlid: params.objid ]).where(" state <> 'CLOSED' ").first();
+		if ( bcc ) throw new Exception('There are still '+ bcc.state +' captured transactions for this AF'); 
+
+		def assignee = [objid: params.assignee.objid, name: params.assignee.name ];
+		afc_db.find([ objid: params.objid ]).update([ assignee: assignee ]);  
+	}
+
+	@ProxyMethod
+	public void unassignControl( param ) {
+		def afc = afc_db.find([ objid: param.objid ]).first(); 
+		if ( !afc ) return;
+
+		def bcc = bcc_db.find([ controlid: param.objid ]).where(" state <> 'CLOSED' ").first();
+		if ( bcc ) throw new Exception('There are still '+ bcc.state +' captured transactions for this AF'); 
+
+		afc_db.find([ objid: param.objid ]).update([ assignee: afc.owner ]);  
+	}
+
+	@ProxyMethod
+	public void changeMode( param ) {
+		if ( !param.objid ) throw new Exception('objid parameter is required');
+		if ( !param.txnmode ) throw new Exception('txnmode parameter is required');
+
+		def afc = afc_db.find([ objid: param.objid ]).select('objid,state,txnmode').first(); 
+		if ( !afc ) return; 
+
+		if ( afc.state.toString().toUpperCase() != 'ISSUED' ) 
+			throw new Exception('Change Mode not allowed for this AF'); 
+
+		def fromtxnmode = afc.txnmode.toString().toUpperCase(); 
+		def totxnmode = param.txnmode.toString().toUpperCase(); 
+		if ( totxnmode == fromtxnmode ) return; 
+
+		if ( fromtxnmode == 'CAPTURE' && totxnmode.matches('ONLINE|OFFLINE') ) {
+			def bcc = bcc_db.find([ controlid: afc.objid ]).where(" state <> 'CLOSED' ").first();
+			if ( bcc ) throw new Exception('There are still '+ bcc.state +' captured transactions for this AF'); 
+		} 
+
+		afc_db.find([ objid: afc.objid ]).update([ txnmode: totxnmode ]); 
+	} 
+
+
+	@ProxyMethod
+	public def getSubmittedBatches( param ) { 
+		param.filter = ''; 
+		if ( param.startseries ) {
+			param.filter = ''' AND issuedstartseries = $P{startseries} '''; 
+		}
+ 		return db.getSubmittedBatches( param ); 
+	} 
+}

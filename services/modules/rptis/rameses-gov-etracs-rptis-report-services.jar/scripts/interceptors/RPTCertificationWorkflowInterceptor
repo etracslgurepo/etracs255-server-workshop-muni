@@ -1,0 +1,43 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.util.*;
+import com.rameses.services.extended.*;
+
+class RPTCertificationWorkflowInterceptor
+{
+		@Service('DateService')
+    def dtSvc 
+
+		@Service('RPTCertificationWorkflowService')
+		def workflowSvc
+
+		@Env 
+		def env
+
+		@DataContext('rptcertification')
+    def em_certification;
+
+		@Service('RPTCertificationService')
+		def certSvc;
+
+
+	@After(pattern="RPTCertificationService.createCertification", eval="#{result.online == true}")
+	public void startWorkflow(evt){
+		def certification = evt.result
+		certification.task = workflowSvc.start([refid:certification.objid, data:certification])[0]
+		certification.taskid = certification.task.objid 
+		em_certification.find([objid: certification.objid]).update([taskid: certification.taskid])
+	}
+
+	@After(pattern="RPTCertificationWorkflowService.signal", eval="#{args[0].state == 'approver'}", index=10) 
+	public void approveCertification(evt) {
+		def cert = evt.args[0].data;
+		certSvc.approve(cert);
+	}
+
+	@After(pattern="RPTCertificationWorkflowService.signal", eval="#{args[0].state == 'receiver' && args[0].action == 'cancelissuance'}", index=10) 
+	public void cancelIssuance(evt) {
+		def cert = evt.args[0].data;
+		certSvc.deleteCertification(cert);
+	}
+}

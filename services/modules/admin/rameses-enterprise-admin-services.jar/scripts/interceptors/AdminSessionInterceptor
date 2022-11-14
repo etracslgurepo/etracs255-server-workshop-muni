@@ -1,0 +1,131 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+
+class AdminSessionInterceptor {
+	
+	@ActiveDB('session') 
+	def em;
+
+	@ActiveDB('user') 
+	def user;	
+
+	@ActiveDB('org') 
+	def org_db;	
+
+	@Service("OrgService")
+	def orgSvc;
+
+	@Service('DateService')
+	def dateSvc;
+
+	@Service('UserRoleService')
+	def roleSvc;
+
+	@Env
+	def env;
+
+	@After(pattern="SessionService.createSession") 
+	public void createSession(evt) {
+		def params = evt.args[0];
+		def result = evt.result;
+		result.userid = params.userid;
+		result.username = params.username; 
+		result.clienttype = env.CLIENTTYPE;
+		result.timein = dateSvc.serverDate.toString();
+		result.accesstime = result.timein; 
+		em.create(result); 
+	}
+
+	@After(pattern="SessionService.getSession") 
+	public void loadSessionInfo( evt ) {
+		def sessionid = evt.args[0]; 
+		def sessinfo = em.read([sessionid: sessionid]); 
+		if (sessinfo) evt.result.putAll(sessinfo); 
+	} 
+
+	@After(pattern="SessionService.getUserInfo") 
+	public void loadUserInfo(evt) {
+		
+		def sessionid = evt.args[0];
+		def sessinfo = em.read([sessionid: sessionid]);		
+		if (!sessinfo) throw new Exception('SESSION_TIMEOUT');
+
+		def info = null;
+		def username = sessinfo.username;
+		def isSA = username.toString().equalsIgnoreCase("sa");
+		if (isSA) { 
+			info = [objid:username, username: username, name:'System Administrator']; 
+		} else { 
+			info = user.read([objid: sessinfo.userid]); 
+		} 
+
+		if (!info) throw new Exception("'"+username+"' user account does not exist"); 
+
+		def fullname = new StringBuffer();
+		if (isSA) {
+			fullname.append("System Administrator"); 
+		} else {
+			fullname.append(info.firstname);
+			if (info.middlename) fullname.append(" " + info.middlename);
+			fullname.append(" "+info.lastname);
+		}
+
+		def result = evt.result;
+		result.USERID    = info.objid;
+		result.username  = info.username;		
+    	result.env = [
+			SESSIONID 	: sessionid, 
+            USERID 		: info.objid, 
+            USER 		: info.username,             
+            NAME 		: info.name, 
+            FULLNAME 	: fullname.toString(), 
+            JOBTITLE 	: info.jobtitle,
+            EMAIL 		: info.email,
+            TERMINALID 	: env.TERMINALID,              
+            TXNCODE		: info.txncode,
+			ROLES 		: [ALLOWED: 'system.*'] 
+		];
+
+		def sysroles = [];
+		if (isSA) {
+			sysroles << [domain:'ADMIN', role:'SYSADMIN']
+		}	
+		
+		def orginfo = null; 
+		def orgid = null;
+		if (env.CLIENTCODE) {
+			orginfo = orgSvc.findByCode([code: env.CLIENTCODE]); 
+			if ( !orginfo ) orginfo = org_db.read([objid: env.CLIENTCODE]); 
+			if ( !orginfo ) throw new Exception("Client code org does not exist");
+
+			orgid = orginfo.objid;	
+		}	
+		else {
+			orginfo = orgSvc.getRoot();
+			if(!orginfo)
+				throw new Exception("Root org does not exist");
+		}
+
+		result.env.ORGID = orginfo.objid;
+		result.env.ORGCODE = orginfo.code; 
+		result.env.ORGNAME = orginfo.name; 
+		result.env.ORGCLASS = orginfo.orgclass; 
+		result.env.ORGTXNCODE = orginfo.txncode; 
+		result.env.ORGROOT = orginfo.root;
+
+		def roles = roleSvc.getRolesByUser([userid: info.objid, orgid:orgid]); 
+		roles.addAll( sysroles );
+
+		roles.each {
+			def key = it.domain+'.'+it.role; 
+			def lst = [];
+			if (it.security?.exclude) lst << it.security?.exclude;
+			if (it.custom?.exclude) lst << it.custom?.exclude;
+			if (lst) 
+				result.env.ROLES[key] = lst.join('|'); 
+			else 
+				result.env.ROLES[key] = null; 
+		} 
+		
+	}
+}

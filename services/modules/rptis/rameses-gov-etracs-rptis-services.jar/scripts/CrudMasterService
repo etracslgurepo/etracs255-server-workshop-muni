@@ -1,0 +1,64 @@
+import com.rameses.annotations.*;
+import com.rameses.eserver.*;
+import com.rameses.common.*;
+
+class DefaultCrudMasterService
+{
+	@PersistenceContext('main')
+	def em
+	
+	def STATE_DRAFT 	= 'DRAFT' 
+	def STATE_APPROVED 	= 'APPROVED'
+
+	
+	@ProxyMethod
+	public def init( ) {
+		return [:] 
+	}
+
+	@ProxyMethod
+	public def create( schemaname, entity ) {
+		entity.state = STATE_DRAFT
+		em.validate( schemaname, entity )
+		em.create( schemaname, entity )
+		return entity
+	}
+
+	@ProxyMethod
+	public def update( schemaname, entity ) {
+		checkApproved(schemaname, entity)
+		em.validate( schemaname, entity )
+		em.update( schemaname, entity )
+		return entity
+	}
+
+	@ProxyMethod
+	public def open( schemaname, entity ) {
+		entity = em.read(schemaname, entity)
+		
+		if( ! entity )
+		throw new Exception('Document does not exists or has already been deleted.')
+
+		return entity 
+	}
+
+	@ProxyMethod
+	public void delete( schemaname, entity ) {
+		em.delete(schemaname, entity)
+	}
+
+	@ProxyMethod
+	public def approve( schemaname, entity ) {
+		checkApproved(schemaname, entity)
+		entity.state = STATE_APPROVED
+		em.validate(schemaname, entity)
+		em.update(schemaname, entity)
+		return entity
+	}
+
+	void checkApproved(schemaname, entity){
+		def old = open(schemaname, entity)
+		if(old.state == STATE_APPROVED)
+		throw new Exception('Document has already been approved.')
+	}
+}

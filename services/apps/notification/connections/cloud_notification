@@ -1,0 +1,5 @@
+provider=script
+app.host=${cloud.host}:8170
+app.cluster=osiris3
+app.context=notification
+readTimeout=60000

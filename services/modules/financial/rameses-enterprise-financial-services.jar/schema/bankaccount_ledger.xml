@@ -1,0 +1,20 @@
+<schema>
+	<element tablename="bankaccount_ledger">
+		<field name="objid" primary="true" prefix="BNKACTLDGR"/>
+
+		<field name="jevid" required="true" />
+		<field name="bankacctid" required="true" />
+		<field name="itemacctid" required="true" />
+		<field name="dr" required="true" type="decimal"/>
+		<field name="cr" required="true" type="decimal"/>
+
+		<complex name="bankaccount" ref="bankaccount" jointype="many-to-one"  includefields="code,title,bank.name" required="false">
+			<key field="bankacctid" target="objid" />
+		</complex>	
+
+		<complex name="jev" ref="jev" jointype="many-to-one" includefields="jevno,jevdate,refno,fund.*"  required="false">
+			<key field="jevid" target="objid"/>
+		</complex>	
+
+	</element>
+</schema>

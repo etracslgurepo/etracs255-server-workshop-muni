@@ -1,0 +1,45 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+
+class RPTRequirementTypeService extends ActiveCrudListService 
+{
+	@ActiveDB('rpt_requirement_type')
+	def em
+
+	void beforeList(params){
+		if (params == null) params = [:]
+		params.searchtext = (params.searchtext ? params.searchtext :'')+'%'
+	}
+
+
+	@ProxyMethod
+	public def getColumns( params ) {
+		return [
+            [name:"name", caption:"Name", width:250],
+            [name:"description", caption:"Description", width:250],
+            [name:"sortorder", caption:"Order", width:60],
+		]	
+	}
+
+
+	@Async
+	@ProxyMethod
+	public def exportData(params) {
+		return [
+			filetype: 'rptrequirementtype',
+			requirementtypes: getList([:])
+		] 
+	}
+
+	@Async
+	@ProxyMethod
+	public def importData( data ) {
+		if (data.filetype != 'rptrequirementtype')
+			throw new Exception('Invalid data.')
+		data.requirementtypes.each{
+			save(it)
+		}
+	}	
+}

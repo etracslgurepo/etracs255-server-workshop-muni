@@ -1,0 +1,35 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.common.*
+
+
+class AccountIndexerService  {
+
+	@DataContext("account")
+	def acctEm;
+
+	int updateIndex( def item, int idx, int level ) {
+		acctEm.find( [objid: item.objid ] ).update( [leftindex: idx++, level: level] );
+		def list = acctEm.find( [groupid: item.objid ] ).orderBy("code").list();
+		list.each {
+			idx = updateIndex( it, idx, level + 1 );
+		}
+		acctEm.find( [objid: item.objid ] ).update( [rightindex: idx++, level: level] );
+		return idx;
+	} 
+
+	@ProxyMethod
+	public void reindex(def o) {
+		if(!o.maingroupid) throw new Exception("maingroupid is required");
+
+		int idx = 0;
+		int level = 0;
+		def list = acctEm.find( [maingroupid: o.maingroupid ] ).where( "groupid IS NULL").orderBy("code").list();
+		list.each {
+			idx = updateIndex( it, idx, level + 1 );
+		}
+	}
+
+
+}

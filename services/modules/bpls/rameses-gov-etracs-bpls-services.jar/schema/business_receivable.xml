@@ -1,0 +1,28 @@
+<schema>
+	
+	<element tablename="business_receivable">
+		<field name="objid" primary="true"/>
+		<field name="businessid" required="true"/>
+		<field name="applicationid" />
+		<field name="iyear" required="true"/>
+		<field name="account_objid" required="true"/>
+		<field name="account_title" required="true"/>
+		<field name="lob_objid" />
+		<field name="lob_name" />
+		<field name="amount" required="true"/>
+		<field name="amtpaid" required="true"/>
+		<field name="discount" required="true"/>
+		<field name="taxcredit" required="true"/>
+		<field name="refid" />
+		<field name="reftype" />
+		<field name="department" />
+		<field name="remarks" />
+		<field name="taxfeetype" required="true"/>
+		<field name="surcharge" required="true"/>
+		<field name="interest" required="true"/>
+		<field name="assessmenttype" required="true"/>
+		<field name="lastqtrpaid" required="true"/>
+		<field name="partial" required="true"/>
+	</element>	
+
+</schema>

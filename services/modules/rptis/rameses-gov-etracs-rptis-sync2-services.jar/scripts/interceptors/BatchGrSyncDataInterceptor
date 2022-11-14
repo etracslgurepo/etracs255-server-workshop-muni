@@ -1,0 +1,112 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import com.rameses.services.extended.*
+
+
+/*----------------------------------------------------------------
+* BatchGr Synchronization support shared 
+* between province and municipalities 
+-----------------------------------------------------------------*/
+class BatchGrSyncDataInterceptor
+{
+    @Env
+    def env
+
+    @DataContext('batchgr')
+    def em_batchgr;
+
+    @Service('RPTMainSyncDataService')
+    def mainSyncSvc    
+
+    @Service('RPTSyncDataService')
+    def syncSvc
+
+    @Service('BatchGrSyncDataService')
+    def batchgrSync 
+
+
+    /*---------------------------------------------------------
+    *
+    * SCHEDULING SUPPORT
+    *
+    ---------------------------------------------------------*/
+    @After(pattern="BatchGRWorkflowService.signal", eval="#{args[0].state.matches('forprovsubmission') && args[0].action=='completed'}", index=10000) 
+    public void scheduleSubmitToProvince( evt ) {
+        def batchgr = evt.args[0].data;
+        mainSyncSvc.createDataForSync(getDataForSync(batchgr, 'BATCHGR-FORAPPROVAL'))
+    }
+
+    @After(pattern="MunicipalityBatchGrSupportService.resendToProvince", index=10000) 
+    public void scheduleResendToProvince( evt ) {
+        def batchgr = evt.result;
+        mainSyncSvc.createDataForSync(getDataForSync(batchgr, 'BATCHGR-FORAPPROVAL'))
+    }
+
+    @After(pattern="MunicipalityBatchGrSupportService.resendRequirements", index=10000) 
+    public void scheduleResendRequirements( evt ) {
+        def batchgr = evt.result;
+        mainSyncSvc.createDataForSync(getDataForSync(batchgr, 'BATCHGR-REQUIREMENTS'))
+    }
+
+    @After(pattern="BatchGRWorkflowService.signal", eval="#{args[0].state.matches('approver|provapprover|muniapprover') && args[0].action=='completed'}", index=10000) 
+    public void scheduleBatchGrApproval( evt ) {
+        def batchgr = evt.args[0].data;
+        mainSyncSvc.createDataForSync(getDataForSync(batchgr, 'BATCHGR-APPROVED'))
+    }
+
+    @After(pattern="BatchGRService.resendToMunicipality", index=10000) 
+    public void resendToMunicipality( evt ) {
+        def batchgr = evt.result;
+        mainSyncSvc.createDataForSync(getDataForSync(batchgr, 'BATCHGR-APPROVED'))
+    }
+
+    @After(pattern="BatchGRService.excludeItem", index=10000) 
+    public void excludeItem( evt ) {
+        def batchgritem = evt.args[0];
+        def batchgr = em_batchgr.find([objid: batchgritem.parent.objid]).first();
+        if (!batchgr) throw new Exception('Batch GR ' + batchgritem.parent.objid + ' does not exist or has already been deleted.');
+        def syncdata = getDataForSync(batchgr, 'BATCHGR-EXCLUDE-ITEM');
+        syncdata.info.batchgritem = [objid: batchgritem.objid];
+        mainSyncSvc.createDataForSync(syncdata);
+    }
+    
+    /* scheduler */
+    @After(pattern="RPTMainSyncDataService.scheduleSync", eval="#{result.action.matches('BATCHGR-.*')}", index=50000) 
+    public void scheduleForSync( evt ) {
+        def data = evt.result 
+        batchgrSync.schedule(data)
+    }   
+
+
+    /*---------------------------------------------------------
+    *
+    * SEND/RECEIVE HANDLERS
+    *
+    ---------------------------------------------------------*/
+    @After(pattern="RPTMainSyncDataService.asyncSend", eval="#{result.action.matches('BATCHGR-.*')}") 
+    public void send( evt ) {
+        def syncdata = evt.result 
+        batchgrSync.send(syncdata)
+    }   
+
+    @After(pattern="RPTMainSyncDataService.receive", eval="#{args[0].action.matches('BATCHGR-.*')}") 
+    public void receiveData(evt){
+        def syncdata = evt.args[0]
+        batchgrSync.receive(syncdata)
+    }
+
+
+
+    def getDataForSync(batchgr, action) {
+        def data = [:]
+        data.objid = batchgr.objid
+        data.reftype = 'batchgr'
+        data.refno = batchgr.txnno
+        data.orgid = env.ORGID
+        data.remote = syncSvc.getRemoteOrg(batchgr)
+        data.action = action
+        data.info = [:]
+        return data
+    }
+}
+

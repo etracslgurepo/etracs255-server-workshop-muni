@@ -1,0 +1,11 @@
+<schema>
+	
+	<element tablename="business_permit_lob">
+		<field name="objid" primary="true"/>
+		<field name="parentid" required="true"/>
+		<field name="lobid" required="true"/>
+		<field name="name" required="true"/>
+		<field name="txndate" required="true"/>
+	</element>	
+
+</schema>

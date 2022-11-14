@@ -1,0 +1,10 @@
+<schema>
+	<element tablename="collectiongroup">
+		<field name="objid" primary="true"/>
+		<field name="state" required="true" defaultValue="DRAFT"/>
+		<field name="name" required="true" searchable="true"/>
+		<field name="sharing" required="false" />
+	</element>
+
+</schema>
+

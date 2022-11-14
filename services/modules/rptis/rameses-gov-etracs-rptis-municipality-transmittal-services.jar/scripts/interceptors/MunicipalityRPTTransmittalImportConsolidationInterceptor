@@ -1,0 +1,61 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class MunicipalityRPTTransmittalImportConsolidationInterceptor
+{
+	@Env 
+	def env 
+
+	@Service('MunicipalityConsolidationRemoteCallHandler')
+	def svc 
+
+	@Service('RPTTransmittalImportService')
+	def importSvc 	
+
+	
+	@After(pattern='RPTTransmittalImportService.importData', eval="#{'consolidation'.equalsIgnoreCase(args[0].filetype) && 'FORAPPROVAL'.equalsIgnoreCase(args[0].type) && args[0].state=='APPROVED'}")
+	public void postApproval(evt){
+		def transmittalitem = evt.args[1].transmittalitem
+		def consolidationdata = evt.args[1].consolidationdata 
+		
+		if ('APPROVED'.equalsIgnoreCase(transmittalitem.status)){
+			try{
+				if (consolidationdata.originlguid == env.ORGID)
+					svc.approveConsolidationByProvince(consolidationdata)
+				else 
+					svc.postApprovedConsolidationFromProvince(consolidationdata)	
+
+				transmittalitem.status = 'APPROVED'
+				importSvc.log(transmittalitem)
+			}
+			catch(e){
+				transmittalitem.status = 'ERROR'
+				transmittalitem.remarks = e.message 
+				importSvc.log(transmittalitem)
+			}
+		}
+		else if ('DISAPPROVED'.equalsIgnoreCase(transmittalitem.status)){
+			//TODO:
+		}
+	}
+
+	@After(pattern='RPTTransmittalImportService.importData', eval="#{'consolidation'.equalsIgnoreCase(args[0].filetype) && 'SYNC'.equalsIgnoreCase(args[0].type) && args[0].state=='SUBMITTED'}")
+	public void postProvinceCreatedConsolidation(evt){
+		def transmittalitem = evt.args[1].transmittalitem
+		def consolidationdata = evt.args[1].consolidationdata 
+		
+		try{
+			svc.postApprovedConsolidationFromProvince(consolidationdata)	
+			transmittalitem.status = 'SUCCESS'
+			importSvc.log(transmittalitem)
+		}
+		catch(e){
+			transmittalitem.status = 'ERROR'
+			transmittalitem.remarks = e.message 
+			importSvc.log(transmittalitem)
+		}
+	}
+
+}
+

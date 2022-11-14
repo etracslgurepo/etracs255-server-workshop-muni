@@ -1,0 +1,23 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import java.rmi.server.UID;
+import com.rameses.util.*;
+import com.rameses.io.*;
+
+class IndividualEntityService {
+	
+	@Service("DateService")
+	def dtSvc;
+
+	@ProxyMethod
+	public def calculateAge( def entity ) {
+		if(!entity.birthdate) throw new Exception("birthdate is required in calculateAge");
+		def m = [:];
+		m.age = dtSvc.calculateAge( entity.birthdate );
+		m.senior = (m.age >= 60);
+		m.seniorcitizen = m.senior;  //this is to support individual ctc module
+		return m;
+	}
+
+
+}

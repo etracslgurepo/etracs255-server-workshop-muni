@@ -1,0 +1,32 @@
+<!--
+drop view if exists vw_af_inventory_summary
+;
+CREATE VIEW vw_af_inventory_summary AS 
+select 
+	af.objid, af.title, u.unit, af.formtype, 
+	(case when af.formtype='serial' then 0 else 1 end) as formtypeindex, 
+	(select count(0) from af_control where afid = af.objid and state = 'OPEN') AS countopen, 
+	(select count(0) from af_control where afid = af.objid and state = 'ISSUED') AS countissued, 
+	(select count(0) from af_control where afid = af.objid and state = 'ISSUED' and currentseries > endseries) AS countclosed, 
+	(select count(0) from af_control where afid = af.objid and state = 'SOLD') AS countsold, 
+	(select count(0) from af_control where afid = af.objid and state = 'PROCESSING') AS countprocessing, 
+	(select count(0) from af_control where afid = af.objid and state = 'HOLD') AS counthold
+from af, afunit u 
+where af.objid = u.itemid
+order by (case when af.formtype='serial' then 0 else 1 end), af.objid 
+;
+-->
+<schema>
+	<element tablename="vw_af_inventory_summary">
+		<field name="objid" caption="AF" width="100" maxWidth="100"/>
+		<field name="title" caption="Title"/> 
+		<field name="unit" caption="Unit" width="100" maxWidth="100"/> 
+		<field name="formtype" caption="FormType" width="100" maxWidth="100"/>	
+		<field name="countopen" caption="Open" type="integer" width="100" maxWidth="100"/>
+		<field name="countissued" caption="Issued" type="integer" width="100" maxWidth="100"/>
+		<field name="countclosed" caption="Consumed" type="integer" width="100" maxWidth="100"/>
+		<field name="countsold" caption="Sold" type="integer" width="100" maxWidth="100"/>
+		<field name="countprocessing" caption="Processing" type="integer" width="100" maxWidth="100"/>	
+		<field name="counthold" caption="Hold" type="integer" width="100" maxWidth="100"/>	
+	</element>
+</schema>

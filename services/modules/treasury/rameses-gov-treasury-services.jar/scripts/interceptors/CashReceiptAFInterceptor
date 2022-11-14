@@ -1,0 +1,30 @@
+import com.rameses.annotations.*;
+
+class CashReceiptAFInterceptor {
+
+	@DataContext("af_control")
+	def afc_db;
+
+	@DataContext('cashreceipt')
+	def cashreceipt_db; 
+
+	@After(pattern="PersistenceService.update", eval="#{ args[0]._schemaname == 'af_control' }")
+	public void afterUpdate( evt ) { 
+		def param = evt.args[0]; 
+		if ( !param.objid ) return; 
+
+		if ( param._tag == 'change-txntype-issuance' ) {
+			def aa = afc_db.find([ objid: param.objid ]).select('objid,state,startseries,endseries').first(); 
+			if ( !aa ) return; 
+
+			def state = aa.state.toString().toUpperCase(); 
+			if ( state.matches('PROCESSING|ISSUED')) return; 
+
+			def count = cashreceipt_db.find([ controlid: aa.objid ]).select('cnt:{COUNT(objid)}').val(); 
+			if ( count > 0 ) {
+				def msg = 'Change status not allowed. AF '+ aa.startseries +'-'+ aa.endseries +' has already issued receipts';
+				throw new Exception( msg.toString()); 
+			} 
+		} 
+	}
+}

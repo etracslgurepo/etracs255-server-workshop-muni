@@ -1,0 +1,10 @@
+<schema>
+	<element tablename="machforex">
+		<field name="objid" primary="true"/>
+		<field name="machrysettingid" required="true"/>
+		<field name="year" required="true" type="integer" />
+		<field name="forex" required="true" type="decimal"/>
+        <field name="previd"  />
+	</element>
+    	
+</schema>

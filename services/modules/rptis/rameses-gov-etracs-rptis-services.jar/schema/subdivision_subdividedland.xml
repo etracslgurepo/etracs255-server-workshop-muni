@@ -1,0 +1,11 @@
+<schema>
+    <element tablename="subdividedland">
+        <field name="objid" primary="true" />
+        <field name="subdivisionid" required="true" />
+        <field name="newpin" required="true" />
+        <field name="newfaasid" required="true" />
+        <field name="newrpid" required="true" />
+        <field name="newrpuid" required="true" />
+    </element>
+</schema>
+

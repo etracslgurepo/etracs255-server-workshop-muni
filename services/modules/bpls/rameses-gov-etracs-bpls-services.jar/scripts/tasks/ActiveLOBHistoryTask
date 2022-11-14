@@ -1,0 +1,33 @@
+import com.rameses.annotations.*;
+
+class ActiveLOBHistoryTask {
+	
+	@DataContext('business_active_lob_history_forprocess') 
+	def em; 
+
+	@DataContext('business_permit') 
+	def permit_db;
+
+	@Service("BusinessLobService")
+	def lobSvc;
+
+	@Service('BusinessPermitService') 
+	def permitSvc; 
+
+	//@Schedule( interval=1 )
+	public void process( task ) { 
+		def list = em.where(' 1=1 ').list(0, 25); 
+		list.each{ b-> 
+			em.getAppYears( b ).each{ a-> 
+				lobSvc.updateActiveLOBHistory( a ); 
+			} 
+
+			def bmap = [ businessid: b.businessid ];
+			em.find( bmap ).delete(); 
+
+			permit_db.getPermits( bmap ).each{ p-> 
+				permitSvc.buildPermitLOB([ permitid: p.objid ]);  
+			} 
+		} 
+	} 
+} 

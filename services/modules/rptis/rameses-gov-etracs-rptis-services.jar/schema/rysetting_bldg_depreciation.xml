@@ -1,0 +1,18 @@
+<schema>
+    <element tablename="bldgtype_depreciation">
+    	<field name="objid" primary="true"/>
+    	<field name="bldgtypeid" required="true"/>
+    	<field name="bldgrysettingid" required="true"/>
+        <field name="agefrom" required="true"  type="integer" />
+        <field name="ageto" required="true"  type="integer" />
+		<field name="rate" type="decimal" />
+		<field name="excellent" type="decimal" />
+		<field name="verygood" type="decimal" />
+		<field name="good" type="decimal" />
+		<field name="average" type="decimal" />
+		<field name="fair" type="decimal" />
+		<field name="poor" type="decimal" />
+		<field name="verypoor" type="decimal" />
+		<field name="unsound" type="decimal" />
+    </element>
+</schema>

@@ -1,0 +1,220 @@
+import com.rameses.annotations.*;
+
+class AFInventoryService {
+	
+	@DataContext('af_control')
+	def afCtrl;
+
+	@DataContext('af_control_detail')
+	def afDetail;
+
+	def formatSeries(vv,  len) {
+		return  vv.toString().padLeft( len, '0');
+	}
+
+	
+
+	/*********************************************************************************
+	* ref is the reference transaction while afc is the af control object
+	* ref must have refno,reftype,refid,refdate,
+	* af control is either created here or fetched and then passed here
+	*********************************************************************************/
+	@ProxyMethod 
+	public void add( def ref, def afc ) {
+		def oldref = ref; 
+		def oldafc = afc;
+
+		//this routine will create a new afcontrol
+		if ( !afc?.objid ) {
+			if ( afc.prefix == null ) afc.prefix = ''; 
+			if ( afc.suffix == null ) afc.suffix = '';
+
+			def afunit = afc.afunit;
+			int len = (afunit.serieslength ? afunit.serieslength : 10);	
+
+			def m = [ ukey: "" ];
+			if ( !afunit.formtype.toString().equals("serial") ) {
+				m.ukey = com.rameses.util.Encoder.MD5.encode( new java.rmi.server.UID().toString(), "afcontrol" ); 
+			}
+
+			m.afid = afc.afid;
+			m.txnmode = 'ONLINE';
+			m.state = 'DRAFT';
+			m.unit = afc.unit;
+			m.cost = afc.cost;
+			m.salecost = 0.0;
+
+			if ( ref.txntype == 'FORWARD' ) {
+				m.owner = ref.issueto;
+				m.assignee = m.owner; 
+			}
+
+			if ( afunit.formtype == 'serial' ) {				
+				m.startseries = formatSeries( afc.startseries, len  );
+				m.endseries = formatSeries( afc.endseries, len );
+				m.currentseries = m.startseries; 
+				if ( ref.txntype == 'FORWARD' ) { 
+					m.currentseries = formatSeries( afc.currentseries, len ); 
+				} 
+			} else { 
+				m.startseries = 1;
+				m.endseries = afc.endseries; 
+				m.currentseries = m.startseries; 
+				if ( ref.txntype == 'FORWARD' ) { 
+					m.currentseries = afc.currentseries; 
+				} 
+			} 
+			m.stubno = afc.stubno;
+
+			m.dtfiled = afc.dtfiled;
+			m.active = 0;
+			m.prefix = afc.prefix;
+			m.suffix = afc.suffix;
+			m.batchno = afc.batchno;
+			m.batchref = ref.refno;
+			m.currentindexno = 1;
+			m.allocation = afc.allocation;
+
+			afc = afCtrl.create( m ); 
+			oldafc.objid = afc.objid; 
+		} 
+
+		def d = [:];
+		d.putAll( ref );
+		d.objid = 'AFD-'+ new java.rmi.server.UID(); 
+		d.controlid = afc.objid;
+		d.parent = afc;
+		d.issuedto = ref.issueto;
+		d.respcenter = ref.respcenter;
+		d.state = 0;
+		d.indexno = 1;
+
+		//initialize the values
+		d.receivedstartseries = d.receivedendseries = null; 
+		d.beginstartseries = d.beginendseries = null; 
+		d.issuedstartseries = d.issuedendseries = null; 
+		d.endingstartseries = d.endingendseries = null; 
+		d.qtyreceived = d.qtybegin = d.qtyissued = d.qtycancelled = d.qtyending = 0;
+
+		def u = [ state: 'PROCESSING' ]; 
+		if ( ref.reftype == 'PURCHASE_RECEIPT') {
+			d.receivedstartseries = afc.startseries;
+			d.receivedendseries = afc.endseries; 
+			d.qtyreceived = (afc.endseries.toInteger() - afc.startseries.toInteger() ) +1;
+			d.endingstartseries = afc.startseries;
+			d.endingendseries = afc.endseries; 
+			d.qtyending = d.qtyreceived;
+
+		} else if ( ref.reftype == 'BEGIN_BALANCE' ) {
+			d.beginstartseries = afc.startseries;
+			d.beginendseries = afc.endseries; 
+			d.qtybegin = (afc.endseries.toInteger() - afc.startseries.toInteger() ) +1;
+			d.endingstartseries = afc.startseries;
+			d.endingendseries = afc.endseries; 
+			d.qtyending = d.qtybegin;
+
+		} else if ( ref.reftype == 'FORWARD' ) {
+			d.beginstartseries = afc.currentseries;
+			d.beginendseries = afc.endseries; 
+			d.qtybegin = (afc.endseries.toInteger() - afc.currentseries.toInteger() ) +1;
+			d.endingstartseries = afc.currentseries;
+			d.endingendseries = afc.endseries; 
+			d.qtyending = d.qtybegin;
+			u.state = 'ISSUED';
+
+		} 
+		else if( ref.reftype.matches("ISSUE") && ref.txntype == "COLLECTION" ) {
+			d.receivedstartseries = afc.currentseries;
+			d.receivedendseries = afc.endseries; 
+			d.qtyreceived = (d.receivedendseries.toInteger() - d.receivedstartseries.toInteger() ) +1;
+			d.endingstartseries = d.receivedstartseries;
+			d.endingendseries = d.receivedendseries;
+			d.qtyending = d.qtyreceived;
+
+		} 
+		else if( ref.reftype.matches("ISSUE") && ref.txntype == "SALE" ) {
+			d.issuedstartseries = afc.currentseries;
+			d.issuedendseries = afc.endseries; 
+			d.qtyissued = (d.issuedendseries.toInteger() - d.issuedstartseries.toInteger() ) +1;
+			d.endingstartseries = d.endingendseries = null; 
+			d.qtyending = 0; 
+
+			d.qtyreceived = d.qtyissued; 
+			d.receivedendseries = d.issuedendseries; 
+			d.receivedstartseries = d.issuedstartseries; 
+		}
+		else if ( ref.reftype.matches('TRANSFER|MANUAL_ISSUE')) {
+			d.receivedstartseries = afc.currentseries;
+			d.receivedendseries = afc.endseries; 
+			d.qtyreceived = (d.receivedendseries.toInteger() - d.receivedstartseries.toInteger() ) +1;
+			d.endingstartseries = d.receivedstartseries;
+			d.endingendseries = d.receivedendseries;
+			d.qtyending = d.qtyreceived;
+			u.state = 'ISSUED';
+
+		} 
+		else if ( ref.reftype == 'RETURN') {
+			d.beginstartseries = afc.currentseries;
+			d.beginendseries = afc.endseries; 
+			d.qtybegin = (d.beginendseries.toInteger() - d.beginstartseries.toInteger() ) +1;
+			d.endingstartseries = d.beginstartseries;
+			d.endingendseries = d.beginendseries;
+			d.qtyending = d.qtybegin;	
+			d.issuedto = [objid: null, name: null]; 
+			u.state = 'OPEN';
+
+		} 
+		else if ( ref.reftype == 'REMITTANCE') {
+			d.beginstartseries = ref.startseries;
+			d.beginendseries = afc.endseries;  
+			d.qtybegin = (d.beginendseries.toInteger() - d.beginstartseries.toInteger() ) +1;
+			d.issuedstartseries = ref.startseries;
+			d.issuedendseries = ref.endseries;
+			if ( ref.endseries < afc.endseries ) {
+				d.endingstartseries = d.issuedstartseries + 1;
+				d.endingendseries = d.beginendseries; 
+				d.qtyending = (d.endingendseries.toInteger() - d.endingstartseries.toInteger() )+1;
+			} else { 
+				d.qtyending = 0; 
+			} 
+
+			u.remove('state'); 
+		} 
+	
+		d = afDetail.create( d ); 
+		oldref.objid = d.objid;
+
+		u.currentdetailid = d.objid; 
+		afCtrl.find([ objid: afc.objid ]).update( u );
+	}
+
+	@ProxyMethod
+	public void update( def detail ) {
+		if( !detail.objid ) throw new Exception("AFInventoryService.update error. detail.objid is required" );
+		if( !detail.controlid ) throw new Exception("AFInventoryService.update error. detail.controlid is required" );
+		if( !detail.currentseries ) throw new Exception("AFInventoryService.update error. detail.currentseries is required" );
+		if( !detail.endseries ) throw new Exception("AFInventoryService.update error. detail.endseries is required" );
+
+		def d = [:];
+		d.receivedstartseries = detail.currentseries;
+		d.receivedendseries = detail.endseries; 
+		d.qtyreceived = (d.receivedendseries.toInteger() - d.receivedstartseries.toInteger() ) +1;
+		d.endingstartseries = d.receivedstartseries;
+		d.endingendseries = d.receivedendseries;
+		d.qtyending = d.qtyreceived;
+
+		afDetail.find([objid: detail.objid ]).update( d );
+
+		//we must update this immediately so we can see the effects during lookup
+		afCtrl.find([objid: detail.controlid ] ).update( [currentseries:detail.currentseries, endseries: detail.endseries ]);
+	} 
+
+	@ProxyMethod 
+	public def addItem( item ) {
+		def afc = afCtrl.find([ objid: item.controlid ]).first(); 
+		if ( !afc ) throw new Exception('AF Control not found'); 
+
+		def afd = afDetail.create( item ); 
+		afCtrl.find([ objid: afd.controlid ]).update([ currentdetailid: afd.objid ]); 
+	} 
+}

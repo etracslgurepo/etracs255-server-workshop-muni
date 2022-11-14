@@ -1,0 +1,95 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class RPTCompromiseUtilService 
+{
+	@Service('NumberService')
+	def numSvc
+	
+	@ActiveDB('rptcompromise_util')
+	def em
+
+	@DataContext('rptcompromise')
+	def em_compromise
+
+	@DataContext('rptcompromise_item')
+	def em_compromise_item
+
+
+	@ProxyMethod
+	public void repostPaymentByTxnno(params) {
+		def compromise = em.findCompromiseByTxnno(params)
+		if (!compromise) throw new Exception('Compromise does not exist. Check txnno.')
+		if (compromise.state != 'APPROVED') throw new Exception('Compromise is not yet approved.')
+		if (compromise.amtpaid <= 0) throw new Exception('Compromise has no payment for reposting.')
+		repostPayment(compromise)
+	}
+
+	@ProxyMethod
+	public void repostPayment(compromise) {
+		em.resetPayment(compromise)
+		def pmt = em.findPayment(compromise)
+
+		def payment = pmt.amtpaid 
+		
+		em_compromise.find([objid: compromise.objid]).update([amtpaid: payment])
+
+		def items = em.getItems(compromise)
+		if (!items) return
+
+		def years = items.year.unique()
+		def yrgroups = items.groupBy{ it.year }
+
+		for (int i = 0; i < years.size(); i++) {
+			def yritems = yrgroups[years[i]]
+			def yrtotal = yritems.total.sum()
+			if (payment >= yrtotal) {
+				postPayments(yritems)
+				payment -= yrtotal
+			} else if (payment != 0) {
+				buildPartialPayment(yritems, payment)
+				postPayments(yritems)
+				payment = 0;
+			}
+			if (payment == 0) break;
+		}
+	}
+
+	void postPayments(items) {
+		items.each{item -> 
+			em_compromise_item
+				.find([objid: item.objid])
+				.update([amtpaid: item.amount, interestpaid: item.interest])
+		}
+	}
+
+	void buildPartialPayment(items, payment){
+		def partialamt = payment
+
+		if (items.size() == 1){
+			distributePartialProportionally(partialamt, items.first())
+		} 
+		else {
+			def runningpartial = partialamt
+			def totalamount = items.total.sum() 
+
+			for (int i = 0; i < items.size() - 1; i++){
+				def item = items[i]
+				def partial = numSvc.round(partialamt * numSvc.round(item.total / totalamount))
+				distributePartialProportionally(partial, item) 
+				runningpartial -= partial 
+			}
+			distributePartialProportionally(runningpartial, items.last()) 
+		}
+	}
+
+	void distributePartialProportionally(partial, item){
+		def totaldue = numSvc.round(item.total)
+		item.amount = numSvc.round(partial * (item.amount / totaldue))
+		item.interest = numSvc.round(partial - item.amount)
+		item.total = numSvc.round(item.amount + item.interest)
+		item.partialled = true 
+	}
+
+}

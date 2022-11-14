@@ -1,0 +1,124 @@
+import com.rameses.annotations.*
+import com.rameses.util.*
+import com.rameses.services.extended.*
+
+class FAASChangeInfoSyncDataService
+{
+	@Service('RPTMainSyncDataService')
+	def syncSvc 
+
+    @Service('RPTSyncDataService')
+    def rptSync
+
+    @Service('FAASChangeInfoService')
+    def svc
+
+    @Service('RPTRedFlagService')
+    def redFlagSvc
+
+    @DataContext('rpt_requirement')
+    def em_requirement
+
+
+	def getActions(){
+		return  [
+	    	'CHANGEINFO-FAAS-POST': [send: sendChangeInfo, receive: postChangeInfo, schedule: schedulePostChangeInfo],
+	    ]
+	}
+
+	/*---------------------------------------------------------
+	*
+	* SCHEDULING SYNC SUPPORT 
+	*
+	---------------------------------------------------------*/
+	@ProxyMethod
+	public void schedule(data) {
+		def action= getActions()[data.action]
+		if (!action) throw new Exception('Scheduler not found for action ' + data.action)
+
+		def changeinfo = svc.open([objid: data.objid])
+		svc.checkAndUpdateLgu(changeinfo)
+		data.remote = rptSync.getRemoteOrg(changeinfo)
+        def syncdata = syncSvc.create(data)
+		action.schedule(syncdata, changeinfo)
+	}
+
+	def createItem(item, syncdata, action) {
+		return [
+			refid: item.objid, 
+			reftype: syncdata.reftype, 
+			refno: syncdata.refno, 
+			action: (action ? action : syncdata.action)
+		]
+	}
+
+	void createSyncItem(entity, syncdata, action) {
+		def item = createItem(entity, syncdata, action)
+        syncSvc.createItem(syncdata, item)
+	}
+
+	def schedulePostChangeInfo = {syncdata, changeinfo ->
+		createSyncItem(changeinfo, syncdata, 'CHANGEINFO-FAAS-POST')
+		scheduleSharedData(syncdata, changeinfo)
+	}
+
+	void scheduleSharedData(syncdata, changeinfo) {
+		def imageactions = [
+			'add_faas_requirement_document',
+			'change_faas_sketch'
+		]
+		if (imageactions.find{it.matches(changeinfo.action) }) {
+			rptSync.scheduleImagesByRefId(syncdata, changeinfo.objid)
+			rptSync.scheduleImagesByRefId(syncdata, changeinfo.refid)
+
+			if ('add_faas_requirement_document'.matches(changeinfo.action) && changeinfo.redflagid) {
+				def redflag = redFlagSvc.open([objid: changeinfo.redflagid])
+				if (redflag && redflag.info?.requirementtype?.objid ) {
+					def req = em_requirement.select('objid')
+									.find([refid: changeinfo.refid, requirementtypeid:redflag.info?.requirementtype?.objid])
+									.first()
+					rptSync.scheduleImagesByRefId(syncdata, req.objid)
+				}
+			}
+		}
+    }	
+
+	
+	/*---------------------------------------------------------
+	*
+	* SEND/RECEIVE HANDLERS 
+	*
+	---------------------------------------------------------*/
+	@ProxyMethod
+	public void send(syncdata) {
+		rptSync.send(syncdata, getActions())
+	}
+
+	@ProxyMethod
+	public void receive(syncdata) {
+		rptSync.receive(syncdata, getActions())
+	}
+
+
+	/*---------------------------------------------------------
+	*
+	* SUPPORT METHODS
+	*
+	---------------------------------------------------------*/
+	def sendChangeInfo = {syncdata ->
+		def changeinfo = svc.open([objid: syncdata.refid])
+		if (changeinfo.redflagid) {
+			def redflag = redFlagSvc.open([objid: changeinfo.redflagid])
+			changeinfo = svc.openByRedFlag(redflag)
+		}
+		return changeinfo
+	}
+
+	def postChangeInfo = {syncdata ->
+		def changeinfo = syncdata.data 
+		changeinfo.remote = true 
+		svc.updateInfo(changeinfo)
+	}
+
+}
+ 

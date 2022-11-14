@@ -1,0 +1,24 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class RPTCertificationFAASVerificationService 
+{
+    
+    @Service('RPTCertificationService')
+    def certSvc 
+
+    @ProxyMethod
+    public def createCertification( cert ) {
+        cert.includemembers = false
+        certSvc.createCertification(cert)
+        return openCertification(cert.objid)
+    }
+
+
+    @ProxyMethod
+    public def openCertification(objid) {
+        return certSvc.openCertification(objid)
+    }
+
+}

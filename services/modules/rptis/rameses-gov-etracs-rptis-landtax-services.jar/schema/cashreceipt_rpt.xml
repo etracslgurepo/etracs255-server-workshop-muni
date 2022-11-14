@@ -1,0 +1,11 @@
+<schema>
+	<element tablename="cashreceipt_rpt">
+		<field name="objid" primary="true" />
+		<field name="year" type="integer" required="true" />
+		<field name="qtr" type="integer" required="true" />
+		<field name="month" type="integer" required="true" />
+		<field name="day" type="integer" required="true" />
+		<!-- type: online, capture, noledger etc -->
+		<field name="txntype" required="true" />
+	</element>
+</schema>

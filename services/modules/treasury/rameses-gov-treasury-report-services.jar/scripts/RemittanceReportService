@@ -1,0 +1,674 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*
+import com.rameses.util.*;
+
+class RemittanceReportService  {
+
+	@PersistenceContext("main")
+	def em; 
+
+	@DataContext("remittance")
+	def remdb;
+
+	@ActiveDB('remittancereport')
+	def db;
+
+	@ActiveDB('fund')
+	def fund_em;
+
+	@Service("NumberService")
+	def numSvc;
+
+	@Service("DateService")
+	def dtsvc;
+
+	//@Service("AFRemittanceService")
+	def afremSvc
+
+	@Service('RAAFReportService') 
+	def raafSvc; 
+	
+	@Service 
+	def self; 
+
+	def formatSeries( series, serieslength ) { 
+		if ( !series ) return null; 
+		else if ( !serieslength ) return series.toString(); 
+
+		return  series.toString().padLeft( serieslength, '0' ); 
+	}
+
+	def getRemittance( o ) { 
+		def rem =  remdb.read( o ); 
+		if ( !rem.txnno ) rem.txnno = rem.controlno; 
+		if ( !rem.remittancedate ) rem.remittancedate = rem.controldate; 
+		if ( rem.totalnoncash == null ) rem.totalnoncash = rem.totalcheck + rem.totalcr; 
+
+		def cipher = new Base64Cipher()
+		if ( rem.collector?.signature ) {
+			rem.collector.signature = cipher.decode( rem.collector.signature );
+		}
+		if ( rem.liquidatingofficer?.signature ) { 
+			rem.liquidatingofficer.signature = cipher.decode( rem.liquidatingofficer.signature ); 
+		}
+
+		rem.remittanceid = rem.objid; 		
+		return rem;
+	}
+
+	@ProxyMethod 
+	def getRCDReportData( rem ) { 
+		def params = [ remittanceid: rem.objid, fundid:'%', formno:'%' ]; 
+
+		def remittance = getRemittance( rem );
+
+		remittance.collectiontype = buildCollectionTypes( db.getRCDCollectionTypes( params ) ); 
+		remittance.collectionsummaries = db.getRCDCollectionSummaries( params ); 
+
+		def afinventories = raafSvc.getRAAFByRemittance( params ); 
+		remittance.remittedforms = afinventories.findAll{ it.formtype=='serial' }  
+		remittance.remittedforms.each { 
+			it.qtyreceived = (Number) it.qtyreceived; 
+			it.qtybegin = (Number) it.qtybegin; 
+			it.qtyissued = (Number)it.qtyissued; 
+			it.qtyending = (Number) it.qtyending;
+
+ 			it.receivedstartseries= formatSeries(it.receivedstartseries, it.serieslength) 
+ 			it.receivedendseries= formatSeries(it.receivedendseries, it.serieslength)
+ 			it.beginstartseries= formatSeries(it.beginstartseries, it.serieslength)
+ 			it.beginendseries= formatSeries(it.beginendseries, it.serieslength)
+ 			it.issuedstartseries= formatSeries(it.issuedstartseries, it.serieslength)
+ 			it.issuedendseries= formatSeries(it.issuedendseries, it.serieslength)
+ 			it.endingstartseries= formatSeries(it.endingstartseries, it.serieslength)
+ 			it.endingendseries= formatSeries(it.endingendseries, it.serieslength)
+		} 
+
+		remittance.cancelseries = []
+		remittance.hascancelseries = false 
+		remittance.remittedforms.each{
+			if( it.cancelled ) {
+				remittance.cancelseries	<< [
+					formno: it.formno, qty: it.qtycancelled, 
+					series: it.cancelled 
+				]
+				remittance.hascancelseries = true 
+			}
+		}
+
+		remittance.otherpayments = db.getRCDOtherPayment([ remittanceid: remittance.objid ]); 
+
+		def cashtickets = afinventories.findAll{ it.formtype=='cashticket' } 
+		remittance.nonserialremittances = cashtickets;
+		remittance.nonserialsummary = cashtickets ;
+		remittance.amountinwords = numSvc.doubleToWords( remittance.amount).toUpperCase()
+		remittance.cashbreakdown.each {
+			it.qty = it.qty.toString()
+
+			def dqty = 'dqty' + it.caption.toString().replace('.00','')
+            def damt = 'damt' + it.caption.toString().replace('.00','')
+            remittance."$dqty" = null
+            remittance."$damt" = null
+            if( it.amount > 0 ) {
+                remittance."$dqty" = it.qty
+                remittance."$damt" = it.amount
+            } 
+		}
+		return remittance; 
+	}
+
+	@ProxyMethod 
+	def getRCDReportDataByFund( rem, fund, af ) { 
+		def remittance = getRemittance( rem );
+		def params = [ remittanceid: rem.objid, fundid: (fund? fund.objid: '%'), formno: (af? af.formno: '%') ];  
+		remittance.collectiontype = buildCollectionTypes( db.getRCDCollectionTypesByFund( params ) );
+		remittance.collectionsummaries = db.getRCDCollectionSummaries( params ); 
+
+		def afinventories = raafSvc.getRAAFByRemittance( params ); 
+		remittance.remittedforms = afinventories.findAll{ it.formtype=='serial' }  
+		remittance.remittedforms.each{  
+			it.qtyreceived = (Number) it.qtyreceived; 
+			it.qtybegin = (Number) it.qtybegin; 
+			it.qtyissued = (Number)it.qtyissued; 
+			it.qtyending = (Number) it.qtyending;
+
+ 			it.receivedstartseries= formatSeries(it.receivedstartseries, it.serieslength) 
+ 			it.receivedendseries= formatSeries(it.receivedendseries, it.serieslength)
+ 			it.beginstartseries= formatSeries(it.beginstartseries, it.serieslength)
+ 			it.beginendseries= formatSeries(it.beginendseries, it.serieslength)
+ 			it.issuedstartseries= formatSeries(it.issuedstartseries, it.serieslength)
+ 			it.issuedendseries= formatSeries(it.issuedendseries, it.serieslength)
+ 			it.endingstartseries= formatSeries(it.endingstartseries, it.serieslength)
+ 			it.endingendseries= formatSeries(it.endingendseries, it.serieslength)
+		} 
+		remittance.cancelseries = []
+		remittance.hascancelseries = false 
+		remittance.remittedforms.each{
+			if( it.cancelled ) {
+				remittance.cancelseries	<< [
+					formno: it.formno, qty: it.qtycancelled, 
+					series: it.cancelled 
+				]
+				remittance.hascancelseries = true 
+			} 
+		} 
+
+		def cashtickets = afinventories.findAll{ it.formtype=='cashticket' } 
+		remittance.nonserialremittances = cashtickets;
+		remittance.amount = remittance.collectionsummaries.amount.sum(); 
+		remittance.amountinwords = numSvc.doubleToWords( remittance.amount ).toUpperCase(); 
+		remittance.otherpayments = []; 	
+		return remittance; 
+	}
+
+
+	@ProxyMethod
+	def generateReportByCollectionType( rem, collectiontype  ) {
+		def data = rem.clone();
+		def params = [
+			remittanceid: data.objid, 
+			collectiontypeid : collectiontype ? collectiontype.objid : '%'
+		];
+
+		data.receipts = db.getReceiptsByRemittanceCollectionType( params ); 
+		if ( !data.receipts ) throw new Exception("No record(s) found ");
+
+		resolveCompatibility( data ); 		
+		return data;
+	}
+
+	@ProxyMethod 
+	public def generateReportByFund( rem, fund ) { 
+		def funds = [];
+		if ( fund?.objid ) funds << fund.objid; 
+
+		def data = rem.clone();
+		def params = [ remittanceid: data.objid ]; 
+		if ( data._INCLUDE_SUBFUND == true ) { 			
+			def list = fund_em.findAllSubAcct([ objid: fund?.objid ]).collect{ it.objid }   
+			if ( list ) funds.addAll( list );  
+		} 
+
+		params.fundfilter = ""; 
+		if ( funds ) { 
+			params.fundfilter = " AND fund.objid IN ('"+ funds.join("','") +"')"; 
+		} 
+
+		data.receipts = db.getReceiptsByRemittanceFund( params );
+		if ( !data.receipts ) throw new Exception("No record(s) found ");
+
+		data.acctsummaries = db.getRevenueItemSummaryByFund( params ); 
+		resolveCompatibility( data ); 		
+		return data;
+	}
+
+
+	@ProxyMethod 
+	def generateDetailedReportByFund(rem, fund) {
+		def funds = []; 
+		if ( fund?.objid ) funds << fund.objid; 
+
+		def data = rem.clone();
+		def params = [ remittanceid: data.objid ];
+ 		if ( data._INCLUDE_SUBFUND == true ) { 			
+			def list = fund_em.findAllSubAcct([ objid: params.fundid ]).collect{ it.objid }   
+			if ( list ) funds.addAll( list );  
+		} 
+
+		params.fundfilter = ""; 
+		if ( funds ) {
+			params.fundfilter = " AND fund.objid IN ('"+ funds.join("','") +"') "; 
+		}
+
+		data.serials = db.getSerialReceiptsByRemittanceFund( params ); 
+		data.nonserials = db.getNonSerialReceiptDetailsByFund( params );
+
+		def total1 = data.serials.sum{( it.amount ? it.amount : 0.0 )} 
+		def total2 = data.nonserials.sum{( it.amount ? it.amount : 0.0 )} 
+		data.amount = (total1 ? total1 : 0.0) + (total2 ? total2 : 0.0); 
+
+		resolveCompatibility( data ); 
+		return data;
+	}
+
+	@ProxyMethod 
+	def generateReportByCashReceipts( rem, fund ) {
+		if ( !rem.objid ) throw new Exception('objid parameter is required'); 
+
+		def funds = []; 
+		def fundid = fund?.objid; 
+		if ( fundid ) funds << fundid; 
+
+		def params = [ remittanceid: rem.objid ]; 
+ 		if ( fundid && rem._INCLUDE_SUBFUND == true ) { 			
+			def list = fund_em.findAllSubAcct([ objid: fundid ]).collect{ it.objid }   
+			if ( list ) funds.addAll( list );  
+		} 
+
+		params.fundfilter = ""; 
+		if ( funds ) { 
+			params.fundfilter = " AND fund.objid IN ('"+ funds.join("','") +"') "; 
+		} 
+
+		rem.receipts = db.getReceiptsGroupByFund( params );
+		rem.acctsummaries = db.getRevenueItemSummaryByFund( params ); 
+
+		def total = rem.receipts.sum{( it.amount ? it.amount : 0.0 )} 
+		rem.amount = (total ? total : 0.0); 
+
+		resolveCompatibility( rem ); 
+		return rem;
+	}
+
+	@ProxyMethod 
+	def generateReportByRevenueItem( rem, fund ) {
+		if ( !rem.objid ) throw new Exception('objid parameter is required'); 
+
+		def funds = []; 
+		def fundid = fund?.objid; 
+		if ( fundid ) funds << fundid; 
+
+		def params = [ remittanceid: rem.objid ]; 
+ 		if ( fundid && rem._INCLUDE_SUBFUND == true ) { 			
+			def list = fund_em.findAllSubAcct([ objid: fundid ]).collect{ it.objid }   
+			if ( list ) funds.addAll( list );  
+		} 
+
+		params.fundfilter = ""; 
+		if ( funds ) { 
+			params.fundfilter = " AND fund.objid IN ('"+ funds.join("','") +"') "; 
+		} 
+
+		rem.acctsummaries = db.getRevenueItemSummaryByFund( params );
+		if ( !rem.acctsummaries ) throw new Exception("No record(s) found ");
+
+		if ( funds && (fundid == 'GENERAL' || fundid == '%')) { 
+			rem.brgyshares = self.getBrgyShares( params ).items; 
+		} 
+
+		if ( rem.brgyshares == null ) rem.brgyshares = [];
+		rem.hasbrgyshares = rem.brgyshares.size() > 0; 
+
+		rem.amount = rem.acctsummaries.amount.sum(); 
+		resolveCompatibility( rem ); 		
+		return rem; 
+	} 
+
+	@ProxyMethod 
+	def getBrgyShares( params ) {
+		/* 
+			to be implemented by the interceptors
+			keyword: result.items; 
+		*/
+		return [:]; 
+	}
+
+	@ProxyMethod 
+	def generateSummaryOfCollection(rem, chart) {
+		def acctlist = em.sqlContext.createNamedQuery('remittancereport:getDistinctAccount' + chart)
+							.setParameter('remittanceid', rem.objid )
+							.resultList 
+		
+		def colindex = 0
+		def columnsql = ''
+		def hasUnmapped = acctlist.find{ it.objid == null }
+		if(  hasUnmapped ) {
+			columnsql = " SUM( CASE WHEN a.objid IS NULL AND crv.objid is NULL THEN cri.amount ELSE NULL END ) AS col${colindex}, \n"
+			colindex++
+		}
+		acctlist.each { acct ->
+			if( acct.objid ) {
+				columnsql += " SUM( CASE WHEN a.objid = '$acct.objid' AND crv.objid is NULL THEN cri.amount ELSE NULL END ) AS col${colindex}, \n"
+				colindex++
+			}
+		}
+		columnsql += " SUM( CASE WHEN crv.objid is NULL THEN cri.amount ELSE NULL END ) AS col${colindex}, \n"
+			
+		def qry = em.sqlContext.createNamedQuery('remittancereport:getSummaryOfCollection' + chart )
+		
+		def items = qry.setVars([columnsql:columnsql])
+						.setParameter( 'remittanceid', rem.objid )
+						.resultList
+		
+		def header = [:]
+		colindex = 0
+		if( hasUnmapped ) {
+			header[ 'COL' + colindex ] = 'UNMAPPED'
+			colindex++
+		}
+		acctlist.collect{ acct ->
+			if( acct.objid ) {
+				header[ 'COL' + colindex ] = '(' + acct.acctcode + ')\n' + acct.accttitle 
+				colindex++
+			}
+		}
+		
+		header[ 'COL' + colindex ] = 'TOTAL'
+
+		resolveCompatibility( rem ); 
+
+		//
+		//additional params
+		header.REPORTTITLE = 'SUMMARY OF CASH COLLECTIONS AND DEPOSITS BY ' + chart 
+		header.REMITTANCENO = rem.txnno
+		header.REMITTANCEDATE = dtsvc.format('MMMMM dd, yyyy', rem.remittancedate)
+		header.REMITTANCEAMOUNT = rem.amount
+		header.COLLECTORNAME = rem.collector.name
+		header.COLLECTORTITLE = rem.collector.title
+		header.LIQUIDATINGOFFICER = rem.liquidatingofficer.name
+		header.LIQUIDATINGOFFICERTITLE = rem.liquidatingofficer.title
+		header.DATEPOSTED =  rem.dtposted 
+		header.AMTINWORDS = numSvc.doubleToWords( rem.amount )
+		
+		return [ header:header, items:items]
+	}
+
+	@ProxyMethod
+	def generateReportByCashTicket( entity ) {
+		if ( !entity.remittanceid ) entity.remittanceid = entity.objid; 
+
+		entity.amount = 0.0;
+		entity.cashticketsummaries = db.getCashTicketCollectionSummaries(entity); 
+		if (entity.cashticketsummaries) {
+			entity.amount = entity.cashticketsummaries.amount.sum();
+		}
+		if( entity.amount <= 0.0 ) throw new Exception('There are no cash ticket collections.')
+
+		entity.amountInWords = numSvc.doubleToWords( entity.amount );
+		resolveCompatibility( entity ); 		
+		return entity;
+	}
+
+	@ProxyMethod 
+	def generateAbstractOfRPTCollection(entity, municityname) {
+		def remyr = dtsvc.getYear(entity.remittancedate)
+
+		def params = [objid:entity.objid, remyear : remyr]
+		params.municityname = municityname ? municityname : '%'
+
+		def items = db.getAbstractOfRPTCollection(params).each{ buildPeriod(it) }
+		def advitems = db.getAbstractOfRPTCollectionAdvance(params).each{ buildPeriod(it) }
+		if( !items &&  !advitems) throw new Exception('No records found.')
+
+		resolveCompatibility( entity ); 
+
+		def header = [:]
+		header.TITLE = 'ABSTRACT OF REAL PROPERTY TAX COLLECTION'
+		header.PERIOD = ''
+		header.REMITTANCENO = entity.txnno
+		header.REMITTANCEDATE = dtsvc.format('MMMMM dd, yyyy', entity.remittancedate )
+		header.REMITTANCEAMOUNT = entity.amount
+		header.COLLECTORNAME = entity.collector.name
+		header.COLLECTORTITLE = entity.collector.title
+		header.LIQUIDATINGOFFICER = entity.liquidatingofficer.name
+		header.LIQUIDATINGOFFICERTITLE = entity.liquidatingofficer.title
+		header.DATEPOSTED =  entity.dtposted 
+		header.AMTINWORDS = numSvc.convertDouble( entity.amount )
+
+		return  [ header:header, items:items, advitems:advitems]
+	}
+
+	@ProxyMethod 
+	public def generateAbstractSummaryOfCollectionByFund( params ) { 
+		def items = db.getAbstractSummaryOfCollectionByFund([ remittanceid : params.objid ]); 
+		if ( !items ) throw new Exception("No available record(s) found");
+
+		def o = items[0]; 
+		resolveCompatibility( o ); 		
+		def result = [reportdata: items, header: [REPORTTITLE: 'SUMMARY OF COLLECTIONS BY FUND']]; 
+		result.header.REMITTANCENO = o.remno; 
+		result.header.REMITTANCEDATE = o.remdate; 
+		result.header.REMITTANCEAMOUNT = o.total;		
+		result.header.DATEPOSTED = o.dtposted;
+		result.header.COLLECTORNAME = o.collector?.name;
+		result.header.COLLECTORTITLE = o.collector?.title;
+		result.header.LIQUIDATINGOFFICER = o.liquidatingofficer?.name;
+		result.header.LIQUIDATINGOFFICERTITLE = o.liquidatingofficer?.title;
+		result.header.AMTINWORDS = numSvc.convertDouble( new java.math.BigDecimal( o.total.toString() ) );
+		return result; 
+	} 
+	
+	@ProxyMethod 
+	def getFundlist( remittanceid ) { 
+		def params = [ remittanceid: remittanceid ]; 
+		def list = db.getFundlist( params ); 
+		list.each{ 
+			it.aflist = db.getAFList( params ); 
+			it.aflist.each{ o-> 
+				o.title = o.formno +' - '+ o.formtitle; 
+			}
+		} 
+		return list; 
+	} 
+
+	@ProxyMethod 
+	def getCollectiontypelist( remittanceid ) {
+		return db.getCollectionType([ remittanceid: remittanceid ]);
+	}
+
+	@ProxyMethod 
+	def getMuniCityByRemittance( remittanceid ) {
+		def list = db.getMuniCityByRemittance([ remittanceid: remittanceid ]);
+		return list*.municityname 
+	}
+
+
+	def buildCollectionTypes( list ) { 
+		list.each{
+			if ( it.formtype=='cashticket' ) {
+				it.formno = ''+ it.formno + ' STUB #' + it.stubno; 
+				it.fromseries = null;
+				it.toseries = null;  
+			} 
+		} 
+	} 
+
+	def getRemittedSerials( remittance ) {
+		def params = [ objid: remittance.objid, formtype :'serial' ]
+		def list = afremSvc.getRemittedAF( params ); 
+		list.eachWithIndex{o,i-> o.rindex=i; o.level=null; } 
+
+		def results = []; 
+	    int groupindex = 0; 
+	    list.groupBy{[ afid:it.formno ]}.each{k,v-> 
+	    	def nextseries = 0;
+	    	v.findAll{ it.issuedstartseries > 0 }.each{x-> 
+		       if (x.issuedstartseries != nextseries) {
+		           groupindex++;
+		       } 
+		       nextseries = x.issuedendseries+1; 		       
+		       x.groupindex = groupindex; 
+		       x.level = 0; 
+		    }
+			compress( results, v.findAll{ it.level==0 }.groupBy{[ afid:k.afid, groupindex:it.groupindex]} ); 
+
+			groupindex++;
+		    nextseries = 0;
+		    v.findAll{ it.receivedstartseries > 0 && it.level==null }.each{x-> 
+		       if (x.receivedstartseries != nextseries) {
+		           groupindex++;
+		       } 
+		       nextseries = x.receivedendseries+1; 		       
+		       x.groupindex = groupindex; 
+		       x.level = 1; 
+		    }
+		    compress( results, v.findAll{ it.level==1 }.groupBy{[ afid:k.afid, groupindex:it.groupindex ]} ); 
+
+		    groupindex++;
+		    nextseries = 0;
+		    v.findAll{ it.beginstartseries > 0 && it.level==null }.each{x-> 
+		       if (x.beginstartseries != nextseries) {
+		           groupindex++;
+		       } 
+		       nextseries = x.beginendseries+1; 		       
+		       x.groupindex = groupindex; 
+		       x.level = 2; 
+		    } 
+		    compress( results, v.findAll{ it.level==2 }.groupBy{[ afid:k.afid, groupindex:it.groupindex ]} ); 
+	    } 
+	    return results.sort{ it.rindex } 
+	}	
+
+	def getRemittedCTs( rem ) {
+		def params = [ objid: rem.objid, formtype :'cashticket' ]
+		def list = afremSvc.getRemittedAF( params ); 
+		list.eachWithIndex{ o,idx->
+			o.rindex = idx;   
+			o.receivedstartseries = o.receivedendseries = null;
+			o.beginstartseries = o.beginendseries = null; 
+			o.issuedstartseries = o.issuedendseries = null; 
+			o.endingstartseries = o.endingendseries = null; 
+		}
+
+		def results = []; 
+	    list.groupBy{ it.formno }.each{k,v-> 
+	    	def item = v.first().clone(); 
+	    	item.qtyreceived = v.sum{(it.qtyreceived? it.qtyreceived: 0)}
+			item.qtybegin = v.sum{(it.qtybegin? it.qtybegin: 0)}
+			item.qtyissued = v.sum{(it.qtyissued? it.qtyissued: 0)}
+			item.qtyending = v.sum{(it.qtyending? it.qtyending: 0)}
+		    if ( item.qtybegin > 0 && item.qtyissued > 0 ) { 
+	        	item.qtyending = item.qtybegin - item.qtyissued; 
+	        } 
+
+			item.receivedamt = (item.qtyreceived? item.qtyreceived*item.denomination: 0.0); 
+			item.beginamt = (item.qtybegin? item.qtybegin*item.denomination: 0.0); 
+			item.issuedamt = (item.qtyissued? item.qtyissued*item.denomination: 0.0);
+			item.endingamt = (item.qtyending? item.qtyending*item.denomination: 0.0);
+			results << item; 
+	    } 
+
+	    return results.sort{ it.rindex } 
+	}	
+
+	void compress( results, data ) {
+		data.each{k,v-> 
+		    def item = [:];
+		    item.putAll(v.first()); 
+		    
+		    if (v.size() > 1) {
+		        def lst = v.findAll{ it.issuedstartseries > 0 }
+		        item.issuedstartseries = (lst? lst.first().issuedstartseries: null);
+		        item.issuedendseries = (lst? lst.last().issuedendseries: null);
+
+		        lst = v.findAll{ it.beginstartseries > 0 }
+		        item.beginstartseries = (lst? lst.first().beginstartseries: null);
+		        item.beginendseries = (lst? lst.last().beginendseries: null);    
+
+		        lst = v.findAll{ it.receivedstartseries > 0 }
+		        item.receivedstartseries = (lst? lst.first().receivedstartseries: null);
+		        item.receivedendseries = (lst? lst.last().receivedendseries: null);        
+
+		        lst = v.findAll{ it.endingstartseries > 0 }
+		        item.endingstartseries = (lst? lst.first().endingstartseries: null);
+		        item.endingendseries = (lst? lst.last().endingendseries: null);  
+
+		        item.qtybegin = v.sum{( it.qtybegin? it.qtybegin: 0)} 
+		        item.qtyissued = v.sum{( it.qtyissued? it.qtyissued: 0 )} 
+		        item.qtyreceived = v.sum{( it.qtyreceived? it.qtyreceived: 0 )} 
+		        item.qtyending = v.sum{( it.qtyending? it.qtyending: 0 )} 
+		    } 
+
+	    	if ( !item.beginstartseries ) item.qtybegin = null; 
+	        if ( !item.issuedstartseries ) item.qtyissued = null; 
+	        if ( !item.receivedstartseries ) item.qtyreceived = null; 
+	        if ( !item.endingstartseries ) item.qtyending = null; 
+
+	        if ( item.formtype == 'cashticket' ) { 
+	        	item.receivedstartseries = item.receivedendseries = null;
+	        	item.beginstartseries = item.beginendseries = null; 
+	        	item.issuedstartseries = item.issuedendseries = null; 
+	        	item.endingstartseries = item.endingendseries = null; 
+
+	        } else {
+		        if ( item.beginstartseries && item.issuedstartseries && item.beginstartseries > item.issuedstartseries) {
+		        	item.beginstartseries = item.issuedstartseries; 
+		        	item.qtybegin = (item.beginendseries-item.beginstartseries)+1; 
+		        } 
+		        if ( item.issuedendseries > 0 ) {
+		        	item.endingstartseries = item.issuedendseries+1; 
+		        	if ( !item.endingendseries || item.endingstartseries > item.endingendseries ) { 
+		        		item.endingstartseries = null;  
+		        		item.endingendseries = null; 
+		        		item.qtyending = null; 
+		        	} else {
+		        		item.qtyending = (item.endingendseries-item.endingstartseries)+1; 
+		        	}
+		        }
+	        }
+
+	        if ( item.qtybegin >= 0 && item.qtyissued >= 0 ) {
+	        	item.qtyending = item.qtybegin - item.qtyissued; 
+	        	if ( item.qtyending <= 0 ) item.qtyending = null; 
+	        } 
+		    results << item; 
+		} 
+	}
+
+	void buildPeriod(item){
+		def maxyear = item.maxyear 
+		def maxqtr = item.maxqtr 
+		def partialledyear = 0
+		def partialledqtr = 0
+
+		if (item.partialled == 1){
+			println item.minyear + ' : ' + item.minqtr + ' ====  ' + item.maxyear + ' : ' + item.maxqtr 
+			if (item.minyear == item.maxyear && item.minqtr == 1 && item.maxqtr == 4)
+				item.period = 'Partial ' + item.maxyear
+			else if (item.minyear == item.maxyear && item.minqtr == item.maxqtr)
+				item.period = 'Partial ' + item.minqtr + 'Q, ' + item.maxyear
+			else if (item.minyear == item.maxyear)
+				item.period = 'FULL ' + item.minqtr + '' + (item.maxqtr - 1) + 'Q,' + item.maxyear + ' (Partial ' + item.maxqtr + 'Q,' + item.maxyear + ')' 
+			else if (item.minqtr == 1 && item.maxqtr == 4)
+				item.period = 'FULL ' + item.minyear + '-' + (item.maxyear - 1) + '(Partial ' + item.maxyear + ')'
+			else if (item.minqtr == 1 && item.maxqtr != 4)
+				item.period = 'FULL ' + item.minyear + '-' + (item.maxqtr - 1) + 'Q,' + item.maxyear + ' (Partial ' + item.maxqtr + 'Q,' + item.maxyear + ')'
+			else if (item.minqtr != 1 && item.maxqtr == 4)
+				item.period = 'FULL ' + item.minqtr + 'Q,' + item.minyear + ' (Partial ' + item.maxyear + ')'
+			else if (item.maxqtr == 1)
+				item.period = 'FULL ' + item.minqtr + 'Q,' + item.minyear + '-' + (item.maxyear - 1) + '  (Partial 1Q,' + item.maxyear + ')'
+			else if (item.maxqtr != 4)
+				item.period = 'FULL ' + item.minqtr + 'Q,' + item.minyear + '-' + (item.maxqtr - 1) + 'Q,' + (item.maxyear - 1) + '  (Partial ' + item.maxqtr + 'Q,' + item.maxyear + ')'
+			else 
+				item.period = 'Partial (' + item.minqtr + 'Q,' + item.minyear + '-' + item.maxqtr + 'Q,' + item.maxyear + ')'
+		}
+		else {
+			if (item.minyear == item.maxyear && item.minqtr == 1 && item.maxqtr == 4)
+				item.period = 'FULL ' + item.maxyear
+			else if (item.minyear == item.maxyear && item.minqtr == item.maxqtr)
+				item.period = item.minqtr + 'Q, ' + item.maxyear
+			else if (item.minyear == item.maxyear)
+				item.period = item.minqtr + '' + item.maxqtr + 'Q, ' + item.maxyear 
+			else if (item.minqtr == 1 && item.maxqtr == 4)
+				item.period = 'FULL ' + item.minyear + '-' + item.maxyear 
+			else if (item.minqtr == 1 && item.maxqtr != 4)
+				item.period = item.minyear + '-' + item.maxqtr + 'Q,' + item.maxyear 
+			else if (item.minqtr != 1 && item.maxqtr == 4)
+				item.period = item.minqtr + 'Q,' + item.minyear + '-' + item.maxyear
+			else 
+				item.period = item.minqtr + 'Q,' + item.minyear + '-' + item.maxqtr + 'Q,' + item.maxyear
+		}
+		item.payperiod = item.period 
+	} 
+
+	private void resolveCompatibility( result ) {
+		// 
+		// to support older report 
+		// 
+		if ( result.controlno ) result.txnno = result.controlno; 		
+		if ( result.controldate ) result.remittancedate = result.controldate; 
+		if ( result.payments ) result.otherpayments = result.payments; 
+		if ( result.nonserialremittances ) result.nonserialsummary = result.nonserialremittances; 
+
+		if ( result?.cashbreakdown ) {
+			def denoms = [ 1000, 500, 200, 100, 50, 20, 10, 5, 1, 0.50, 0.25, 0.10, 0.05, 0.01 ]; 
+			denoms.each{ d-> 
+				def dd = result.cashbreakdown.find{( it.denomination == d )} 
+				if ( dd ) {
+					def str = d.toString().replace('.',''); 
+					result.put("dqty"+ str, dd.qty ); 
+					result.put("damt"+ str, dd.amount); 
+				}
+			}
+		}
+	}	
+}

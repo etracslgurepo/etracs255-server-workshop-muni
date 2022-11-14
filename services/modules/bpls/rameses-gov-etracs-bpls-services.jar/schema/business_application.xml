@@ -1,0 +1,44 @@
+<schema>
+	
+	<element tablename="business_application">
+		<field name="objid" primary="true"/>
+		<field name="business_objid" required="true"/>
+		<field name="appno" required="true"/>
+		<field name="state" />
+		<field name="apptype" required="true"/>
+		<field name="appyear" required="true"/>
+		<field name="appqtr" />
+		<field name="yearstarted" />
+		<field name="dtfiled" required="true"/>
+		<field name="dtreleased" />
+		<field name="txnmode" required="true"/>
+		<field name="txndate" required="true"/>
+		<field name="createdby_objid" required="true"/>
+		<field name="createdby_name" required="true"/>
+		<field name="assessor_objid" />
+		<field name="assessor_name" />
+		<field name="assessor_title" />
+		<field name="approver_objid" />
+		<field name="approver_name" />
+		<field name="approver_title" />
+		<field name="totals_tax"  required="true"/>
+		<field name="totals_regfee"  required="true"/>
+		<field name="totals_othercharge"  required="true"/>
+		<field name="totals_total"  required="true"/>
+		<field name="remarks"/>
+		<field name="permit_objid"/>
+		<field name="ownername" required="true"/>
+		<field name="owneraddress" required="true"/>
+		<field name="tradename" required="true"/>
+		<field name="businessaddress" required="true"/>
+		<field name="parentapplicationid" />
+		<field name="nextbilldate" />
+
+		<complex name="business" ref="business" jointype="many-to-one" required="false" 
+			includefields="bin,owner.*,phoneno,mobileno,email">
+			<key field="business_objid" target="objid" />
+		</complex>	
+	</element>	
+
+
+</schema>

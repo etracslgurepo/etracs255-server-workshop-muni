@@ -1,0 +1,81 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import java.rmi.server.UID;
+import com.rameses.util.*;
+
+class BusinessCaptureInterceptor {
+	
+	@ActiveDB(value="tracsdb", em="tracsdb")
+	def em;
+
+	@Service("DateService")
+	def dateSvc;
+
+	@After(pattern="BusinessCaptureService.getSources")
+	public def addSource(def evt) { 
+		def result = evt.result; 
+		result << [title: 'TRACS DataSource', code:'tracsds']; 
+	} 
+
+	@After(pattern="BusinessCaptureService.search", eval="#{ args[0].source == 'tracsds' }")
+	public def hookSearch( evt ) {
+		def parms = evt.args[0];
+		def result = evt.result;
+		def sb = new StringBuilder();
+		if( parms.tradename ) {
+			sb.append( ''' AND  i.tradename LIKE $P{tradename} ''' );
+		}
+		if(parms.ownername) {
+			sb.append( ''' AND  i.ownername LIKE $P{ownername} ''' );	
+		}	
+
+		if( parms.activeyear ) {
+			sb.append( ''' AND  i.activeyear=$P{activeyear} ''' );	
+		}
+
+		if( sb.toString().length() == 0 ) {
+			sb.append( ''' AND 1=2 ''' );
+		}	
+		parms.filter = sb.toString();
+		def slist = em.getList( parms );
+		result.addAll( slist );
+	}
+
+	@After(pattern="BusinessCaptureService.getInfo", eval="#{ args[0].source == 'etracs18' }")
+	public def getInfo(def evt) {
+		def p = evt.args[0];
+		def result = evt.result;
+		result.putAll( em.getInfo( [objid: p.objid ]) );
+		result.lobs = em.getLobs([objid: p.objid ] );
+	}
+
+	@After(pattern="BusinessCaptureService.getReceivables", eval="#{ args[0].source == 'etracs18' }")
+	public def getReceivables(def evt) {
+		def p = evt.args[0];
+		def result = evt.result;
+		result.receivables = em.getReceivables([ businessid: p.oldbusinessid, activeyear: p.activeyear ]); 
+	}
+
+	@After(pattern="BusinessApplicationService.create", eval="#{ args[0].source == 'etracs18' }")
+	public def onCreateApplication(def evt) {
+		def r = evt.args[0];
+		def result = evt.result;
+		em.create( [oldbusinessid: r.oldbusinessid, businessid:result.business.objid ], "business" );
+
+		r.lobs.each { 
+			def o = [ 
+				oldlob_objid: it.oldlobid, oldlob: [objid: it.oldlobid, name:it.oldname], 
+				lob:[objid: it.lobid, name: it.name] 
+			]; 
+			em.save( o, 'lob' ); 
+		} 
+
+		r.taxfees.each { 
+			def tf = [ 
+				oldaccount_objid: it.oldaccount.objid, oldaccount: it.oldaccount, 
+				account: [ objid: it.account.objid,  title: it.account.title ] 
+			]; 
+			em.save( tf, 'account'); 
+		} 
+	} 
+} 

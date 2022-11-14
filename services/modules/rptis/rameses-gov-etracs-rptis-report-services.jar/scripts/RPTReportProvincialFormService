@@ -1,0 +1,213 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+import java.rmi.server.UID;
+import java.math.BigDecimal;
+
+class RPTReportProvincialFormService
+{
+    @ActiveDB('rptreport')
+    def em;
+
+    @Service('DateService')
+    def dtsvc;
+
+    @Service('BarangayService')
+    def brgySvc;
+
+    def entity;
+
+    def data;
+
+    def total;
+
+    @ProxyMethod
+    public def getData(params){
+        createMonthlyAssessment(params);
+        def brgylist = brgySvc.getList([searchtext:'%']);
+        def assessmentlist = em.getMonthlyAssessment();
+        data = [];
+        brgylist.each{
+            def entity = [:];
+            def barangayid = it.objid;
+            entity.barangay = it.name;
+            assessmentlist.each{item ->
+                if(item.objid.startsWith(barangayid) && item.month==params.month && item.year==params.year){
+                    entity.presenttaxparcel = item.taxparcel ? new BigDecimal(item.taxparcel) : new BigDecimal(0.00);
+                    entity.presenttaxvaluation = item.taxvaluation ? new BigDecimal(item.taxvaluation) : new BigDecimal(0.00);
+                    entity.presentexemptparcel = item.exemptparcel ? new BigDecimal(item.exemptparcel) : new BigDecimal(0.00);              
+                    entity.presentexemptvaluation = item.exemptvaluation ? new BigDecimal(item.exemptvaluation) : new BigDecimal(0.00);
+                    entity.canceltaxparcel = item.canceltaxparcel ? new BigDecimal(item.canceltaxparcel) : new BigDecimal(0.00);
+                    entity.canceltaxvaluation = item.canceltaxvaluation ? new BigDecimal(item.canceltaxvaluation) : new BigDecimal(0.00);
+                    entity.cancelexemptparcel = item.cancelexemptparcel ? new BigDecimal(item.cancelexemptparcel) : new BigDecimal(0.00);
+                    entity.cancelexemptvaluation = item.cancelexemptvaluation ? new BigDecimal(item.cancelexemptvaluation) : new BigDecimal(0.00);
+                    def previous = getPreviousAssessmentTotal(item.objid, item.month, item.year);
+                    if(!previous.isEmpty()){
+                        entity = entity + previous;
+                    }
+                    createEndOfTheMonthTotal(entity);
+                }
+            }
+            data.add(entity);
+        }
+        createGrandTotal(data);
+        return data;
+    }
+
+    public def getMonthlyAssessment(params){
+        def assessmentlist = [];
+        def year = params.year;
+        for(int month=1; month<=params.month; month++){
+            def list = em.getCurrentAssessment([year:year, month:month]);
+            list.each{
+                it.objid = it.objid+'-'+year+'-'+month;
+                it.year = year;
+                it.month = month;
+                if(it.taxparcel!=null ||
+                   it.taxvaluation!=null ||
+                   it.exptparcel!=null ||
+                   it.exptvaluation!=null ||
+                   it.canceltaxparcel!=null ||
+                   it.canceltaxvaluation!=null ||
+                   it.cancelexptparcel!=null ||
+                   it.cancelexptvaluation!=null
+                   ){
+                   assessmentlist.add(it);
+                }
+            }
+        }
+        return assessmentlist;
+    }
+
+
+    public void createMonthlyAssessment(params){
+        def list = getMonthlyAssessment(params);
+        list.each{
+            if(!recordExist(it)){
+                em.createMonthlyAssessment(it);
+            }else{
+                em.updateMonthlyAssessment(it);
+            }
+        }
+    }
+
+
+    public boolean recordExist(params){
+        def record = em.findMonthlyAssessment(params);
+        record = record ? record : [];
+        if(!record.isEmpty()) return true;
+        return false;
+    }
+
+
+    public def getPreviousAssessmentTotal(barangayid, month, year){
+        def entity = [:];
+        boolean hasPreviousAssessment = false;
+        def totaltaxparcel = new BigDecimal(0.00);
+        def totaltaxvaluation = new BigDecimal(0.00);
+        def totalexemptparcel = new BigDecimal(0.00);
+        def totalexemptvaluation = new BigDecimal(0.00);
+        def totalcanceltaxparcel = new BigDecimal(0.00);
+        def totalcanceltaxvaluation = new BigDecimal(0.00);
+        def totalcancelexemptparcel = new BigDecimal(0.00);
+        def totalcancelexemptvaluation = new BigDecimal(0.00);
+        def assessmentlist = em.getMonthlyAssessment();
+        assessmentlist.each{
+            if(it.objid.startsWith(barangayid.substring(0,barangayid.length()-3))){
+                if(it.month<month && it.year==year){
+                    hasPreviousAssessment = true;
+                    entity.taxparcel = it.taxparcel ? new BigDecimal(it.taxparcel) : new BigDecimal(0.00);
+                    entity.taxvaluation = it.taxvaluation ? new BigDecimal(it.taxvaluation) : new BigDecimal(0.00);
+                    entity.exemptparcel = it.exptparcel ? new BigDecimal(it.exptparcel) : new BigDecimal(0.00);
+                    entity.exemptvaluation = it.exptvaluation ? new BigDecimal(it.exptvaluation) : new BigDecimal(0.00);
+                    entity.canceltaxparcel = it.canceltaxparcel ? new BigDecimal(it.canceltaxparcel) : new BigDecimal(0.00);
+                    entity.canceltaxvaluation = it.canceltaxvaluation ? new BigDecimal(it.canceltaxvaluation) : new BigDecimal(0.00);
+                    entity.cancelexemptparcel = it.cancelexptparcel ? new BigDecimal(it.cancelexptparcel) : new BigDecimal(0.00);
+                    entity.cancelexemptvaluation = it.cancelexptvaluation ? new BigDecimal(it.cancelexemptvaluation) : new BigDecimal(0.00);
+
+                    totaltaxparcel+=entity.taxparcel;
+                    totaltaxvaluation+=entity.taxvaluation;
+                    totalexemptparcel+=entity.exemptparcel;
+                    totalexemptvaluation+=entity.exemptvaluation;
+                    totalcanceltaxparcel+=entity.canceltaxparcel;
+                    totalcanceltaxvaluation+=entity.canceltaxvaluation;
+                    totalcancelexemptparcel+=entity.cancelexemptparcel;
+                    totalcancelexemptvaluation+=entity.cancelexemptvaluation;
+                }
+            }
+        }
+        def data = [:];
+        if(hasPreviousAssessment){
+            data.preceedingtaxparcel = totaltaxparcel.subtract(totalcanceltaxparcel);
+            data.preceedingtaxvaluation = totaltaxvaluation.subtract(totalcanceltaxvaluation);
+            data.preceedingexemptparcel = totalexemptparcel.subtract(totalcancelexemptparcel);
+            data.preceedingexemptvaluation = totalexemptvaluation.subtract(totalcancelexemptvaluation);
+        }else{
+            data.preceedingtaxparcel = new BigDecimal(0.00);
+            data.preceedingtaxvaluation = new BigDecimal(0.00);
+            data.preceedingexemptparcel = new BigDecimal(0.00);
+            data.preceedingexemptvaluation = new BigDecimal(0.00);
+        }   
+        return data;
+    }
+
+
+    public void createEndOfTheMonthTotal(data){
+        data.endtaxparcel = data.preceedingtaxparcel.add(data.presenttaxparcel.subtract(data.canceltaxparcel));
+        data.endtaxvaluation = data.preceedingtaxvaluation.add(data.presenttaxvaluation.subtract(data.canceltaxvaluation));
+        data.endexemptparcel = data.preceedingexemptparcel.add(data.presentexemptparcel.subtract(data.cancelexemptparcel));
+        data.endexemptvaluation = data.preceedingexemptvaluation.add(data.presentexemptvaluation.subtract(data.cancelexemptvaluation));
+    }
+
+
+    public void createGrandTotal(data){
+        def entity = [:];
+        entity.totalpreceedingtaxparcel = new BigDecimal(0.00);
+        entity.totalpreceedingtaxvaluation = new BigDecimal(0.00);
+        entity.totalpreceedingexemptparcel = new BigDecimal(0.00);
+        entity.totalpreceedingexemptvaluation = new BigDecimal(0.00);
+
+        entity.totalpresenttaxparcel = new BigDecimal(0.00);
+        entity.totalpresenttaxvaluation = new BigDecimal(0.00);
+        entity.totalpresentexemptparcel = new BigDecimal(0.00);
+        entity.totalpresentexemptvaluation = new BigDecimal(0.00);
+
+        entity.totalcanceltaxparcel = new BigDecimal(0.00);
+        entity.totalcanceltaxvaluation = new BigDecimal(0.00);
+        entity.totalcancelexemptparcel = new BigDecimal(0.00);
+        entity.totalcancelexemptvaluation = new BigDecimal(0.00);
+
+        entity.totalendtaxparcel = new BigDecimal(0.00);
+        entity.totalendtaxvaluation = new BigDecimal(0.00);
+        entity.totalendexemptparcel = new BigDecimal(0.00);
+        entity.totalendexemptvaluation = new BigDecimal(0.00);
+
+        data.each{
+            entity.totalpreceedingtaxparcel += it.preceedingtaxparcel ? it.preceedingtaxparcel : new BigDecimal(0.00);
+            entity.totalpreceedingtaxvaluation += it.preceedingtaxvaluation ? it.preceedingtaxvaluation : new BigDecimal(0.00);
+            entity.totalpreceedingexemptparcel += it.preceedingexemptparcel ? it.preceedingexemptparcel : new BigDecimal(0.00);
+            entity.totalpreceedingexemptvaluation += it.preceedingexemptvaluation ? it.preceedingexemptvaluation : new BigDecimal(0.00);
+
+            entity.totalpresenttaxparcel += it.presenttaxparcel ? it.presenttaxparcel : new BigDecimal(0.00);
+            entity.totalpresenttaxvaluation += it.presenttaxvaluation ? it.presenttaxvaluation : new BigDecimal(0.00);
+            entity.totalpresentexemptparcel += it.presentexemptparcel ? it.presentexemptparcel : new BigDecimal(0.00);
+            entity.totalpresentexemptvaluation += it.presentexemptvaluation ? it.presentexemptvaluation : new BigDecimal(0.00);
+
+            entity.totalcanceltaxparcel += it.canceltaxparcel ? it.canceltaxparcel : new BigDecimal(0.00);
+            entity.totalcanceltaxvaluation += it.canceltaxvaluation ? it.canceltaxvaluation : new BigDecimal(0.00);
+            entity.totalcancelexemptparcel += it.cancelexemptparcel ? it.cancelexemptparcel : new BigDecimal(0.00);
+            entity.totalcancelexemptvaluation += it.cancelexemptvaluation ? it.cancelexemptvaluation : new BigDecimal(0.00);
+
+            entity.totalendtaxparcel += it.endtaxparcel ? it.endtaxparcel : new BigDecimal(0.00);
+            entity.totalendtaxvaluation += it.endtaxvaluation ? it.endtaxvaluation : new BigDecimal(0.00);
+            entity.totalendexemptparcel += it.endexemptparcel ? it.endexemptparcel : new BigDecimal(0.00);
+            entity.totalendexemptvaluation += it.endexemptvaluation ? it.endexemptvaluation : new BigDecimal(0.00);
+        }
+        total = entity;
+    }
+
+
+    public def getGrandTotal(){
+        return total;
+    }
+}

@@ -1,0 +1,12 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+
+
+class AuthenticationService 
+{		
+    @ProxyMethod
+    public Map authenticate( username, password ) {
+        return [:]; 
+    }
+	
+}

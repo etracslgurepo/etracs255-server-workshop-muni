@@ -1,0 +1,16 @@
+import com.rameses.annotations.*;
+
+class CollectionVoucherAbstractReportInterceptor {
+
+	@ActiveDB('collectionvoucher_abstract')
+	def cva;
+
+	@After(pattern="FormReportService.getData", eval="#{args[0].reportid == 'collectionvoucher_report_abstract' }")
+	void getReportData( evt ) { 
+		def p = evt.args[0].parameters;
+		def r = evt.result;
+
+		def list = cva.getReport([collectionvoucherid: p.objid, acctgroupid: p.acctgroupid ]);
+		r.data = list;
+	} 
+} 

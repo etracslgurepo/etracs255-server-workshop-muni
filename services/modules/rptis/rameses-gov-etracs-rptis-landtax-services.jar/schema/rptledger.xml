@@ -1,0 +1,58 @@
+<schema>
+    <element tablename="rptledger">
+        <field name="objid" primary="true" prefix="RL"/>
+        <field name="state" required="true" caption="State" indexed="true" width="80"/>
+        <field name="faasid" />
+        <field name="nextbilldate" />
+        <field name="lastyearpaid" required="true" type="integer" caption="Last Year Paid"  width="100"/>
+        <field name="lastqtrpaid" required="true" type="integer" caption="Last Qtr Paid"  width="100"/>
+        <field name="barangayid" required="true" />
+        <field name="lguid" required="true" />
+        <field name="taxpayer_objid" required="true" />
+        <field name="beneficiary_objid" />
+        <field name="owner_name" required="true" caption="Owner" searchable="true"  width="180"/>
+        <field name="administrator_name" caption="Administrator" searchable="true"  width="140"/>
+        <field name="fullpin" required="true" caption="PIN" searchable="true"  width="160"/>
+        <field name="tdno" required="true" caption="TD No." searchable="true"  width="130"/>
+        <field name="cadastrallotno" caption="Lot No." searchable="true"  width="70"/>
+        <field name="blockno" caption="Block No." searchable="true" width="60"/>
+        <field name="rputype" required="true" indexed="true" caption="Property Type"/>
+        <field name="txntype_objid" required="true" />
+        <field name="classification_objid" required="true"/>
+        <field name="classcode" required="true" caption="Class" />
+        <field name="totalmv" type="decimal"  caption="M.V." width="100"/>
+        <field name="totalav" type="decimal" caption="A.V." width="100" indexed="true" />
+        <field name="totalareaha" type="decimal"  caption="Area (ha)" width="90" />
+        <field name="taxable" required="true" type="boolean" caption="Taxable" index="true"  />
+        <field name="prevtdno" searchable="true" caption="Previous TD No." indexed="true" />
+        <field name="titleno" searchable="true" caption="Title No."  width="60"/>
+        <field name="totalareasqm" expr="totalareaha * 10000" caption="Area (sqm)" width="70" type="decimal" />
+        <field name="ismanual" expr="case when faasid is null then 'M' else null end" caption="" width="30"/>
+        
+        <complex name="faases" ref="rptledger_faas" jointype="one-to-many" 
+            required="true" orderBy="fromyear desc,fromqtr desc,tdno desc">
+                <key field="objid" target="rptledgerid" />
+        </complex>
+        <complex name="faas" ref="faas" jointype="many-to-one" required="false"
+            includefields="owner.address">
+                <key field="faasid" target="objid" />
+        </complex>
+        <complex name="taxpayer" ref="entity" jointype="many-to-one" required="false"
+            includefields="entityno,name,address.text">
+                <key field="taxpayer_objid" target="objid" />
+        </complex>
+        <complex name="beneficiary" ref="entity" jointype="many-to-one" required="false"
+            includefields="entityno,name,address.text">
+                <key field="beneficiary_objid" target="objid" />
+        </complex>
+        <complex name="barangay" ref="barangay" jointype="many-to-one" required="false"
+            includefields="indexno,pin,name">
+                <key field="barangayid" target="objid" />
+        </complex>
+        <complex name="classification" ref="propertyclassification" jointype="many-to-one" required="false"
+            includefields="code,name">
+                <key field="classification_objid" target="objid" />
+        </complex>
+
+    </element>
+</schema>

@@ -1,0 +1,69 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class RPTRequirementService extends ActiveCrudListService
+{
+	@ActiveDB('rpt_requirement')
+	def em
+	
+	
+	void beforeList(params){
+		if (params == null) params = [:]
+		params.searchtext = (params.searchtext ? params.searchtext :'')+'%'
+	}
+
+
+	@ProxyMethod
+	public def getColumns( params ) {
+		return [
+			[name:"requirementtype", caption:"Requirement Type", width:150],
+            [name:"value.txnno", caption:"Req. Txn No.", width:100],
+            [name:"value.txndate", caption:"Req. Txn Date", width:100],
+            [name:"value.remarks", caption:"Remarks", width:250],
+        ]	
+	}
+
+
+	@ProxyMethod
+	public def getRequirements( refid ) {
+		return em.getRequirements([refid:refid])
+	}
+
+
+	@ProxyMethod
+	public def checkCompliance(refid){
+		def list = em.getUncompliedRequirements([refid:refid])
+		if (list)
+			throw new Exception('There are still uncomplied requirements.')
+	}
+
+	@ProxyMethod
+	public def checkAndGetRequirement(refid, requirementtype){
+		def requirement = em.findRequirementByType([refid:refid, typeid:requirementtype.objid])
+		if (!requirement){
+			requirement = [
+				objid  				: 'FR' + new java.rmi.server.UID(),
+				requirementtypeid 	: requirementtype.objid,
+				requirementtype     : requirementtype,
+				handler 			: 'default',
+				refid 				: refid, 
+				complied			: 1,
+			]
+			em.create(requirement)
+		}
+		return requirement
+	}
+
+	@ProxyMethod
+	public def getEntityInfo(refid){
+		def param = [objid:refid]
+		def info = em.findFaasInfo(param)
+		if (!info)
+			info = em.findSubdivisionInfo(param)
+		if (!info)
+			info = em.findConsolidationInfo(param)
+		return info
+	}
+	
+}

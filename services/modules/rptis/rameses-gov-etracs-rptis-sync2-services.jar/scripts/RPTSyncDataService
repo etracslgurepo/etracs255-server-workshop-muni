@@ -1,0 +1,204 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class RPTSyncDataService
+{   
+	@Env
+	def env 
+
+	@Service('DateService')
+	def dtSvc
+
+	@Service('RPTMainSyncDataService')
+	def syncSvc 
+
+    @Service('RPTUtil')
+    def util 
+
+    @Service('RPTMasterSyncDataSupport')
+    def masterSvc
+
+    @Service('RPTRevisionSettingSyncDataSupport')
+    def revisionSvc
+
+    @Service('RPTSyncDataSupport')
+    def support
+
+    @Service('ExaminationService')
+    def examinationSvc
+
+    @Service('RPTRequirementService')
+    def reqSvc 
+
+    @DataContext('sys_org')
+    def em_org 
+
+    @DataContext('dbimage_header')
+    def em_image_header
+
+    @DataContext('dbimage_chunk')
+    def em_image_chunk
+
+
+
+	@ProxyMethod
+	public def syncMaster(params) {
+		util.required('schemaname', params.schemaname)
+
+		params.reftype = params.schemaname
+		params.action = 'SYNCMASTER'
+		params.remote = getProvinceOrg()
+
+		def data = syncSvc.send(params)
+		return masterSvc.sync(params.schemaname, data.items)
+	}
+
+	@ProxyMethod
+	public def syncSetting(params) {
+		util.required('schemaname', params.schemaname)
+
+		params.reftype = params.schemaname
+		params.action = 'SYNC-REVISION-SETTING'
+		params.orgid = env.ORGID
+		params.orgcode = env.ORGCODE 
+		params.remote = getProvinceOrg()
+		
+		def data = syncSvc.send(params)
+		return revisionSvc.sync(params.schemaname, data.settings)
+	}
+
+
+	@ProxyMethod
+    public def getRemoteOrg(entity){
+    	def rootorg = em_org.find([root: 1]).first() 
+    	if (!rootorg) throw new Exception('Root ORG is not set.')
+		if (entity.lgu?.objid) entity.lguid = entity.lgu.objid;
+    	if (!entity.lguid) entity.lguid = env.ORGID 
+
+    	def org = em_org.find([objid: entity.lguid]).first()
+    	if (!org) throw new Exception('ORG ' + entity.lguid + ' does not exist or has been deleted.')
+
+    	def remote = [:]
+
+    	if ('PROVINCE'.equalsIgnoreCase(rootorg.orgclass)) {
+    		remote.orgid = org.objid 
+    		remote.orgcode = org.code.replaceAll('-', '')
+    		remote.orgclass = org.orgclass 
+    	} else if ('MUNICIPALITY'.equalsIgnoreCase(rootorg.orgclass)) {
+    		def prov = em_org.find([objid:rootorg.parent.objid]).first()
+			remote.orgid = prov.objid 
+    		remote.orgcode = prov.code.replaceAll('-', '')
+    		remote.orgclass = prov.orgclass 
+    	} else {
+    		throw new Exception('Org cannot be found for LGUID ' + entity.lguid + '.' )
+    	}
+    	return remote
+    }	
+
+    @ProxyMethod
+    public def getRootOrg(){
+    	def rootorg = em_org.find([root: 1]).first() 
+    	if (!rootorg) throw new Exception('Root ORG is not set.')
+    	return rootorg
+    }	
+
+	def getProvinceOrg() {
+		def remote = [:]
+		def rootOrg = getRootOrg()
+		if ('MUNICIPALITY'.equalsIgnoreCase(rootOrg.orgclass)) {
+			def prov = em_org.select('objid,code').find([objid: rootOrg.parent?.objid]).first()
+			remote.orgid = prov?.objid
+			remote.orgcode = prov?.code 
+		}
+		return remote
+	}
+
+	// /*------------------------------------------
+	// *
+	// * UPLOAD/DOWNLOAD SUPPORT
+	// *
+	// ------------------------------------------*/
+	@ProxyMethod
+	public void send(syncdata, actions) {
+		def action = syncdata.action.toUpperCase()
+		def handler = actions[action]
+		if (!handler) throw new Exception('send action ' + action + ' is not supported.')
+		syncdata.data = handler.send(syncdata)
+	}
+
+	@ProxyMethod
+	public void receive(syncdata, actions) {
+		def action = syncdata.action.toUpperCase()
+		support.updateEnv(syncdata)
+
+		def handler = actions[action]
+		if (!handler) throw new Exception('Receive action ' + action + ' is not supported.')
+		syncdata.sender = syncdata.parent.sender
+		handler.receive(syncdata)
+	}
+
+
+	/*------------------------------------------
+	*
+	* SCHEDULING SUPPORT OF SHARED DATA
+	*
+	------------------------------------------*/
+	@ProxyMethod
+	public void scheduleExaminations(syncdata, parentid) {
+		examinationSvc.getFindings(parentid).each{exam ->
+			def item = [
+				refid: exam.objid, 
+				reftype: syncdata.reftype, 
+				refno: syncdata.refno, 
+				async: true,
+				action: 'RPT-EXAMINATION'
+			]
+        	syncSvc.createItem(syncdata, item)
+            scheduleImages(syncdata, exam.objid)
+            scheduleImagesByRefId(syncdata, exam.objid)
+        }
+	}
+
+	@ProxyMethod
+	public void scheduleRequirements(syncdata, parentid) {
+		reqSvc.getRequirements(parentid).each{req->
+			def item = [
+				refid: req.objid, 
+				reftype: syncdata.reftype, 
+				refno: syncdata.refno, 
+				async: true,
+				action: 'RPT-REQUIREMENT'
+			]
+        	syncSvc.createItem(syncdata, item)
+            scheduleImages(syncdata, req.objid)
+			scheduleImagesByRefId(syncdata, req.objid)
+        }
+	}
+
+	@ProxyMethod
+	public void scheduleImages(syncdata, parentid) {
+		em_image_header.find([parentid: parentid]).list().each{header->
+			scheduleImage(syncdata, header)
+        }
+	}
+
+	@ProxyMethod
+	public void scheduleImagesByRefId(syncdata, refid) {
+		em_image_header.find([refid: refid]).list().each{header->
+			scheduleImage(syncdata, header)
+        }
+	}
+
+	void scheduleImage(syncdata, header) {
+		def item = [
+			refid: header.objid, 
+			reftype: syncdata.reftype, 
+			refno: syncdata.refno, 
+			async: false,
+			action: 'RPT-IMAGE'
+		]
+    	syncSvc.createItem(syncdata, item)
+	}
+
+}

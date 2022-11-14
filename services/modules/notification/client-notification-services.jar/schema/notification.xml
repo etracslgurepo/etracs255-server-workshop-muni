@@ -1,0 +1,56 @@
+<schema>
+
+	<element name="notification" tablename="notification">
+		<field name="objid" primary="true"/>
+		<field name="dtfiled" required="true"/>
+		<field name="sender" required="true"/>
+		<field name="senderid" required="true"/>
+		<field name="groupid" required="true"/>
+		<field name="message" required="true"/>
+		<field name="messagetype" required="true"/>
+		<field name="filetype" required="true"/>
+		<field name="channel" required="true"/>
+		<field name="channelgroup" required="true"/>
+		<field name="origin" required="true"/> 
+		<field name="origintype" required="true"/> 
+		<field name="chunksize" required="true"/> 
+		<field name="chunkcount" required="true"/> 
+		<field name="txnid"/> 
+		<field name="txnno"/> 
+	</element> 
+
+	<element name="pending" tablename="notification_pending">
+		<field name="objid" primary="true"/>
+		<field name="indexno" required="true"/>
+	</element> 
+
+	<element name="data" tablename="notification_data">
+		<field name="objid" primary="true"/>
+		<field name="parentid" required="true"/>
+		<field name="indexno" required="true"/>
+		<field name="content" required="true"/>
+		<field name="contentlength" required="true"/>
+	</element>	
+
+	<element name="fordownload" tablename="notification_fordownload">
+		<field name="objid" primary="true"/>
+		<field name="indexno" required="true"/>
+	</element>
+
+	<element name="forprocess" tablename="notification_forprocess">
+		<field name="objid" primary="true"/> 
+	</element> 
+
+	<element name="async" tablename="notification_async">
+		<field name="objid" primary="true"/> 
+	</element> 	
+
+	<element name="async_pending" tablename="notification_async_pending">
+		<field name="objid" primary="true"/> 
+	</element> 	
+
+	<element name="setting" tablename="notification_setting">
+		<field name="objid" primary="true"/> 
+		<field name="value" required="true"/> 
+	</element> 	
+</schema> 

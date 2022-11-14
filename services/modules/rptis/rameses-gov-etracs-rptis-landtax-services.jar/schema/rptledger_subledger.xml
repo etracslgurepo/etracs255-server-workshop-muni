@@ -1,0 +1,11 @@
+<schema>
+    <element tablename="rptledger_subledger">
+        <field name="objid" primary="true" prefix="RLS" />
+        <field name="parent_objid" required="true" />
+        <field name="subacctno" required="true" />
+        <complex name="rptledger" ref="rptledger" jointype="many-to-one" required="true" orderBy="subacctno"
+        	includefields="state,beneficiary.name,beneficiary.address.text,totalareaha,totalareasqm,totalmv,totalav,lastyearpaid,lastqtrpaid">
+                <key field="objid" target="objid" />
+        </complex>
+    </element>
+</schema>

@@ -1,0 +1,40 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import com.rameses.osiris3.mgmt.*;
+import com.rameses.osiris3.schema.*;
+import com.rameses.osiris3.sql.*;
+
+class SysToolService 
+{	
+	@Context 
+	def context;
+
+	@ProxyMethod 
+	public void clearScripts() {
+		ScriptUtil.clearScript(context);
+		ScriptUtil.clearInterceptors(context); 
+	}
+
+	@ProxyMethod 
+	public void clearCache() {
+		clearScripts();
+		SqlUnitCache.clear(); 
+		SchemaManager.getInstance().getCache().clear(); 
+	} 
+
+	@ProxyMethod 
+	public void clearSqlCache() { 
+		clearSql(); 
+		clearSchema(); 
+	} 
+
+	@ProxyMethod 
+	public void clearSql() { 
+		SqlUnitCache.clear(); 
+	} 
+
+	@ProxyMethod 
+	public void clearSchema() { 
+		SchemaManager.getInstance().getCache().clear(); 
+	} 
+} 

@@ -1,0 +1,70 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import com.rameses.services.extended.*;
+
+
+class OnlineRealtyTaxClearanceService {
+    @Service("RPTCertificationOnlineService")
+    def svc
+
+    @Service('DateService')
+    def dtSvc
+
+    @DataContext('faas_list')
+    def em_faas_list
+
+    @DataContext('rptledger')
+    def em_rptledger
+
+    @DataContext('itemaccount')
+    def em_acct
+
+    @DataContext('itemaccount_tag')
+    def em_acct_tag
+
+    
+	@ProxyMethod
+    public def getBilling( params ) {
+        def faas = em_faas_list.find([tdno: params.refno]).first()
+        if (!faas) throw new Exception("Invalid tax declaration no.")
+        def rptledger = em_rptledger.find([faasid: faas.objid]).first()
+        if (!rptledger) throw new Exception("Ledger for this tax declaration requires verification. Kindly contact Land Tax officer.")
+        
+        if (faas.state == 'CANCELLED') throw new Exception("Tax Declaration has already been cancelled.");
+        if (faas.state != 'CURRENT') throw new Exception("Tax Declaration is not yet approved.");
+
+        def pdate = dtSvc.parseCurrentDate()
+        if (rptledger.lastyearpaid < pdate.year || 
+            (rptledger.lastyearpaid == pdate.year && rptledger.lastqtrpaid < pdate.qtr)) {
+                throw new Exception("Realty tax is not fully paid for the current year.")
+            }
+
+        def clearance = [:]
+        clearance.rptledgerid = rptledger.objid
+        clearance.faasid = faas.objid
+        faas.taxpayer.name = faas.owner.name
+        faas.taxpayer.address = faas.owner.address
+        clearance.taxpayer = faas.taxpayer
+        clearance.tdno = faas.tdno
+        clearance.pin = faas.displaypin
+        clearance.owner = faas.owner
+        clearance.tdno = params.refno
+        clearance.purpose = params.purpose
+        def acct  = getClearanceAccount()
+        clearance.amount = acct.defaultvalue ? acct.defaultvalue : 0.0;
+        clearance.billitems = [
+            [item: acct, amount: clearance.amount]
+        ]
+        clearance.txntypename = 'Realty Tax Clearance';
+        return clearance
+    }
+
+    def getClearanceAccount() {
+        def errormsg = "Tax account is not registered. Kindly contact Land Tax office."
+        def accttag = em_acct_tag.find([tag: "realty_tax_clearance"]).first()
+        if (!accttag) throw new Exception(errormsg)
+        def acct = em_acct.find([objid: accttag.acctid]).first()
+        if (!acct) throw new Exception(errormsg)
+        return acct
+    }
+}

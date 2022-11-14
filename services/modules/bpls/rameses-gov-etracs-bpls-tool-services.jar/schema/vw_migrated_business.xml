@@ -1,0 +1,26 @@
+<schema adapter="main">
+	<element tablename="vw_migrated_business">
+		<field name="objid" primary="true" />
+		<field name="state" caption="Status"/>
+		<field name="bin" caption="BIN" indexed="true" searchable="true"/>
+		<field name="tradename" caption="TradeName" indexed="true" searchable="true"/>
+		<field name="businessname" caption="BusinessName" indexed="true" searchable="true"/>
+		<field name="address_text"  caption="BusinessAddress"/>/>
+		<field name="address_objid" />
+		<field name="owner_name" caption="OwnerName" indexed="true" searchable="true"/>
+		<field name="owner_address_text" caption="OwnerAddress"/>
+		<field name="owner_address_objid" />
+		<field name="yearstarted" caption="YearStarted"/>
+		<field name="orgtype" caption="OrgType" indexed="true"/>
+		<field name="permittype" caption="PermitType"/>
+		<field name="officetype" caption="OfficeType"/> />
+		<field name="applicationid" />
+		<field name="appstate" caption="AppStatus"/>
+		<field name="appyear" caption="AppYear"/>
+		<field name="apptype" caption="AppType"/>
+		<field name="appno" caption="AppNo" indexed="true" searchable="true"/>
+		<field name="dtfiled" caption="DateFiled"/>
+		<field name="txndate" caption="TxnDate"/>
+		<field name="txnmode" caption="TxnMode"/>
+	</element> 
+</schema> 

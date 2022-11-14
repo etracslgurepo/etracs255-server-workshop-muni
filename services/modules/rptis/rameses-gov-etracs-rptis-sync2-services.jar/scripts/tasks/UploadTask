@@ -1,0 +1,56 @@
+import com.rameses.annotations.*;
+import java.io.File;
+import com.rameses.fileupload.*;
+
+class UploadTask {
+    @XConnection('fileupload')
+    def fu;
+
+    @Service('Var')
+    def var;
+
+    @Service('RPTUtil')
+    def util;
+
+    @Schedule(interval=10)
+    public void upload( evt ) {
+        if (!util.toBoolean(var.fileserver_upload_task_active, true)) {
+            println 'UploadTask [INFO] inactive'
+            return;
+        }
+
+        try {
+            File folder = new File(fu.conf.uploadDir);
+            uploadFolderFiles(folder);
+        } catch ( e ) {
+            e.printStackTrace();
+        }
+    }
+
+    void uploadFolderFiles(File folder) {
+        for (File fileEntry : folder.listFiles()) {
+            if (fileEntry.isDirectory()) {
+                uploadFolderFiles(fileEntry);
+                fileEntry.delete();
+            } else {
+                if (!fileEntry.name.startsWith(ObjectWriter.TEMP_FILE_PREFIX)) {
+                    String key = extractKey(fileEntry.getPath());
+                    def reader = new ObjectReader(fileEntry);
+                    def syncitem = reader.read();
+                    try {
+                        reader.close();
+                        fu.upload(key, fileEntry, syncitem.parent.remote.orgcode);
+                        fileEntry.delete();
+                    } catch(e) {
+                        e.printStackTrace(); 
+                    }
+                }
+            }
+        }
+    }
+
+    String extractKey(String filePath) {
+        int keyStartIdx = filePath.indexOf("uploads") + "uploads".length() + 1;
+        return filePath.substring(keyStartIdx).replace("\\", "/");
+    }
+}

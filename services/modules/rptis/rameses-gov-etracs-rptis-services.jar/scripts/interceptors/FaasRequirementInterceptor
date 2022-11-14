@@ -1,0 +1,75 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+
+class FaasRequirementInterceptor
+{
+	@ActiveDB('rpt_requirement')
+	def em 
+
+	@Service('RPTRequirementRuleService')
+    def ruleSvc
+
+    @Service('RPTRequirementService')
+    def reqSvc;
+
+
+	@After(pattern="FAASService.(initOnlineTransaction|initNewDiscovery)", index=1000) 
+	public void initRequirements( evt ) {
+		buildRequirements(evt)
+	}
+
+	@After(pattern="FAASRevisionService.createFaasRevision", index=1000) 
+	public void initRevisionRequirements( evt ) {
+		buildRequirements(evt)
+	}	
+
+	void buildRequirements(evt){
+		def faas = evt.result 
+		def info = evt.args[0] 
+		def requirements = ruleSvc.getRequirements([
+			txntype 		: faas.txntype,
+			txntypemode 	: info.txntypemode,
+			attributes		: info.attributes,
+			rputype    		: faas.rpu.rputype, 
+			classificationid : faas.rpu.classification?.objid,
+		])
+
+		requirements.unique().each{
+			reqSvc.create([
+				objid  				: 'R' + new java.rmi.server.UID(),
+				requirementtypeid 	: it.objid,
+				handler 			: it.handler,
+				refid 				: faas.objid,
+				value_objid 		: null,
+				value_txnno			: null,
+				value_txndate 		: null,
+				value_txnamount 	: 0.0,
+				value_remarks 		: null,
+				complied 			: 0,
+			])
+		}
+	}
+	
+
+	@Before(pattern="FAASService.deleteFaas") 
+	public void deleteRequirements( evt ) {
+		def faas = evt.args[0]
+		if (faas) {
+			em.deleteRequirements([refid:faas.objid])
+		}
+	}
+
+
+	@Before(pattern="FAASService.submitForExamination") 
+	public void validateRequirements( evt ) {
+		def faas = evt.args[0]
+		def requirements = em.getRequirements([refid:faas.objid])
+		def uncompliedrequirements = requirements.findAll{it.complied == 0}
+		if (uncompliedrequirements){
+			throw new Exception('There are still uncomplied requirements.')
+		}
+	}
+}
+

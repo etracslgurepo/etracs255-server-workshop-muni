@@ -1,0 +1,7 @@
+<schema>
+	<element tablename="rpt_syncdata_downloaded">
+		<field name="objid" primary="true" prefix="SYNCD" />
+		<field name="etag" required="true" />
+		<field name="error" type="boolean" required="true" />
+	</element>
+</schema>

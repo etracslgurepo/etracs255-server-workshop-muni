@@ -1,0 +1,59 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+
+class CloudNotificationUploadService
+{   
+    @ActiveDB(value='cloud_notification', em='notification')
+    def em;
+
+    @Service('CloudSettings') 
+    def settings;    
+
+    @Service('DateService')
+    def dateSvc;
+
+    @Service(value='CloudNotificationService', connection='cloud_notification')
+    def remote;
+
+    @ProxyMethod(local=true)  
+    public void upload( params ) { 
+        if ( !settings.isEnabled() ) { 
+            //facility is disabled, exit immediately 
+            return;  
+        } 
+
+        def immediate = params.immediate; 
+        if (params.type == 'HEADER') { 
+            def header = em.read( params ); 
+            if (!header) return; 
+
+            println 'Uploading message to cloud... Type='+ header.messagetype +', Msg='+ header.message; 
+            
+            def response = remote.addMessage( header ); 
+            em.removePending([ objid: header.objid ]); 
+            em.removeDelivered([ objid: header.objid ]); 
+            em.removeFailed([ refid: header.objid ]); 
+            
+            if ( immediate ) { 
+                em.delete([ objid: header.objid ]); 
+                return; 
+            } 
+
+            def map = [
+                objid    : header.objid,  
+                dtfiled  : dateSvc.serverDate,  
+                traceid  : response?.traceid,  
+                tracetime: response?.tracetime 
+            ]; 
+            em.create( map, 'delivered' ); 
+
+        } else if (params.type == 'ATTACHMENT') { 
+            def attachment = em.read( params, 'attachment' ); 
+            if (!attachment) return; 
+
+            remote.addAttachment( attachment ); 
+            em.removePending([ objid: attachment.objid ]); 
+            em.removeFailed([ refid: attachment.objid ]); 
+        } 
+    } 
+} 

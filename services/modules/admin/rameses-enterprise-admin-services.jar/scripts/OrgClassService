@@ -1,0 +1,27 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import java.rmi.server.UID;
+import com.rameses.util.*;
+import com.rameses.io.*;
+import com.rameses.services.extended.*;
+
+class OrgClassService extends ActiveCrudListService {
+
+	@ActiveDB(value='orgclass', em='admin')
+	def	em; 
+
+
+	@ProxyMethod
+	public def getColumns(o) {
+		return[
+			[name:'name', caption:'Name'], 
+			[name:'title', caption:'Title' ], 
+			[name:'parentclass', caption:'Parent Class'], 
+			[name:'handler', caption:'Handler'] 
+		];
+	}
+
+	public void beforeList( params ) {
+		params._pagingKeys = 'name'; 
+	} 
+}

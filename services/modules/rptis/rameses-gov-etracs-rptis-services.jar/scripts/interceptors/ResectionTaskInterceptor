@@ -1,0 +1,168 @@
+import com.rameses.annotations.*
+import com.rameses.eserver.*;
+import com.rameses.common.*;
+
+class ResectionTaskInterceptor
+{
+	@Service('ResectionService')
+	def svc 
+
+	@Service('RPTTaskService')
+	def taskSvc
+
+	@Env
+	def env 
+
+
+	def createTask(entity, msg){
+		return [
+			objid		: entity.objid,
+			refno		: entity.txnno,
+			filetype	: 'resection',
+			status		: msg,
+		]
+	}
+
+
+	@Before(pattern="ResectionService.deleteResection") 
+	public void deleteResection( evt ) {
+		def entity = evt.args[0]
+		taskSvc.delete(entity)
+	}
+
+
+	@After(pattern="ResectionService.(initResection|createResection)") 
+	public void createResection( evt ) {
+		def task = createTask(evt.result, 'Receive Resection for processing.')
+		task.action = 'receive'
+		task = taskSvc.createTask(task)
+		taskSvc.assignTask(task)
+	}
+
+
+	@After(pattern="ResectionService.openResection") 
+	public void openResection( evt ) {
+		def resection = evt.result
+		resection.taskaction = ''
+		try{
+			def task = taskSvc.findCurrentTask(resection.objid)
+			if (task) {
+				resection.taskaction = task.action 
+				resection.taskmsg = task.msg 
+			}
+		}
+		catch(e){
+			// ignore 
+		}
+
+		//add tracking no 
+		def tracking = em.findTrackingNo(resection)
+		resection.trackingno = tracking.trackingno
+	}
+
+
+	@After(pattern="ResectionService.submitForTaxmapping") 
+	public void submitForTaxmapping( evt ) {
+		def task = createTask(evt.result, 'Resection is already submitted to taxmapping.')
+		task.action = 'assign-taxmapper'
+		taskSvc.createTask(task)
+		evt.result.taskaction = task.action
+	}
+
+
+	@After(pattern="ResectionService.submitForAppraisal") 
+	public void submitForAppraisal( evt ) {
+		def task = createTask(evt.result, 'Resection is already submitted for appraisal.')
+		task.action = 'assign-appraiser'
+		taskSvc.createTask(task)
+		evt.result.taskaction = task.action
+	}
+
+	@After(pattern="ResectionService.submitForApproval") 
+	public void submitForApproval( evt ) {
+		def task = createTask(evt.result, 'Resection is already submitted for approval.')
+		task.action = 'assign-approver'
+		taskSvc.createTask(task)
+		evt.result.taskaction = task.action
+	}
+
+
+
+	@After(pattern="ResectionService.approveResectionAsync") 
+	public void approveSubdivisionAsync( evt ) {
+		taskSvc.closeTask([objid:evt.result.objid])
+	}
+
+	@After(pattern="ResectionService.approveResection") 
+	public void approveResection( evt ) {
+		taskSvc.closeTask([objid:evt.result.objid])
+	}
+
+	@After(pattern="ResectionService.disapproveResection") 
+	public void disapproveResection( evt ) {
+		taskSvc.closeTask([objid:evt.result.objid])
+	}
+
+	@After(pattern="ResectionService.submitToProvince") 
+	public void submitToProvince( evt ) {
+	}
+
+	@After(pattern="ResectionService.disapproveSubmitToProvice") 
+	public void disapproveSubmitToProvice( evt ) {
+	}
+
+	@After(pattern="ResectionService.approveByProvince") 
+	public void approveByProvince( evt ) {
+	}
+
+	@After(pattern="ResectionService.disapproveByProvince") 
+	public void disapproveByProvince( evt ) {
+	}
+
+
+
+
+
+
+	@After(pattern="RPTTaskService.createNextUserTask", eval="#{result.action.equalsIgnoreCase('fortaxmapping') && result.filetype == 'resection'}") 
+	public void updateTaxmapperInfo( evt ) {
+		def task = evt.result 
+		def entity = svc.openResection(task.objid)
+		entity.taxmapper.dtsigned = task.startdate 
+		entity.taxmapper.name = task.assignedto.name 
+		entity.taxmapper.title = task.assignedto.title
+		svc.updateResection(entity) 
+	}
+
+	@After(pattern="RPTTaskService.createNextUserTask", eval="#{result.action.equalsIgnoreCase('forappraisal') && result.filetype == 'resection'}") 
+	public void updateAppraiserInfo( evt ) {
+		def task = evt.result 
+		def entity = svc.openResection(task.objid)
+		entity.appraiser.dtsigned = task.startdate 
+		entity.appraiser.name = task.assignedto.name 
+		entity.appraiser.title = task.assignedto.title
+		svc.updateResection(entity) 
+	}
+
+	@After(pattern="RPTTaskService.createNextUserTask", eval="#{result.action.equalsIgnoreCase('forapproval') && result.filetype == 'resection'}") 
+	public void updateApproverInfo( evt ) {
+		def task = evt.result 
+		def entity = svc.openResection(task.objid)
+		entity.approver.dtsigned = task.startdate 
+		entity.approver.name = task.assignedto.name 
+		entity.approver.title = task.assignedto.title
+		svc.updateResection(entity) 
+	}
+
+
+	@After(pattern="RPTTaskService.createNextUserTask", eval="#{result.action.equalsIgnoreCase('forprovsubmission') && result.filetype == 'resection'}") 
+	public void updateRecommenderInfo( evt ) {
+		def task = evt.result 
+		def entity = svc.openResection(task.objid)
+		entity.recommender.dtsigned = task.startdate 
+		entity.recommender.name = task.assignedto.name 
+		entity.recommender.title = task.assignedto.title
+		svc.updateResection(entity) 
+	}
+}
+

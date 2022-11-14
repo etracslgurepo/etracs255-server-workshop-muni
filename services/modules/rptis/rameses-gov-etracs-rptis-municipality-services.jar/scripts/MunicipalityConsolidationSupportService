@@ -1,0 +1,63 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+
+class MunicipalityConsolidationSupportService
+{
+	@Env
+	def env
+
+    @Service('RPTNotificationService')
+    def svc 
+	
+	@Service('ConsolidationSupportService')
+	def supportSvc
+
+
+    @ProxyMethod
+    public void submitToProvince( consolidationdata ) {
+        def asyncreq    = svc.createAsyncRequest('ProvinceConsolidationRemoteService', 'postConsolidationForApproval', consolidationdata, svc.buildEnvMap(env))
+        def msg         = svc.createAsyncMessage(asyncreq[0])
+        msg.txnid       = consolidationdata.objid
+        msg.txnno       = consolidationdata.txnno 
+        msg.groupid     = 'assign-receiver'
+        msg.filetype    = consolidationdata.filetype
+        msg.message     = 'Consolidation No. ' + consolidationdata.txnno + ' (assign-receiver)'
+        msg.messagetype = 'consolidation-forprovapproval'
+        svc.sendAsyncMessage(msg)
+    }
+
+    @ProxyMethod 	
+	public void resubmitToProvince( consolidation ) {
+		def consolidationdata = supportSvc.buildConsolidationData(consolidation)
+        consolidationdata._resubmitted = true 
+        submitToProvince(consolidationdata)
+        println 'Resubmit Consolidation to province....'
+	}
+
+    @ProxyMethod
+    public def resubmitRequirements( consolidation ){
+        def data        = supportSvc.buildRequirementsData(consolidation)
+        def asyncreq    = svc.createAsyncRequest('ProvinceConsolidationRemoteService', 'repostConsolidationRequirements', data, svc.buildEnvMap(env))
+        def msg         = svc.createAsyncMessage(asyncreq[0])
+        msg.txnid       = consolidation.objid
+        msg.txnno       = consolidation.txnno 
+        msg.message     = 'Repost Consolidation No. ' + consolidation.txnno + ' requirements.'
+        msg.messagetype = 'consolidation-repost-requirements'
+        svc.sendAsyncMessage(msg)
+        println 'Resubmit Consolidation requirements to province....'
+    }
+
+
+    /* SYNC SERVICE SUPPORT */
+    @ProxyMethod 	
+	public def resendToProvince( consolidation ) {
+        return consolidation
+	}
+
+    @ProxyMethod
+    public def resendRequirements( consolidation ){
+        return consolidation
+    }    
+
+}
+

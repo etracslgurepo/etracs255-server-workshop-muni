@@ -1,0 +1,177 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.services.extended.*;
+
+public class BusinessApplicationAddLOBInterceptor {
+
+	@Env
+	def env;
+
+	@Service("BusinessApplicationWorkflowService")
+	def workflowSvc;
+
+	@Service("DateService")
+	def dateSvc;
+
+	@Service("BusinessMasterService")
+	def bizSvc;
+
+	@Service("BusinessInfoService")
+	def infoSvc;
+
+	@Service("BusinessLobService")
+	def lobSvc;
+
+	@Service("BusinessReceivableService")
+	def receivableSvc;
+
+	@Service("BusinessPaymentService")
+	def paySvc;
+
+	@ActiveDB("business_application")
+	def business_application;
+
+	@ActiveDB('business') 
+	def businessEm; 
+
+
+	/***
+	* to get the parent application, get businessid, open business and get currentapplicationid
+	* check if parent application is processing. it must be state 'COMPLETED'. if processing, abort
+	* if application is already due for renewal, you cannot add line anymore. compare current year!= business.activeyear
+	* get current date qtr, and check if parent application does not have balance for the qtr  
+	*/
+	@After(pattern="BusinessApplicationService.initNew", eval="#{args[0].apptype=='ADDITIONAL' && args[0].txnmode == 'ONLINE'}")
+	public void initNew(def evt) { 
+		def app = evt.result;
+		if ( !app.business?.objid ) throw new Exception("Please specify a business");
+
+		app.objid = 'BAADD'+new UID();
+
+		def openlist = business_application.getOpenApplications( [businessid: app.business.objid, filter: '' ] );
+		if ( openlist ) throw new Exception("An application for this business is currently being processed");
+
+		//retrieve business first
+        def b = bizSvc.open( app.business );
+		def currentYear = dateSvc.getServerYear();
+		def activeYear = b.activeyear;
+		if ( activeYear != currentYear )
+			throw new Exception("Additional for business is only applicable for the current year. This business must be renewed first");
+
+		if ( b.state == 'CANCELLED' ) throw new Exception("Business already cancelled"); 
+		if ( b.state == 'RETIRED' ) throw new Exception("Business already retired"); 
+
+		if ( !paySvc.hasFullyPaidQtr([ applicationid: b.currentapplicationid ]) ) {
+			throw new Exception('There are still unpaid balances in the ledger. Please settle account.'); 
+		} 
+
+		//verify currentapplicationid 
+		def currentapp =  business_application.findInfoByAppid([ applicationid: b.currentapplicationid ]); 
+		if ( !currentapp ) {  
+			throw new Exception("The current application attached to business does not exist. Please verify.");
+		} 
+		if ( !currentapp.state.toString().toUpperCase().matches('COMPLETED|CANCELLED') ) {
+			throw new Exception("An application for this business is currently being processed");
+		}
+
+		app.business =  b;
+		app.parentapplicationid = b.currentapplicationid; 
+        app.lobs = lobSvc.getActiveLobs([businessid: b.objid]); 
+        app.appinfos = infoSvc.getActiveAppInfos([businessid: b.objid]); 
+		app.appyear = dateSvc.getServerYear(); 
+		app.lobs.each { 
+			it.assessmenttype = 'ACTIVE'; 
+		} 
+	} 
+
+	/****
+	* check again to be sure, there should be no receivables for the qtr. 
+	* for line of business to be retired, ensure there is no balance for the particular line.
+	* make sure to save the parentapplicationid.
+	*/
+	@Before(pattern="BusinessApplicationService.create", eval="#{args[0].apptype=='ADDITIONAL' && args[0].txnmode == 'ONLINE'}")
+	public void beforeCreate( evt ) { 
+		def app = evt.args[0];
+		def b = bizSvc.open( app.business );
+		if ( !paySvc.hasFullyPaidQtr([ applicationid: b.currentapplicationid ]) ) {
+			throw new Exception('There are still unpaid balances in the ledger. Please settle account.'); 
+		}
+
+		b.appcount += 1;
+		app.appno = b.bin +  "-" + b.appcount + "A";
+		app.business.appcount = b.appcount; 
+		app.yearstarted = b.yearstarted;
+	}
+
+	@After(pattern="BusinessApplicationService.create", eval="#{args[0].apptype=='ADDITIONAL' && args[0].txnmode == 'ONLINE' }")
+	public void afterCreate( evt ) { 
+		def o = evt.result;
+
+		businessEm.update( o.business, 'business_appcount' ); 
+
+		//add the lobs and app infos
+		def b = [businessid: o.business.objid, activeyear: o.appyear, applicationid: o.objid];
+		b.lobs = o.lobs;
+		b.appinfos = o.appinfos;
+		
+		lobSvc.addAppLobs( b );
+		infoSvc.addAppInfos( b );
+
+		lobSvc.updateActiveLOBHistory([ businessid: o.business.objid, appyear: o.appyear ]);  
+		
+		//start the workflow
+		workflowSvc.start([refid: o.objid, data: o]);				
+	}
+
+	@After(pattern="BusinessApplicationService.cancel", eval="#{args[0].apptype=='ADDITIONAL' && args[0].txnmode == 'ONLINE' }")
+	public void afterCancel(def evt) { 
+		def app = evt.result;
+		workflowSvc.deleteTasks([applicationid: app.objid]);
+	}
+
+	@After(pattern="BusinessApplicationService.checkReleaseStatus", eval="#{args[0].apptype=='ADDITIONAL' }")
+	public void checkReleaseStatus(def evt) { 
+		def o = evt.args[0];
+		def result = evt.result;
+		//select there must be no pending receivables of this
+		def rec = receivableSvc.getReceivables([applicationid: o.objid]);
+		if(!rec) {
+			result.canRelease = true;
+			result.state = 'COMPLETED';
+		}
+		else {
+			result.canRelease = false;
+		}
+	}
+
+	@Before(pattern="BusinessApplicationService.release", eval="#{args[0].apptype=='ADDITIONAL' && args[0].state=='RELEASE' && args[0].txnmode == 'ONLINE'}")
+	public void beforeRelease( evt ) { 	
+		def param = evt.args[0]; 
+		def xinfo = business_application.findInfoByAppid([applicationid: param.objid]);
+		if ( !xinfo ) throw new Exception(param.appno + " application does not exist"); 
+		if ( xinfo.state != 'RELEASE' )	
+			throw new Exception('The application status has already changed. Please reload the information.'); 
+	} 
+
+	@After(pattern="BusinessApplicationService.release", eval="#{args[0].apptype=='ADDITIONAL' && args[0].state=='COMPLETED' && args[0].txnmode == 'ONLINE'}")
+	public void afterRelease(def evt) { 
+		def app = evt.result;
+		if ( !app.assessmentinfos ) {
+			app.assessmentinfos = business_application.getAssessmentInfos([applicationid: app.objid]);
+		}
+
+		def b = bizSvc.open(app.business);
+		b.state = 'ACTIVE';
+		bizSvc.updateOnRelease( b );
+
+		def bb = [businessid: b.objid, lobs: app.lobs, appinfos: app.appinfos, assessmentinfos: app.assessmentinfos ];
+		bb.remove_all = false;
+		lobSvc.addActiveLobs( bb );
+		infoSvc.addActiveAppInfos( bb );
+		infoSvc.addActiveAssessmentInfos( bb );
+		
+		lobSvc.updateActiveLOBHistory([ businessid: b.objid, appyear: app.appyear ]);  
+	}
+
+}

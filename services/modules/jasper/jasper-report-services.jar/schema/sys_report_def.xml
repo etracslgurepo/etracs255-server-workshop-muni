@@ -1,0 +1,21 @@
+<schema>
+	<element tablename="sys_report_def">
+		<field name="name" primary="true" visible="true" searchable="true" />
+		<field name="state" />
+		<field name="title" caption="Title"/>
+		<field name="description" caption="Description"/>
+		<field name="category" indexed="true" searchable="true" />
+		
+		<field name="sortorder" />
+		<field name="querytype" />		
+		<field name="statement" />
+		<complex name="parameters" serializer="default" type="list" />
+
+
+		<field name="role" />
+		<field name="permission" />
+		<field name="template" />
+		<field name="reportheader" />
+		<complex name="properties" serializer="default" type="list" />
+	</element>
+</schema>

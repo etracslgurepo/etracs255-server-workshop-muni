@@ -1,0 +1,53 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class LandTaxReportCollectiblePaymentSummaryService
+{
+	@Env 
+	def env
+
+	@ActiveDB('landtaxreport_certified_collectible')
+	def em
+
+	@Service('NumberService')
+	def numSvc 
+
+	@Service('DateService')
+	def dtSvc 
+
+
+	@Async
+    @ProxyMethod
+	public def buildReport(params){
+		def cy = dtSvc.serverYear
+		if (params.year < 1930 || params.year > cy) {
+			throw new Exception('Year should be between 1930 and ' + cy + '.' )
+		}
+
+		params.lguid = params.lgu?.objid
+		params.barangayid = params.barangay ? params.barangay.objid : '%'
+
+		def brgys = em.getBarangayCollectibles(params)
+		if (!brgys) throw new Exception('Results not found.')
+
+		def payments = em.getBarangayPayments(params)
+
+		brgys.each{ brgy ->
+			def pmt = payments.find{it.pin == brgy.pin}
+			if (pmt) {
+				brgy.putAll(pmt)
+			}
+			brgy.basic = numSvc.roundA( brgy.totalav * params.basicrate / 100.0, 4)
+			brgy.sef = numSvc.roundA( brgy.totalav * params.sefrate / 100.0, 4)
+			brgy.totaltax = brgy.basic + brgy.sef 
+
+			brgy.basicbal = brgy.basic - brgy.basicpmt
+			brgy.sefbal = brgy.sef - brgy.sefpmt
+		}
+
+		return [reportdata:brgys, parameters:params]
+	}
+
+}
+

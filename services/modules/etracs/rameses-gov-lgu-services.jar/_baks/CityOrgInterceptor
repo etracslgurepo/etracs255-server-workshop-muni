@@ -1,0 +1,51 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+import java.rmi.server.UID
+
+class CityOrgInterceptor {
+	
+	@PersistenceContext('main')	
+	def em
+
+	def schemaName = 'city';
+
+	@After(pattern="OrgService.create", eval="#{args[0].orgclass=='CITY'}")
+	public def onCreate( evt ) {
+		def data = evt.args[0];
+		data.state = 'DRAFT'; 
+		em.create(schemaName, data); 
+	}
+
+	@After(pattern="OrgService.update", eval="#{args[0].orgclass=='CITY'}")
+	public def onUpdate( evt ) {
+		def data = evt.args[0];
+		data.state = 'DRAFT'; 
+		//create the record if not exist 
+		def info = em.read(schemaName, data); 
+		if (info) 
+			em.update(schemaName, data); 
+		else 
+			em.create(schemaName, data);
+	}
+
+	@After(pattern="OrgService.open", eval="#{args[0].orgclass=='CITY'}")
+	public def onOpen( evt ) {
+		def orgdata = evt.args[0];
+		def resdata = em.read(schemaName, orgdata);
+		if (resdata) evt.result.putAll( resdata ); 
+	} 
+
+	@After(pattern="OrgService.removeEntity", eval="#{args[0].orgclass=='CITY'}")
+	public def onRemove( evt ) {
+		def data = evt.args[0];
+		em.delete(schemaName, data); 
+	} 
+	
+	@Before(pattern="OrgService.approve", eval="#{args[0].orgclass=='CITY'}")
+	public def onChangeState( evt ) {
+		def params = evt.args[0];
+		params.newstate = 'APPROVED';
+		params.oldstate = params.state;
+		em.sqlContext.createNamedExecutor(schemaName+':changeState').setParameters(params).execute(); 
+	}			
+}

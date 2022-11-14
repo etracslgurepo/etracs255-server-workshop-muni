@@ -1,0 +1,66 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+import java.rmi.server.UID
+import com.rameses.services.extended.*;
+
+class BarangayService extends ActiveCrudListService {
+	
+	@ActiveDB('barangay')	
+	def em
+	
+	@ActiveDB("org")
+	def org;
+
+	@Service("OrgService")
+	def orgSvc;
+
+	String pagingKeys = "b.objid";
+
+	@ProxyMethod 
+	public def getColumns( params ) {
+		return [
+			[name:'name', caption:'Name'],  
+			[name:'code', caption:'Code'],  
+			[name:'indexno', caption:'Index No'],
+			[name:'pin', caption:'PIN'] ,
+			[name:'parent.name', caption:'Parent Name'],
+			[name:'parent.orgclass', caption:'Parent Org Class'],
+		];
+	}
+
+	public void beforeList(o) {
+		o.name = '%';
+	}
+
+	public void afterOpen(o) {
+		def z = org.read( [objid: o.objid] );
+		o.putAll( z );
+		o.parent = org.read( [objid: z.parent.objid] );
+		
+
+	}
+
+	public void beforeUpdate(o) {
+		org.update(o);
+	}	
+
+	public void beforeCreate(o) {
+		o.objid = o.pin
+		o.orgclass = 'BARANGAY';
+		o.root = 0;
+		if(!o.parent) {
+			o.parent = orgSvc.getRoot();
+			o.parentid = o.parent.objid;
+		}
+		else {
+			o.parentid = o.parent.objid;
+		}
+		org.create(o);	
+	}	
+
+	public void afterRemoveEntity(o) {
+		org.delete(o);	
+	}	
+	
+
+}

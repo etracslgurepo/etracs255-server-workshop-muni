@@ -1,0 +1,71 @@
+import com.rameses.annotations.*; 
+
+class RPTReportMenuNotificationInterceptor {
+	@Env
+	def env;
+
+	// @Service("WorkflowTaskCountService")
+	// def taskCountSvc;
+
+	// @Service("UserRoleService")
+	// def userRole;
+
+	// @DataContext("sys_wf")
+	// def em_wf;
+
+	// @DataContext("faas_list")
+	// def em_faaslist;
+
+	
+	/************************************************************************************************************
+	* THIS IS THE COUNT FOR MAIN MENU
+	************************************************************************************************************/
+	@After(pattern="MenuNotificationService.getCount", eval="#{ args[0].notificationid == 'rpt' }")
+	public void getDomainCount( def evt ) {
+		// def p = evt.args[0];
+		// def result = evt.result;
+
+		// def orgid = (env.ORGROOT ==1 ) ? "root" : env.ORGID;
+		// def roleStr = userRole.getRolesString( [:] );
+
+		// def count = 0;
+
+		// /* TRANSACTION COUNTS */
+		// def list = wfEm.getTaskCount( [processname: "faas", roles:roleStr, userid: env.USERID  ] );
+		// if( list ) count += list.sum{ it.count };
+
+		// list = wfEm.getTaskCount( [processname: "subdivision", roles:roleStr, userid: env.USERID  ] );
+		// if( list ) count += list.sum{ it.count };
+
+		// list = wfEm.getTaskCount( [processname: "consolidation", roles:roleStr, userid: env.USERID  ] );
+		// if( list ) count += list.sum{ it.count };
+
+		// list = wfEm.getTaskCount( [processname: "cancelledfaas", roles:roleStr, userid: env.USERID  ] );
+		// if( list ) count += list.sum{ it.count };
+
+		// list = wfEm.getTaskCount( [processname: "resection", roles:roleStr, userid: env.USERID  ] );
+		// if( list ) count += list.sum{ it.count };
+
+		// list = wfEm.getTaskCount( [processname: "batchgr", roles:roleStr, userid: env.USERID  ] );
+		// if( list ) count += list.sum{ it.count };
+
+		// result.count = count;
+	}	
+	
+	@After(pattern="MenuNotificationService.getCount", eval="#{ args[0].notificationid == 'rpt_faas_list' }")
+	public void getFaasListCount( def evt ) {
+		// def p = evt.args[0];
+		// def result = evt.result;
+
+		// def orgid = (env.ORGROOT ==1 ) ? "root" : env.ORGID;
+		// def roleStr = userRole.getRolesString( [:] );
+
+		// def count = 0;
+
+		// def list = wfEm.getTaskCount( [processname: "faas", roles:roleStr, userid: env.USERID  ] );
+		// if( list ) count += list.sum{ it.count };
+
+		// result.count = count;
+	}	
+
+}

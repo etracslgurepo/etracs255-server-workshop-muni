@@ -1,0 +1,10 @@
+<schema>
+	<element tablename="government_property">
+		<field name="objid" primary="true"/>
+		<field name="name" />
+		<field name="street"/>
+		<field name="barangay_objid" required="true"/>
+		<field name="barangay_name" required="true"/>
+		<field name="pin" />
+	</element>
+</schema>

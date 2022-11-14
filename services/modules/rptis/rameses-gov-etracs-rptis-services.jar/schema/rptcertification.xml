@@ -1,0 +1,48 @@
+<schema>
+
+	<element name="rptcertification" tablename="rptcertification">
+		<field name="objid" primary="true" prefix="RC" />
+		<field name="txnno" required="true" caption="Txn No." searchable="true" />
+		<field name="txndate" required="true" caption="Txn Date" />
+		<field name="opener" required="true" caption="Type" indexed="true" />
+		<field name="faasid" />
+		<field name="taxpayer_objid" />
+		<field name="taxpayer_name" caption="Property Owner" searchable="true" />
+		<field name="taxpayer_address" />
+		<field name="requestedby" required="true" caption="Requested By" searchable="true" />
+		<field name="requestedbyaddress" required="true" />
+		<field name="purpose" required="true" />
+		<field name="addlinfo" />
+		<field name="year" type="integer" />
+		<field name="qtr" type="integer" />
+		<field name="asofyear" type="integer" />
+		<field name="certifiedby" required="true" />
+		<field name="certifiedbytitle" required="true" />
+		<field name="byauthority" />
+		<field name="byauthoritytitle" />
+		<field name="attestedby" />
+		<field name="attestedbytitle" />
+		<field name="official" type="boolean" />
+		<field name="orno" caption="O.R. No." indexed="true" />
+		<field name="ordate" caption="O.R. Date" />
+		<field name="oramount" type="decimal" caption="O.R. Amount" />
+		<field name="stampamount" type="decimal" />
+		<field name="createdbyid" />
+		<field name="createdby" required="true" />
+		<field name="createdbytitle" required="true" />
+		<field name="office" required="true" />
+		<field name="taskid" />
+		<field name="online" expr="case when taskid is null then 0 else 1 end" type="boolean" />
+		<complex name="properties" serializer="default" required="false" />
+		<complex name="task" ref="rptcertification_task" 
+			required="false" includefields="state,assignee.*">
+			<key field="taskid" target="objid" />
+		</complex>
+	</element>
+
+	<element name="item" tablename="rptcertificationitem">
+		<field name="rptcertificationid" required="true" />
+		<field name="refid" required="true" />
+	</element>
+	
+</schema>

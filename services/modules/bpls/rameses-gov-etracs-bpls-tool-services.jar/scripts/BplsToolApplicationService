@@ -1,0 +1,48 @@
+import com.rameses.annotations.*; 
+
+class BplsToolApplicationService {
+	
+	@ActiveDB('bpls_tool') 
+	def adb; 
+
+	@ActiveDB('txnlog') 
+	def txnlog_em; 
+
+	@Env 
+	def env; 
+
+	@Service('DateService') 
+	def dateSvc; 
+
+	@ProxyMethod 
+	public def findApp( params ) {
+		if ( !params.objid ) throw new Exception('objid parameter is required'); 
+
+		return adb.findApp( params ); 
+	}
+
+	@ProxyMethod 
+	public def changeAppMode( params ) {
+		if ( !params.objid ) throw new Exception('objid parameter is required'); 
+		if ( !params.txnmode ) throw new Exception('txnmode parameter is required'); 
+
+		def o = adb.findApp( params ); 
+        if ( o.txnmode == params.txnmode ) return o; 
+		if ( !(o.state.toString().toUpperCase() == 'ASSESSMENT')) {
+            throw new Exception('business application status must be in ASSESSMENT');
+        }
+
+        def log = [ objid: 'LOG'+ new java.rmi.server.UID() ]; 
+        log.txndate = dateSvc.getServerDate(); 
+		log.userid = env.USERID; 
+		log.username = env.FULLNAME; 
+		log.action = 'changeAppMode';
+		log.ref = 'business_application'; 
+		log.refid = params.objid; 
+		log.remarks = 'change txnmode from '+ o.txnmode + ' to '+ params.txnmode; 
+
+        adb.changeAppMode( params ); 
+		txnlog_em.create( log ); 
+        return adb.findApp( params ); 
+	}
+}

@@ -1,0 +1,37 @@
+<schema>
+	
+	<element tablename="resection_task">
+		<field name="objid" primary="true"/>
+		<field name="refid" required="true"/>
+		<field name="parentprocessid" />
+		<field name="state"/>
+		<field name="startdate" />
+		<field name="assignee_objid"/>
+		<field name="assignee_name"/>
+		<field name="assignee_title"/>
+		<field name="enddate"/>
+		<field name="actor_objid"/>
+		<field name="actor_name"/>
+		<field name="actor_title"/>
+		<field name="message"/>
+		<field name="signature"/>
+		<field name="returnedby" />
+	</element>	
+
+	<element name="subtask" tablename="resection_subtask">
+		<field name="objid" primary="true"/>
+		<field name="taskid" required="true"/>
+		<field name="startdate" required="true"/>
+		<field name="assignee_objid" required="true"/>
+		<field name="assignee_name" required="true"/>
+		<field name="assignee_title" required="true"/>
+		<field name="enddate"/>
+		<field name="actor_objid"/>
+		<field name="actor_name"/>
+		<field name="actor_title"/>
+		<field name="remarks"/>
+		<field name="message"/>
+		<field name="action" required="true"/>
+	</element>	
+
+</schema>

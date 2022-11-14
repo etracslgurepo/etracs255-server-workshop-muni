@@ -1,0 +1,23 @@
+<schema>
+	<element>
+
+		<field name="objid" primary="true"/>
+		<field name="parentid" required="true"/>
+		<field name="code" required="true" caption="Code"/>
+		<field name="title" required="true" caption="Title"/>
+		<field name="sortorder" required="true"/>
+		<field name="required" required="true"/>
+
+		<field name="refno"  caption="Refno"/>
+		<field name="refid" />
+		<field name="complied" />
+		<field name="dtcomplied" />
+		<field name="verifier_objid" />
+		<field name="verifier_name" />
+
+		<field name="remarks" required="true"/>
+		<complex name="info" required="true" serializer="default"/>
+	</element>
+</schema>
+
+

@@ -1,0 +1,168 @@
+package bldgassessment;
+
+import rptis.facts.*;
+import rptis.bldg.facts.*;
+import java.util.*;
+import com.rameses.rules.common.*;
+
+global RuleAction action;
+
+rule "summarize-floor-area"
+	agenda-group "AFTER-FLOOR"
+	salience 500000
+	no-loop
+	when
+		BU   : BldgUse()
+		BF   : BldgFloor(bldguse == BU)
+	then	
+		Map map = new HashMap();
+		map.put("bldguse", BU);
+		map.put("bldgfloor", BF);
+		action.execute( "summarize-floor-area", map, drools );
+end
+
+
+rule "summarize-rpu-bmv"
+	agenda-group "AFTER-BASEMARKETVALUE"
+	salience 500000
+	no-loop
+	when
+		RPU  : BldgRPU()
+		BS   : BldgStructure(rpu == RPU)
+		BU   : BldgUse(bldgstructure == BS)
+	then	
+		Map map = new HashMap();
+		map.put("rpu", RPU);
+		map.put("bldguse", BU);
+		action.execute( "summarize-rpu-bmv", map, drools );
+end
+
+rule "calc-bldg-additional"
+	agenda-group "ADDITIONAL"
+	salience 500000
+	no-loop
+	when
+		RPU  : BldgRPU()
+		BS   : BldgStructure(rpu == RPU)
+		BU   : BldgUse(bldgstructure == BS)
+		BF   : BldgFloor(bldguse == BU)
+		ADJ  : BldgAdjustment(bldgfloor == BF, adjtype == 'additionalitem')
+	then	
+		Map bindings = new HashMap();
+		bindings.put("SYS_BASE_MARKET_VALUE", BU.getBasemarketvalue());
+		bindings.put("SYS_MARKET_VALUE", BU.getMarketvalue());
+		bindings.put("SYS_BASE_VALUE", BF.getBasevalue());
+		bindings.put("SYS_UNIT_VALUE", BF.getUnitvalue());
+		bindings.put("SYS_AREA", BF.getArea());
+		bindings.put("SYS_FLOOR_BASE_MARKET_VALUE", BF.getBasemarketvalue());
+		bindings.put("SYS_FLOOR_MARKET_VALUE", BF.getMarketvalue());
+		bindings.putAll(ADJ.getParams());
+
+		Map map = new HashMap();
+		map.put("adjustment", ADJ);
+		map.put( "expr", (new ActionExpression(ADJ.getExpr(), bindings)) );
+		action.execute( "calc-adj", map, drools );
+end
+
+rule "calc-bldg-adjustment"
+	agenda-group "ADJUSTMENT"
+	salience 500000
+	no-loop
+	when
+		RPU  : BldgRPU()
+		BS   : BldgStructure(rpu == RPU)
+		BU   : BldgUse(bldgstructure == BS)
+		BF   : BldgFloor(bldguse == BU)
+		ADJ  : BldgAdjustment(bldgfloor == BF, adjtype == 'adjustment')
+	then	
+		Map bindings = new HashMap();
+		bindings.put("SYS_BASE_MARKET_VALUE", BU.getBasemarketvalue());
+		bindings.put("SYS_MARKET_VALUE", BU.getMarketvalue());
+		bindings.put("SYS_BASE_VALUE", BF.getBasevalue());
+		bindings.put("SYS_UNIT_VALUE", BF.getUnitvalue());
+		bindings.put("SYS_AREA", BF.getArea());
+		bindings.put("SYS_BLDG_BASE_FLOOR_AREA", BS.getBasefloorarea());
+		bindings.put("SYS_BLDG_FLOOR_AREA", BS.getTotalfloorarea());
+		bindings.put("SYS_FLOOR_BASE_MARKET_VALUE", BF.getBasemarketvalue());
+		bindings.put("SYS_FLOOR_MARKET_VALUE", BF.getMarketvalue());
+		bindings.putAll(ADJ.getParams());
+
+		Map map = new HashMap();
+		map.put("adjustment", ADJ);
+		map.put( "expr", (new ActionExpression(ADJ.getExpr(), bindings)) );
+		action.execute( "calc-adj", map, drools );
+end
+
+rule "summarize-adjustment"
+	agenda-group "AFTER-ADJUSTMENT"
+	salience -10000
+	no-loop
+	when
+		BF  : BldgFloor()
+		ADJ : BldgAdjustment(bldgfloor == BF )
+	then	
+		Map map = new HashMap();
+		map.put("bldgfloor", BF);
+		map.put("adjustment", ADJ);
+		action.execute( "summarize-adjustment", map, drools );
+end
+
+rule "summarize-adjustment-for-depreciation"
+	agenda-group "AFTER-ADJUSTMENT"
+	salience -10000
+	no-loop
+	when
+		BF  : BldgFloor()
+		ADJ : BldgAdjustment(bldgfloor == BF, depreciate == true )
+	then	
+		Map map = new HashMap();
+		map.put("bldgfloor", BF);
+		map.put("adjustment", ADJ);
+		action.execute( "summarize-adjustment-for-depreciation", map, drools );
+end
+
+
+rule "summarize-depreciation"
+	agenda-group "AFTER-DEPRECIATION"
+	salience -10000
+	no-loop
+	when
+		RPU  : BldgRPU()
+		BS   : BldgStructure(rpu == RPU)
+		BU   : BldgUse(bldgstructure == BS )
+	then	
+		Map map = new HashMap();
+		map.put("rpu", RPU);
+		map.put("bldguse", BU);
+		action.execute( "summarize-depreciation", map, drools );
+end
+
+
+rule "summarize-rpu-mv"
+	agenda-group "SUMMARY"
+	salience -10000
+	no-loop
+	when
+		RPU  : BldgRPU()
+		BA   : RPUAssessment()
+	then	
+		Map map = new HashMap();
+		map.put("rpu", RPU);
+		map.put("assessment", BA);
+		action.execute( "summarize-rpu-mv", map, drools );
+end
+
+
+rule "summarize-rpu-av"
+	agenda-group "SUMMARY"
+	salience -10000
+	no-loop
+	when
+		RPU  : BldgRPU()
+		BA   : RPUAssessment()
+	then	
+		Map map = new HashMap();
+		map.put("rpu", RPU);
+		map.put("assessment", BA);
+		action.execute( "summarize-rpu-av", map, drools );
+end

@@ -1,0 +1,71 @@
+import com.rameses.annotations.*;
+
+class FireBPAssessmentRuleInterceptor {
+
+	final static String RULESET = "firebpassessment";
+
+	@Service('BPAssessmentRuleService')
+	def ruleSvc; 
+
+	@After(pattern="BusinessAssessmentService.postAssess")
+	public void afterPostAssess( evt ) { 
+		def rulegroups = ruleSvc.getRuleGroups([ ruleset: RULESET ]); 
+		if ( !rulegroups ) return; 
+
+		def res = evt.args[1]; 
+		if ( !res ) return; 
+
+		if ( res.infos && res.infos.find{( it.phase < 2 )} ) {
+			// do nothing 
+			return; 
+		}
+
+		if ( !res.taxfees ) {
+			// do nothing 
+			return; 
+		}
+
+		def newfacts = []; 
+		def req = evt.args[0]; 
+		req.facts.each{
+			if ( it instanceof bpls.facts.TaxFeeAccount ) {
+				//exclude this object 
+			}
+			else {
+				newfacts << it; 
+			}
+		}
+
+		res.taxfees.each{ tf-> 
+			def bt = new bpls.facts.TaxFeeAccount();
+			bt.objid = tf.objid;
+			bt.acctid = tf.account?.objid;
+			bt.name = tf.account?.title;
+			bt.amount = tf.amount;
+			bt.type = tf.taxfeetype;
+			bt.highest = false;
+			bt.lowest = false;
+
+			if ( tf.assessedvalue ) {
+				bt.assessedvalue = tf.assessedvalue;
+			}
+			bt.flag = tf.flag;
+			bt.tag = tf.tag; 
+			bt.data = tf;
+
+			if ( tf.lob?.objid ) {
+				bt.lob = newfacts.find{((it instanceof bpls.facts.LOB) && it.lobid == tf.lob.objid)}  
+			} 
+			newfacts << bt; 
+		}
+
+		def newres = ruleSvc.executeImpl( RULESET, newfacts, req.entity ); 
+		if ( newres.taxfees ) {
+			if ( res.taxfees == null ) {
+				res.taxfees = newres.taxfees; 
+			} else {
+				res.taxfees.addAll( newres.taxfees ); 
+			}
+		}
+	}
+}

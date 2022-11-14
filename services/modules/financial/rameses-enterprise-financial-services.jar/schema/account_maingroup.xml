@@ -1,0 +1,13 @@
+<schema>
+
+	<element tablename="account_maingroup">
+		<field name="objid" primary="true" prefix="ACCTMGRP" visible="true" caption="Code"/>
+		<field name="title" required="true" caption="Title"/>
+		<field name="version" required="true" caption="Version"/>
+		<field name="reporttype" required="true" caption="ReportType" lov="ACCOUNT_REPORT_TYPE"/>
+		<field name="role" caption="Role"/>
+		<field name="domain" caption="Domain"/>
+		<field name="system" type="integer" caption="System"/>
+	</element>
+
+</schema>

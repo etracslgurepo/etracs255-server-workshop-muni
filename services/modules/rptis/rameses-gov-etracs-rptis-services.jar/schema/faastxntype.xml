@@ -1,0 +1,7 @@
+<schema>
+	<element tablename="faas_txntype">
+		<field name="objid" primary="true" prefix="MAT" caption="Key" searchable="true" indexed="true" width="100"/>
+		<field name="name" caption="Name" required="true" searchable="true"  indexed="true" width="350" />
+		<field name="displaycode" caption="Display Code" required="true" searchable="true" indexed="true" width="100" />
+	</element>	
+</schema>

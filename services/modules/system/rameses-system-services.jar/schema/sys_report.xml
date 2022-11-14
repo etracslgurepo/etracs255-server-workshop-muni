@@ -1,0 +1,15 @@
+<schema adapter="main">
+	<element tablename="sys_report">
+		<field name="objid" primary="true"/>
+		<field name="folderid" required="true"/>
+		<field name="title" required="true"/>
+		<field name="filetype" required="true"/>
+		<field name="dtcreated" required="true"/>
+		<field name="createdby_objid" required="true"/>
+		<field name="createdby_name" required="true"/>
+		<field name="datasetid" required="true"/>
+		<field name="template" required="true"/>
+		<field name="outputtype" required="true"/>
+		<field name="system" required="true" type="integer"/>
+	</element>
+</schema>

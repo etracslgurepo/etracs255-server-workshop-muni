@@ -1,0 +1,18 @@
+<schema>
+	<element tablename="business_recurringfee">
+		<field name="objid" primary="true"/>
+		<field name="businessid" required="true"/>
+		<field name="state" required="true"/>
+		<field name="account_objid" required="true"/>
+		<field name="account_title" required="true"/>
+		<field name="amount" required="true"/>
+		<field name="remarks" />
+		<field name="department"/>
+
+		<complex name="txntype" ref="business_billitem_txntype" 
+			     jointype="many-to-one" required="false" 
+			     includefields="objid,title,feetype">
+			<key field="txntype_objid" target="objid" /> 
+		</complex> 
+	</element>
+</schema>

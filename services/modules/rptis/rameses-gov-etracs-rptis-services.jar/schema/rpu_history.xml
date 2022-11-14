@@ -1,0 +1,40 @@
+<schema>
+	<element tablename="rpu_history">
+		<field name="objid" primary="true" prefix="RH" />
+		<!-- DRAFT, APPROVED -->
+		<field name="state" required="true" />
+		<field name="rpumaster_objid" required="true" />
+		<field name="tdno" required="true" caption="TD No." />
+		<field name="prevtdno" caption="Previous TD No." />
+		<field name="pin" required="true"  caption="PIN" />
+		<field name="ry" required="true" type="integer"  caption="Revision Year" />
+		<field name="txntype_objid" required="true" caption="Txn"  />
+		<field name="effectivityyear" required="true" type="integer" caption="Effective Year"  />
+		<field name="effectivityqtr" required="true" type="integer" />
+		<field name="titleno"  caption="Title No." />
+		<field name="titledate" />
+		<field name="portionof" />
+		<field name="owner_name" required="true"  caption="Owner" />
+		<field name="owner_address" required="true"  caption="Address" />
+		<field name="administrator_name"  caption="Administrator" />
+		<field name="administrator_address"  caption="Address" />
+		<field name="beneficiary_name" />
+		<field name="beneficiary_address" />
+		<field name="classification_objid" required="true" />
+		<field name="totalareaha" required="true" type="decimal" caption="Area (ha)"  />
+		<field name="totalareasqm" required="true" type="decimal"  caption="Area (sqm)" />
+		<field name="totalmv" required="true" type="decimal"  caption="Total MV" />
+		<field name="totalav" required="true" type="decimal" caption="Total AV" />
+		<field name="memoranda" required="true" />
+		<field name="surveyno"  caption="Survey No." />
+		<field name="cadastrallotno" required="true"  caption="Lot No." />
+		<field name="blockno"  caption="Block No." />
+		<field name="purok"  />
+		<field name="street"  />
+		<field name="dtapproved"  />
+		<field name="cancelreason" required="true"  caption="Cancel Reason" />
+		<field name="canceldate" required="true" />
+		<field name="cancelledbytdnos" required="true" caption="Cancelled By"  />
+		<field name="prevhistory_objid" />
+	</element>
+</schema>

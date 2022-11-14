@@ -1,0 +1,7 @@
+<schema>
+	<element tablename="rptcertificationitem">
+		<field name="rptcertificationid" required="true" />
+		<field name="refid" required="true" />
+	</element>
+	
+</schema>

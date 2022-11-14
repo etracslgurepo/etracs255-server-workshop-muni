@@ -1,0 +1,1 @@
+ALTER TABLE sys_rule_condition ADD COLUMN notexist1 INT DEFAULT 0;

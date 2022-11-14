@@ -1,0 +1,31 @@
+<schema>
+
+	<element tablename="sys_wf">
+		<field name="name" primary="true"/>
+		<field name="title" required="true"/>
+	</element>	
+
+	<element name="node" tablename="sys_wf_node">
+		<field name="name" primary="true"/>
+		<field name="processname" primary="true"/>
+		<field name="title" required="true"/>
+		<field name="nodetype" required="true"/>
+		<field name="idx" />
+		<field name="salience" />
+		<field name="domain" />
+		<field name="role" />
+	</element>	
+
+	<element name="transition" tablename="sys_wf_transition">
+		<field name="parentid" primary="true"/>
+		<field name="processname" primary="true"/>
+		<field name="to" primary="true"/>
+		<field name="action"/>
+		<field name="idx" />
+		<field name="eval" />
+		<field name="properties" />
+		<field name="permission" />
+	</element>	
+
+</schema>	
+

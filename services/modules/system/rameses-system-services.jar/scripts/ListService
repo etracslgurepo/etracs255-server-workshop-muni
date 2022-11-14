@@ -1,0 +1,24 @@
+import com.rameses.annotations.*
+
+/**********************************************************************
+* override this service to get certain lists  by just specifying name
+* This is applicable for small lists like months
+***********************************************************************/
+class ListService {
+
+	@ProxyMethod
+	public def getList(def o) {
+		if(!o.name)
+			throw new Exception("ListService.getList parameter must have a name")
+		return [];
+	}
+
+	@ProxyMethod
+	public void add(def o) {
+		if(!o.name)
+			throw new Exception("ListService.add error. parameter must have a name")
+		if(!o.value)
+			throw new Exception("ListService.add error. parameter must have a value")
+	}
+
+}

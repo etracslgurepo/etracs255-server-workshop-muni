@@ -1,0 +1,88 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import com.rameses.eserver.*;
+import java.rmi.server.UID;
+import com.rameses.util.*
+
+public class LandRYSettingLookupService
+{
+	@PersistenceContext('main')
+	def em
+     
+    @Service('LookupUtilService')
+	def lupSvc 
+
+    @Service('RPTParameterService')
+    def paramSvc
+
+
+    @ProxyMethod
+    public def lookupAssessLevels(params){
+        def list = lupSvc.lookup( 'landrysettinglookup:lookupAssessLevels', params, 'lal.objid' )
+        return filterByBarangay(params, list)
+    }
+
+
+    @ProxyMethod
+    public def lookupAssessLevelByPrevId(previd){
+        return em.sqlContext.createNamedQuery('landrysettinglookup:lookupAssessLevelByPrevId')
+                .setParameter('previd', previd).singleResult
+    }
+
+    @ProxyMethod
+    public def lookupSubclasses(params){
+        def list = lupSvc.lookup( 'landrysettinglookup:lookupSubclasses', params, 'sub.objid' )
+        return filterByBarangay(params, list)
+    }
+
+
+    @ProxyMethod
+    public def lookupSubclassByPrevId(previd){
+        return em.sqlContext.createNamedQuery('landrysettinglookup:lookupSubclassByPrevId')
+                .setParameter('previd', previd).singleResult
+    }
+
+
+    @ProxyMethod
+    public def lookupStrippings(params){
+        def list = lupSvc.lookup( 'landrysettinglookup:lookupStrippings', params, 'st.objid' )
+        return filterByBarangay(params, list)
+    }
+
+
+    @ProxyMethod
+    public def lookupStrippingByPrevId(previd){
+        return em.sqlContext.createNamedQuery('landrysettinglookup:lookupStrippingByPrevId')
+                .setParameter('previd', previd).singleResult
+    }
+
+
+    @ProxyMethod
+    public def lookupAdjustmentTypes(params){
+        def list = lupSvc.lookup( 'landrysettinglookup:lookupAdjustmentTypes', params, 'lat.objid' ).each{
+            it.classifications = em.sqlContext.createNamedQuery('landrysetting:getAdjustmentTypeClassifications')
+                                    .setParameter('landadjustmenttypeid', it.objid)
+                                    .resultList
+            }
+        return filterByBarangay(params, list)
+    }
+
+
+    @ProxyMethod
+    public def lookupAdjustmentTypeByPrevId(previd){
+        return em.sqlContext.createNamedQuery('landrysettinglookup:lookupAdjustmentTypeByPrevId')
+                .setParameter('previd', previd).singleResult
+    }
+
+    @ProxyMethod
+    public def getVariables() {
+        return paramSvc.getRPTParameters([:])    
+    }    
+
+    def filterByBarangay(params, list){
+        def res = list.findAll{it.barangayid == params.barangayid}
+        if ( res )
+            return res 
+        return list.findAll{it.barangayid == null} 
+    }
+}

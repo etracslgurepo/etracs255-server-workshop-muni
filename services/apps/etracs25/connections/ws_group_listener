@@ -1,0 +1,4 @@
+provider=websocket
+ws.host=localhost:${@@websocket61:port}
+ws.protocol=group
+ws.enabled=true

@@ -1,0 +1,23 @@
+<schema>
+    <element name="bldgkindbucc" tablename="bldgkindbucc">
+		<field name="objid" primary="true"/>
+		<field name="bldgtypeid" required="true"  />
+        <field name="bldgrysettingid" required="true"/>
+		<field name="bldgkind_objid" required="true"  />
+		<field name="basevaluetype" required="true"/>
+		<field name="basevalue" required="true" type="decimal" />
+		<field name="minbasevalue" required="true" type="decimal" />
+		<field name="maxbasevalue" required="true" type="decimal" />
+		<field name="gapvalue"  required="true" type="decimal"/>
+		<field name="minarea" required="true" type="decimal" />
+		<field name="maxarea" required="true" type="decimal" />
+		<field name="bldgclass" />
+		<field name="previd"  />
+		<complex name="bldgtype" ref="rysetting_bldg_type" jointype="many-to-one" required="true">
+			<key field="bldgtypeid" target="objid" />
+		</complex>
+		<complex name="bldgkind" ref="bldgkind" jointype="many-to-one" required="true">
+			<key field="bldgkind_objid" target="objid" />
+		</complex>
+	</element>
+</schema>

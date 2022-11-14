@@ -1,0 +1,49 @@
+package miscassessment;
+
+import rptis.facts.*;
+import rptis.misc.facts.*;
+import java.util.*;
+import com.rameses.rules.common.*;
+
+global RuleAction action;
+
+
+rule "initial-assess-level"
+	agenda-group "BEFORE-ASSESSLEVEL"
+	salience 500000
+	no-loop
+	when
+		RPU  : MiscRPU();
+		MiscItem  : MiscItem();
+	then	
+		Map map = new HashMap();
+		map.put("miscrpu", RPU);
+		map.put("miscitem", MiscItem);
+		action.execute( "calc-al", map, drools );
+end
+
+rule "initial-rpu-assess-level"
+	agenda-group "ASSESSLEVEL"
+	salience 500000
+	no-loop
+	when
+		RPU  : MiscRPU()
+	then	
+		Map map = new HashMap();
+		map.put("miscrpu", RPU);
+		action.execute( "calc-rpu-al", map, drools );
+end
+
+
+rule "initial-rpu-assessments"
+	agenda-group "SUMMARY"
+	salience 500000
+	no-loop
+	when
+		RPU  : MiscRPU()
+	then	
+		Map map = new HashMap();
+		map.put("miscrpu", RPU);
+		action.execute( "add-assessment-info", map, drools );
+end
+

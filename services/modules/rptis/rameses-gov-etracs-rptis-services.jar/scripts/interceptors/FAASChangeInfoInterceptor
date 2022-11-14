@@ -1,0 +1,206 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import com.rameses.util.*
+import com.rameses.services.extended.*
+
+
+class FAASChangeInfoInterceptor
+{
+	@ActiveDB('rpt_changeinfo')
+	def em
+
+	@Service('EntityService')
+	def entitySvc
+
+	@Service('RPUService')
+	def rpuSvc
+
+	@Service('FAASSupportService')
+	def supportSvc
+
+	@Service('FAASService')
+	def faasSvc
+
+	@Service('RPTRequirementService')
+	def reqSvc
+
+	@DataContext('faas')
+	def em_faas
+
+	@DataContext('faas_list')
+	def em_faas_list
+
+	@DataContext('faas_previous')
+	def em_faas_previous
+
+	@DataContext('realproperty')
+	def em_realproperty 
+
+
+	
+	@After(pattern="FAASChangeInfoService.updateInfo", eval="#{result.action=='change_property_info'}")
+	public void updatePropertyInfo(evt){
+		def changeinfo = evt.result
+		em.updatePropertyInfo(changeinfo.newinfo);
+		
+		def flinfo = [:]
+		flinfo.objid = changeinfo.faasid
+		flinfo.blockno = changeinfo.newinfo.blockno
+		flinfo.surveyno = changeinfo.newinfo.surveyno
+		flinfo.cadastrallotno = changeinfo.newinfo.cadastrallotno
+		em_faas_list.update(flinfo)
+		em.updateLedgerInfo(changeinfo);
+	}
+	
+	
+	@After(pattern="FAASChangeInfoService.updateInfo", eval="#{result.action=='change_faas_info'}")
+	public void updateFaasInfo(evt){
+		def changeinfo = evt.result
+		if (!changeinfo.newinfo.tdno) {
+			def faas = faasSvc.openFaas([objid: changeinfo.faasid])
+			changeinfo.newinfo.tdno = faasSvc.generateNextTdNo(faas)
+		}
+		changeinfo.newinfo.utdno = changeinfo.newinfo.tdno 
+		changeinfo.newinfo.txntypeid = changeinfo.newinfo.txntype.objid 
+		em.updateFaasInfo(changeinfo.newinfo);
+		em.updateLedgerFaasInfo(changeinfo.newinfo);
+
+		if (changeinfo.newinfo.classification){
+			changeinfo.newinfo.classificationid = changeinfo.newinfo.classification.objid 
+			changeinfo.newinfo.exemptiontypeid = changeinfo.newinfo.exemptiontype?.objid 
+			em.updateRpuInfo(changeinfo.newinfo);
+		}
+
+		em.updateLandRpuInfo(changeinfo.newinfo);
+
+		def flinfo = [:]
+		flinfo.objid = changeinfo.faasid
+		flinfo.tdno = changeinfo.newinfo.tdno
+		flinfo.utdno = changeinfo.newinfo.utdno
+		flinfo.txntype = changeinfo.newinfo.txntype
+		flinfo.titleno = changeinfo.newinfo.titleno
+		flinfo.effectivityyear = changeinfo.newinfo.effectivityyear
+		flinfo.effectivityqtr = changeinfo.newinfo.effectivityqtr
+		flinfo.classification = changeinfo.newinfo.classification
+		flinfo.classcode = changeinfo.newinfo.classification.code
+		flinfo.publicland = changeinfo.newinfo.publicland
+		em_faas_list.update(flinfo)
+
+		updateCancelledTdNos(changeinfo)
+		em.updateLedgerInfo(changeinfo)
+	}
+
+
+	@Before(pattern="FAASChangeInfoService.updateInfo", eval="#{args[0].action=='change_owner_info'}")
+	public void beforeUpdateOwnerInfo(evt){
+		def changeinfo = evt.args[0]
+		if (changeinfo.taxpayer){
+			entitySvc.save(changeinfo.taxpayer);
+		}
+	}
+
+
+	@After(pattern="FAASChangeInfoService.updateInfo", eval="#{result.action=='change_owner_info'}")
+	public void updateOwnerInfo(evt){
+		def changeinfo = evt.result
+		def info = [
+			faasid : changeinfo.faasid,
+			taxpayer_objid : changeinfo.newinfo.taxpayer.objid,
+			taxpayer_name : changeinfo.newinfo.taxpayer.name,
+			taxpayer_address : changeinfo.newinfo.taxpayer.address,
+			owner_name : changeinfo.newinfo.owner.name,
+			owner_address : changeinfo.newinfo.owner.address,
+			administrator_objid : changeinfo.newinfo.administrator.objid,
+			administrator_name : changeinfo.newinfo.administrator.name,
+			administrator_address : changeinfo.newinfo.administrator.address,
+		]
+		em.updateFaasOwnerInfo(info)
+		
+		def flinfo = [:]
+		flinfo.objid = changeinfo.faasid
+		flinfo.taxpayer = changeinfo.newinfo.taxpayer
+		flinfo.owner = changeinfo.newinfo.owner
+		flinfo.administrator = changeinfo.newinfo.administrator
+		em_faas_list.update(flinfo)
+		em.updateLedgerInfo(changeinfo);
+	}
+
+	@After(pattern="FAASChangeInfoService.updateInfo", eval="#{result.action=='change_previous_info'}")
+	public void updatePreviousInfo(evt){
+		def changeinfo = evt.result
+		faasSvc.savePreviousFaases(changeinfo.newinfo)
+		def prevtdno = null;
+		if (changeinfo.newinfo.previousfaases){
+			prevtdno = changeinfo.newinfo.previousfaases.prevtdno.join(', ')
+		}
+		def finfo = [:]
+		finfo.objid = changeinfo.faasid 
+		finfo.prevtdno = prevtdno 
+		em_faas.update(finfo)
+		em_faas_list.update(finfo)
+		em.updateLedgerInfo(changeinfo);
+	}	
+
+	@After(pattern="FAASChangeInfoService.updateInfo", eval="#{result.action=='change_faas_appraisal'}")
+	public void updateAppraisalInfo(evt){
+		def changeinfo = evt.result
+		def oldrpu = rpuSvc.openRpu(changeinfo.newinfo)
+		rpuSvc.deleteItems(oldrpu)
+		rpuSvc.updateRpu(changeinfo.newinfo)
+
+		def flinfo = [:]
+		flinfo.objid = changeinfo.faasid
+		flinfo.totalmv = changeinfo.newinfo.totalmv
+		flinfo.totalav = changeinfo.newinfo.totalav
+		flinfo.totalareaha = changeinfo.newinfo.totalareaha
+		flinfo.totalareaha = changeinfo.newinfo.totalareaha
+		flinfo.totalareasqm = changeinfo.newinfo.totalareasqm
+		flinfo.classification = changeinfo.newinfo.classification
+		flinfo.classcode = changeinfo.newinfo.classification.code
+		em_faas_list.update(flinfo)
+		em.updateLedgerInfo(changeinfo)
+	}	
+
+	@After(pattern="FAASChangeInfoService.updateInfo", eval="#{result.action=='change_faas_sketch'}")
+	public void updateFaasSketch(evt){
+		def changeinfo = evt.result
+		supportSvc.deleteImageData(changeinfo)
+		supportSvc.saveImageData(changeinfo)
+
+		def rpinfo = [:]
+		rpinfo.objid = changeinfo.rpid
+		rpinfo.north = changeinfo.newinfo.north
+		rpinfo.east = changeinfo.newinfo.east
+		rpinfo.west = changeinfo.newinfo.west
+		rpinfo.south = changeinfo.newinfo.south
+		em_realproperty.update(rpinfo)
+
+		if (changeinfo.sketch){
+			faasSvc.saveSketch(changeinfo.sketch)
+		}
+	}	
+
+	@After(pattern="FAASChangeInfoService.updateInfo", eval="#{result.action=='add_faas_requirement_document'}")
+	public void addRequirementDocument(evt){
+		def changeinfo = evt.result
+		reqSvc.save(changeinfo.requirement)
+		supportSvc.saveImageData(changeinfo)
+	}	
+
+	@After(pattern="FAASChangeInfoService.updateInfo", eval="#{result.action=='change_signatories'}")
+	public void updateSignatories(evt){
+		def changeinfo = evt.result
+		def signatory = changeinfo.newinfo
+		signatory.objid = signatory.faasid
+		faasSvc.saveSignatory(signatory)
+	}	
+
+	void updateCancelledTdNos(changeinfo) {
+		def prevfaas = em_faas_previous.select('prevfaasid').find([faasid: changeinfo.faasid]).first()
+		if (prevfaas) {
+			em_faas.find([objid: prevfaas.prevfaasid]).update([cancelledbytdnos: changeinfo.newinfo.tdno])
+			em_faas_list.find([objid: prevfaas.prevfaasid]).update([cancelledbytdnos: changeinfo.newinfo.tdno])
+		}
+	}
+}
+

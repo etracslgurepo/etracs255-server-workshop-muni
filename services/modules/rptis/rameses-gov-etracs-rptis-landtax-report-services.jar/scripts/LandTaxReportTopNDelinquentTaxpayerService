@@ -1,0 +1,45 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class LandTaxReportTopNDelinquentTaxpayerService
+{
+    @ActiveDB('landtaxreport_topn_delinquent')
+    def em
+
+
+    @Service('DateService')
+    def dtSvc 
+
+    @Service('RPTUtil')
+    def util
+
+
+	@Async
+    @ProxyMethod
+	public def buildReport(params){
+		params.cy = dtSvc.serverYear 
+		params._limit = params.topn 
+		def list = []
+		em.getTopNDelinquentAmounts(params).each{
+			list += em.getTopNDelinquentTaxpayers([amount: it.amount])
+		}
+
+		int rank = 0
+		def prevamt = 0.0
+		for(int i = 0; i < list.size(); i++){
+			def item = list[i]
+			if (prevamt != item.amount){
+				rank++;
+				prevamt = item.amount 
+			}
+			
+			if ( rank > params.topn)
+				break;
+
+			item.rank = rank;
+		}
+		return [reportdata:list, parameters:[TOPN:params.topn]]; 
+	}
+
+}

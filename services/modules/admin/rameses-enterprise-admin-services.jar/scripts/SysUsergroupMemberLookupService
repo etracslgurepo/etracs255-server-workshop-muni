@@ -1,0 +1,42 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+
+class SysUsergroupMemberLookupService {
+
+	@DataContext('sys_usergroup_member')
+	def em;
+
+	@ProxyMethod
+	public def getColumns( param ) {
+		return  [
+			[name:'lastname', caption:'Last Name'],
+			[name:'firstname', caption:'First Name'],
+			[name:'middlename', caption:'Middle Name'],
+			[name:'jobtitle', caption:'Job Title'],
+			[name:'role', caption:'Role']
+		] 
+	}
+
+	@ProxyMethod
+	public def getList( p ) {
+		if(!p._tag) throw new Exception("Please provide _tag");
+
+		int idx = p._tag.indexOf('.');
+		if (idx <= 0 ) throw new Exception('Please provide a domain');  
+
+		def arr = p._tag.split('\\.');
+		def m = [:];
+		m.put('group.domain', arr[0]);
+		m.put('group.role', arr[1]);
+		if( p._start ) em.start = p._start ;	
+		if( p._limit ) em.limit = p._limit;
+		em.select("objid:{user.objid},firstname:{user.firstname},middlename:{user.middlename},lastname:{user.lastname},jobtitle:{user.jobtitle},name:{CONCAT(firstname,' ',lastname)},role:{group.role}")
+		if ( p.searchtext ) {
+			p.searchtext += '%';
+			em.orWhere(' user.username like :uname ', [uname: p.searchtext]); 
+			em.orWhere(' user.lastname like :lname ', [lname: p.searchtext]); 
+			em.orWhere(' user.firstname like :fname ', [fname: p.searchtext]); 
+		}		
+		return em.find( m ).list();
+	}
+}

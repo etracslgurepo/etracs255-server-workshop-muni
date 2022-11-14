@@ -1,0 +1,10 @@
+
+<schema>
+
+	<element tablename="psic">
+		<field name="objid" primary="true" visible="true" caption="Code" searchable="true"/>
+		<field name="title" caption="Title"  searchable="true"/>
+		<field name="parentid"/>
+	</element>
+	
+</schema>

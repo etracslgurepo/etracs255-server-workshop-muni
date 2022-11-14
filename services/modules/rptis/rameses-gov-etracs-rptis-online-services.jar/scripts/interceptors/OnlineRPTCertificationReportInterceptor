@@ -1,0 +1,39 @@
+import com.rameses.annotations.*;
+import com.rameses.services.extended.*;
+
+class OnlineRPTCertificationReportInterceptor {
+	@DataContext("rptcertification")
+	def em_cert;
+
+	@Service("TDReportService")
+	def tdReportSvc;
+
+	@Service('RPTUtil')
+	def util;
+	
+	@After(pattern="FormReportService.getData", eval="#{args[0].reportid == 'tdtruecopy'}", index=100)
+	public void afterGetData(def evt) {
+		def arg = evt.args[0];
+		def result = evt.result;
+
+		def cert = em_cert.find([objid: arg.parameters.objid]).first();
+		if (!cert) throw new Exception("certification objid does not exist");
+
+		def data = tdReportSvc.buildTaxDec(cert.faasid);
+		data.txnno = cert.txnno;
+		data.txndate = cert.txndate;
+		data.requestedby = cert.requestedby;
+		data.requestedbyaddress = cert.requestedbyaddress;
+		data.purpose = cert.purpose;
+		data.certifiedby = cert.certifiedby;
+		data.certifiedbytitle = cert.certifiedbytitle;
+		data.orno = cert.orno;
+		data.ordate = cert.ordate;
+		data.oramount = cert.oramount;
+		data.addlinfo = cert.addlinfo;
+		data.template = "reports/rpt/tdreport";
+		data.isonline = true;
+
+		result.data = data;
+	}
+}

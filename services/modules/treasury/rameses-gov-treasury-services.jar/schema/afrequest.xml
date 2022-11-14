@@ -1,0 +1,26 @@
+<schema>
+	<element tablename="afrequest">
+		<field name="objid" primary="true" prefix="AFREQ"/>	
+		<field name="state" caption="Status"/>
+		<field name="reqno" caption="ReqNo" required="true"  indexed="true" searchable="true"/>
+		<field name="dtfiled" caption="DateFiled" required="true"/>
+		<field name="reqtype" caption="ReqType" required="true" />
+		<field name="requester_objid" required="true"/>
+		<field name="requester_name" caption="RequesterName" required="true"  indexed="true" searchable="true"/>
+		<field name="requester_title" />
+		<field name="org_objid" required="true"/>
+		<field name="org_name" required="true" caption="OrgName"/>
+		<field name="vendor" />
+
+		<field name="respcenter_objid"/>
+		<field name="respcenter_name" caption="RespCenterName"/>
+
+		<complex name="items" ref="afrequestitem" jointype="one-to-many">
+			<key field="objid" target="parentid" />
+		</complex> 
+
+		<field name="dtapproved"/> 
+		<field name="approvedby_objid"/> 
+		<field name="approvedby_name"/> 
+	</element> 
+</schema>

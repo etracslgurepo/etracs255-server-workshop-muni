@@ -1,0 +1,30 @@
+import com.rameses.annotations.*;
+
+class BurialPermitReceiptInterceptor {
+	
+	@DataContext("cashreceipt_burial")
+	def em; 
+	
+	@After(pattern="CashReceiptService.post", eval="#{result.collectiontype?.handler == 'burial' && result.txnmode != 'CAPTURE'}")
+	public void afterPost( evt ) { 
+		def cs = evt.result;	
+		em.create( cs );
+	} 
+
+	@After(pattern="CashReceiptService.open", eval="#{result.collectiontype?.handler == 'burial'}")
+	public void afterOpen( evt ) { 
+		afterOpenImpl( evt.result ); 
+	} 
+
+	@After(pattern="PersistenceService.read", eval="#{result?.collectiontype?.handler == 'burial'}")
+	public void afterOpen2( evt ) { 
+		afterOpenImpl( evt.result ); 
+	} 	
+
+	void afterOpenImpl( data ) { 
+		if ( data == null ) return; 
+
+		def cs = em.find([ objid: data.objid ]).first(); 
+		if ( cs ) data.putAll( cs ); 
+	} 
+}

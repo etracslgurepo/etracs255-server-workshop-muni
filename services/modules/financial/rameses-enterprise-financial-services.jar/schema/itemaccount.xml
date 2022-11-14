@@ -1,0 +1,35 @@
+<schema>
+
+	<element tablename="itemaccount">
+		<field name="objid" primary="true" prefix="ITMACCT"/>	
+		<field name="state" required="true" indexed="true" defaultValue="DRAFT" caption="State"/>
+
+		<field name="code" required="true" indexed="true" caption="Acct Code" searchable="true"/>
+		<field name="title" required="true" indexed="true" caption="Acct Title" searchable="true" width="300"/>
+		<field name="description" caption="Description" visible="false"/>
+		<field name="type" required="true" indexed="true" lov="ITEM_ACCOUNT_TYPES" caption="Type"/>
+		<field name="fund_objid" />
+		<field name="fund_code" indexed="true" caption="Fund Code"/>
+		<field name="fund_title" caption="Fund Title"/>
+
+		<field name="valuetype"   lov="ITEM_ACCOUNT_VALUE_TYPES" defaultValue="ANY"/>
+		<field name="defaultvalue" defaultValue="0" datatype="integer"/>
+
+		<field name="org_name" />
+		<field name="generic" caption="Is Generic" datatype="checkbox" checkedValue="1" uncheckedValue="0"/>
+
+		<complex name="org" ref="sys_org" jointype="many-to-one" includefields="objid,code,name" required="false">
+			<key field="org_objid" target="objid"/>
+		</complex>
+
+		<complex name="tags" ref="itemaccount_tag" jointype="one-to-many">
+			<key field="objid" target="acctid"/>
+		</complex> 
+
+		<complex name="parentaccount" ref="mainitemaccount" jointype="many-to-one"
+			required="false" includefields="objid,code,title"> 
+			<key field="parentid" target="objid"/> 
+		</complex> 
+		<field name="hidefromlookup" defaultValue="0" datatype="integer"/>
+	</element>
+</schema>

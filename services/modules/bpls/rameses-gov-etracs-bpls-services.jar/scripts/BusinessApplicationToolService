@@ -1,0 +1,28 @@
+import com.rameses.annotations.*;
+
+class BusinessApplicationToolService {
+
+	@DataContext('business_active_lob_history_forprocess') 
+	def em; 
+
+	@ProxyMethod
+	public def rebuildLOBHistory( params ) { 
+		if ( params == null ) params = [:];
+
+		def o = em.where(' 1=1 ').first(); 
+		if ( o ) {
+			def procstat = em.getForProcessCount(); 
+			if ( procstat ) procstat = procstat.first(); 
+
+			return [ 
+				code: 'processing', 
+				message: 'There are still pending records for process. Please try again later.', 
+				Pending_Count: procstat?.txncount 
+			]; 
+		} 
+
+		em.insertForProcess( params ); 
+		return [code:'success', message: 'Successfully submitted for processing']; 
+	}
+
+}

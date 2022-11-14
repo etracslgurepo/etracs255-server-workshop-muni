@@ -1,0 +1,16 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+
+class CashReceiptSettings { 
+
+	@Service("Var")
+	def var;
+
+
+	@After( pattern="CashReceiptService.post" )
+	public def loadSettings( evt ) { 
+		def options = [:]; 
+		options.canShowPrinterDialog = (var.cashreceipt_show_printer_dialog.toString().matches('false|0') ? false: true);
+		evt.result._options = options; 
+	} 
+} 

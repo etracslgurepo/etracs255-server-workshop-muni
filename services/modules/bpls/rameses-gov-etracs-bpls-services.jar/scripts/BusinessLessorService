@@ -1,0 +1,61 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import java.rmi.server.UID;
+import com.rameses.util.*;
+import com.rameses.io.*;
+import com.rameses.services.extended.*;
+
+class BusinessLessorService extends ActiveCrudListService {
+
+	@ActiveDB("business_lessor")
+	def em;
+
+	@Service("DateService")
+	def dateSvc;
+
+	@ProxyMethod
+	public def getColumns(def o) {
+		def cols =  [
+			[name:'bldgname', caption:'BldgName'],
+			[name:'address', caption:'Address']
+		];
+		if( o._tag != 'government') {
+			cols << [name:'lessor.name', caption:'Owner'];
+			cols <<  [name:'lessor.address.text', caption:'Owner Address'];
+		}	
+		return cols;
+	}
+
+	public void beforeList(o) {
+		o._pagingKeys = "bl.objid";
+		if(!o.government) {
+			o.government = 0;
+			if(o._tag == 'government') o.government = 1;
+		}
+		if( o.ownerid ) {
+			o._listMethod = "getListByOwner";
+			o.today = dateSvc.format('yyyy-MM-dd', dateSvc.getServerDate());
+		} 
+	} 
+
+	public void afterList(o, list) {
+		list.each {
+			def str = (it.bldgno?it.bldgno:'');
+			str += (str? ', ': '') + (it.bldgname?it.bldgname:'');
+			str += (str && it.street ? ', ' : '') + (it.street?it.street:'');
+			str += (str && it.subdivision ? ', ':'') + (it.subdivision?it.subdivision:'');
+			str += (str && it.barangay ? ', ':'') + (it.barangay?.name?it.barangay.name:'');
+			it.address = str;
+		}
+	}
+
+	@ProxyMethod
+	public def getListByOwner( def o ) {
+		return em.getListByOwner( o );
+	}
+
+	@ProxyMethod
+	public def getListByLessor( def o ) {
+		return em.getListByLessor( o );
+	}
+}

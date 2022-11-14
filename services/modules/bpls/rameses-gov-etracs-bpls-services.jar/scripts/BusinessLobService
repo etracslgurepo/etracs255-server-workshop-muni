@@ -1,0 +1,87 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.UID;
+
+public class BusinessLobService  {
+
+	@DataContext("business_application_lob")
+	def applob_db; 
+
+	@ActiveDB("business_active_lob")
+	def activelob_db; 
+
+	@DataContext("business_active_lob_history")
+	def activelob_history_db; 
+
+
+	@ProxyMethod
+	public void addAppLobs(def o) {
+		if(!o.businessid) throw new Exception("businessid is required");
+		if(!o.activeyear) throw new Exception("activeyear is required");
+		if(!o.lobs) throw new Exception("lobs is required");
+		if(!o.applicationid) throw new Exception("applicationid is required");
+
+		//ensure to remove all applications before adding new
+		applob_db.removeList( o );
+		o.lobs.each {
+			it.objid = "BUSLOB"+new UID();
+			it.businessid = o.businessid;
+			it.applicationid = o.applicationid;
+			it.activeyear = o.activeyear;
+			applob_db.create(it);				
+		}
+	}
+
+
+	//allow only to remove per application
+	@ProxyMethod
+	public def getAppLobs(def o) {
+		if(!o.applicationid) throw new Exception("applicationid is required");
+		return applob_db.getList( o );
+	}
+
+	@ProxyMethod
+	public void addActiveLobs(def o) {
+		if(!o.businessid) throw new Exception("businessid is required");
+		if(!o.lobs) throw new Exception("lobs is required");
+		if(o.remove_all == true) activelob_db.removeList( o );
+
+		o.lobs.each {
+			it.objid = "BUSALOB"+new UID();
+			it.businessid = o.businessid; 
+			if ( it.assessmenttype.toString().equalsIgnoreCase('RETIRE') ) {
+				activelob_db.removeLob( it );
+			} else { 
+				def nfo = activelob_db.findLob( it ); 
+				if ( !nfo ) activelob_db.create( it ); 
+			} 
+		} 
+	} 
+
+	@ProxyMethod
+	public def getActiveLobs(def o) {
+		if(!o.businessid) throw new Exception("business is required");
+		return activelob_db.getList( o );
+	}
+
+
+	@ProxyMethod 
+	public void updateActiveLOBHistory( params ) { 
+		def lobs = []; 
+		applob_db.getBusinessLOB([ businessid: params.businessid, appyear: params.appyear ]).each{ o-> 
+			if ( o.apptype.toString().toUpperCase().matches('RETIRE|RETIRELOB')) {
+				def x = lobs.find{ it.lobid==o.lobid } 
+				if ( x ) lobs.remove( x ); 
+
+			} else { 
+				lobs << o; 
+			}
+		}
+
+		def m = [ businessid: params.businessid, activeyear: params.appyear ]; 
+		activelob_history_db.find( m ).delete(); 
+		lobs.each{ o-> 
+			activelob_history_db.create( o );  
+		} 
+	} 
+} 

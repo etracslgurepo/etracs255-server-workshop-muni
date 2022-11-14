@@ -1,0 +1,124 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+import java.rmi.server.UID;
+import java.math.BigDecimal;
+
+class RPTReportROAService
+{
+    @ActiveDB('rptreport_roa')
+    def em;
+
+    @Service('DateService')
+    def dtsvc;
+
+    @Service('RPTUtil')
+    def util
+
+
+    @Async
+    @ProxyMethod
+    public def getROA(params){
+        params.title = 'RECORD OF ASSESSMENTS'
+        buildFilter(params)
+        
+        def roalist = [];
+        def currentlist = em.getCurrentFaasRecord(params);
+        currentlist.each{obj ->
+            def previousfaases = em.getPreviousFaases(obj)
+            if (previousfaases){
+                previousfaases.each{pf ->
+                    def ppf = em.findCancelledFaasRecord(pf)
+                    if (ppf){
+                        roalist << ppf 
+                    }
+                }
+
+            }
+            roalist << obj 
+        }
+
+        if (!roalist)
+            throw new Exception('Record(s) not found.')
+
+        roalist.each{
+            it.barangay = params.barangayname;
+            it.classification = params.classname;
+        };
+        def p = [
+            PERIOD      : params.period,
+            PERIODTYPE  : params.periodtype,
+            TITLE       : params.title,
+            BARANGAY    : params.barangayname,
+        ]
+
+        if (params.lgu)
+            p.FORLGUNAME = params.lgu.lgutype.toUpperCase() + ' OF ' + params.lgu.name
+        else 
+            p.FORLGUNAME = 'ALL'
+
+        return [
+            parameters  : p, 
+            reportdata  : roalist,
+        ]
+    }
+
+    @ProxyMethod
+    public def getSections(){
+        return [];
+    }
+
+    @ProxyMethod
+    public def getLGU(params){
+      return em.getLGU(params);
+    }
+
+    @ProxyMethod
+    public def getBarangay(params){
+      params.index = params.lgu? params.lgu.objid:'';
+      return em.getBarangay(params);
+    }
+
+    void buildFilter(params){
+        util.buildStartEndDateFilter(params)
+        params.filter = ''
+
+        if ('period'.equalsIgnoreCase(params.periodtype.type)){
+            util.buildReportTitlePeriod(params.title, params)
+            if (params.periodtype.equalsIgnoreCase('quarter'))
+                params.period = 'PERIOD: ' + params.period
+            else if (params.periodtype.equalsIgnoreCase('month'))
+                params.period = 'FOR THE MONTH OF ' + params.period
+        }
+        else{
+            params.enddate = params.asofdate 
+            params.period = 'As of ' + dtsvc.format('MMMMM dd, yyyy', dtsvc.parse('yyyy-MM-dd', params.asofdate))
+        }
+
+        if(params.ry){
+            params.filter += ' and rp.ry = $P{ry} '
+        }
+
+        if(params.lgu){
+            params.filter += ' and f.lguid = $P{lguid} '
+            params.lguid = params.lgu.objid 
+        }
+
+        if(params.barangay){
+            params.filter += ' and rp.barangayid = $P{barangayid} '
+            params.barangayid = params.barangay.objid 
+        }
+
+        if (params.classification){
+            params.filter += ' and r.classification_objid = $P{classid} '
+            params.classid = params.classification.objid 
+        }
+
+        if (params.section){
+            params.filter += ' and rp.section = $P{section} '
+        }
+
+        params.barangayname  = params.barangay ? params.barangay.name : 'ALL'
+        params.classname = params.classification ? params.classification.name : 'ALL';
+    }    
+}

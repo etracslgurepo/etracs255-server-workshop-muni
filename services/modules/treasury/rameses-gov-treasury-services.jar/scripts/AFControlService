@@ -1,0 +1,268 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+
+class AFControlService  {
+
+	@DataContext("af_control")
+	def em;
+
+	@DataContext("cashreceipt")
+	def cashRctEm;
+
+	@DataContext("sys_user")
+	def userEm;
+
+	@Env
+	def env;
+
+	@ProxyMethod
+	public def getNextAfSeries(def m ) {
+		if ( !m.collectiontype?.objid ) 
+			throw new Exception("Please specify collectiontype in AFControlService.getNextAfSeries");
+
+		def arr = [];
+		def p = [:];
+
+		//filter assignee
+		arr << "assignee.objid = :assigneeid";
+		p.assigneeid = env.USERID;
+
+		//if subcollection, assignee must not equal to owner/collector
+		if(m._subcollector == true ) {
+			arr << "NOT(assignee.objid = owner.objid)";
+		}		
+		else {
+			arr << "assignee.objid = owner.objid";
+		}
+
+
+		//filter by af form no
+		arr << "afid = :afid";
+		p.afid = m.collectiontype.formno;
+
+		//filter not consumed 
+		arr << "currentseries <= endseries";
+
+		//active is zero
+		arr << "active = 1";
+
+		//filter by mode
+		arr << "txnmode =:txnmode";
+		p.txnmode = m.txnmode;
+
+		//filter by fund
+		if( m.collectiontype?.fund?.objid ) {
+			arr << "fund.objid =:fundid";
+			p.fundid = m.collectiontype.fund.objid;
+		}
+		else {
+			arr <<"fund.objid IS NULL";
+		}
+
+		// //filter by resp. center
+		// if( env.ORGROOT != 1 ) {
+		// 	arr << "respcenter.objid = :orgid";
+		// 	p.orgid = env.ORGID;
+		// }
+		// else {
+		// 	arr << "respcenter.objid IS NULL";
+		// }
+
+		def afc = em.where( arr.join(" AND "), p ).first();
+		if ( !afc ) throw new Warning("select-afcontrol");
+
+		if ( m.formtype == 'cashticket' ) { 
+			//
+			// do not check series for this af 
+			// 
+		} else if ( afc.af.serieslength <= 0 ) {  
+			throw new Exception("series length must be greater than zero for AFControlService.getNextAfSeries")
+		} 
+
+		def result = [:];
+		result.collector = afc.owner; 
+
+		//get the job title
+		result.collector.title = userEm.find([ objid: afc.owner.objid ]).select("jobtitle").val();
+
+		if ( afc.owner?.objid != afc.assignee?.objid  ) { 
+			result.subcollector = afc.assignee; 
+		} 
+		result.stub = afc.stubno; 
+
+		if ( m.formtype == 'cashticket' ) { 
+			result.denomination = afc.afunit?.denomination; 
+			if ( result.denomination == null ) result.denomination = 0.0; 
+
+		} else if ( afc.af.serieslength ) { 
+			def s = afc.currentseries.toString().padLeft(afc.af.serieslength, '0');
+			result.receiptno = (( afc.prefix ? afc.prefix : '') + s + (afc.suffix ? afc.suffix : ''));
+		} 
+
+		result.controlid = afc.objid;
+		result.series = afc.currentseries;
+		result.endseries = afc.endseries; 
+		result.prefix = afc.prefix;
+		result.suffix = afc.suffix;
+		result.serieslength = afc.af.serieslength;
+		result.qtybalance = (afc.endseries - afc.currentseries)+1;
+		if ( result.qtybalance < 0 ) result.qtybalance = 0; 
+
+		return result;
+	}
+
+	@ProxyMethod
+	public void updateNextSeries( p ) { 
+		// force update lock to table 
+		def afparam = [ objid: p.controlid ]; 
+		em.find( afparam ).update([ lockid: new java.rmi.server.UID().toString() ]); 
+
+		def afc = em.find( afparam ).select('objid,txnmode,currentseries,endseries,afunit.*').first(); 
+		if ( afc == null ) return; 
+		if ( afc.txnmode == 'REMOTE' ) return; 
+
+		if ( afc.currentseries > afc.endseries ) 
+			throw new Exception('Series is already consumed. Please verify'); 
+
+		int interval = afc.afunit.interval;
+		if(!interval || interval < 0 ) interval = 1;
+
+		def uparam = [ currentseries: p.series+interval, lockid: '{NULL}' ]; 
+		if ( p.formtype == 'cashticket' ) { 
+			def qtyissued = ((Number) p.amount / p.denomination).intValue(); 
+			uparam.currentseries = afc.currentseries + qtyissued; 
+		} 
+
+		em.find( afparam ).update( uparam ); 
+	} 
+
+
+	void checkCanPerformFunc( def o) {
+		def z = cashRctEm.find( [controlid: o.objid] ).where("remittanceid IS NULL").first();
+		if(z) throw new Exception("Cannot perform this function. Please remit all open collections first");
+	}
+
+	@ProxyMethod 
+	public void assignFund(def o) {
+		checkCanPerformFunc(o);
+		em.find([objid: o.objid] ).update( [fund: o.fund ] );
+	}
+
+	@ProxyMethod 
+	public void unassignFund(def o) {
+		checkCanPerformFunc(o);
+		em.find([objid: o.objid] ).update( [fund: [objid: null, title: null] ] );
+	}
+
+	@ProxyMethod
+	public void assignSubcollector(def o) {
+		checkCanPerformFunc(o);
+		em.find([objid: o.objid] ).update( [assignee: o.assignee] );
+	}
+
+	@ProxyMethod
+	public void unassignSubcollector(def o) {
+		checkCanPerformFunc(o);
+		em.find([objid: o.objid] ).update( [assignee: o.owner] );
+	}
+	
+	@ProxyMethod
+	public void changeRespCenter(def o) {
+		checkCanPerformFunc(o);
+		em.find([objid: o.objid] ).update( [respcenter: o.respcenter] );
+	}
+
+	@ProxyMethod
+	public void removeRespCenter(def o) {
+		checkCanPerformFunc(o);
+		em.find([objid: o.objid] ).update( [respcenter: [objid:null, name:null]] );
+	}
+
+	//This is called from select-af
+	@ProxyMethod
+	public void activateSelectedControl(def o) {
+		em.find([objid: o.objid] ).update( [active: 1] );
+	}
+
+	private def buildWhereStatement( def p ) {
+		//deactivate first controls that matches the ff.
+		def str = []
+		def pp = [:];
+		pp.fundid = p.fund?.objid;
+		pp.ownerid = p.owner.objid;
+		pp.assigneeid = p.assignee.objid;
+		pp.afid = p.afid;
+		pp.txnmode =  p.txnmode;
+		pp.unit = p.unit;
+		pp.respcenterid = p.respcenter?.objid;
+
+		if( pp.fundid ) {
+			str << "fund.objid = :fundid";
+		} 
+		else {
+			str << "fund.objid IS NULL";
+		}
+		if( pp.respcenterid ) {
+			str << "respcenter.objid  = :respcenterid ";
+		}
+		else {
+			str << "respcenter.objid IS NULL";
+		}
+		str << "owner.objid =:ownerid "; 
+		str << "assignee.objid =:assigneeid "; 
+		str << "afid =:afid  " ;
+		str << "txnmode = :txnmode";
+		str << "unit  = :unit " ;
+		str << "state = 'ISSUED' "; 	
+		return [ str.join(" AND "), pp ];
+	}
+	
+	@ProxyMethod
+	public void activateControl(def p) {
+		def whr = buildWhereStatement( p );
+		em.where( whr[0], whr[1] ).update( [active: 0] );
+		em.find( [objid: p.objid ]).update( [active:1]);
+	}
+
+	@ProxyMethod
+	public void deactivateControl(def p) {
+		em.find( [ objid: p.objid ] ).update( [active: 0 ]);
+	}
+
+	@ProxyMethod
+	public def changeMode( p ) { 
+		if ( em.find([ objid: p.objid, txnmode: 'REMOTE' ]).select('objid').first()) {
+			throw new Exception('Change Mode Not Allowed. This record is currently exported'); 
+		}
+
+		em.find([ objid: p.objid ]).update([ txnmode: p.txnmode ]); 
+
+		def result = [txnmode: p.txnmode ];
+		//if the current mode is active.try to do an activate
+		def z = em.find( [objid: p.objid]).first();
+		if(z.active==1) {
+			//check if there are other active having the same info as the control
+			def whr = buildWhereStatement( z );
+			whr[0] += " AND active=1 AND NOT( objid = :objid )";
+			whr[1].objid = z.objid;
+			def cnt = em.where( whr[0], whr[1] ).select( "c:{COUNT(*)}").val();
+			if( cnt > 0 ) {
+				em.find( [objid: p.objid] ).update([active:0]);
+				result.active = 0; 
+			}		
+		}
+		else {
+			result.active = z.active;
+		}
+		return result;
+	} 
+
+	/*
+	@ProxyMethod 
+	public def findAFSummary( params ) {
+		if ( !params.controlid ) throw new Exception('controlid parameter is required'); 
+		return em.findAFSummary( params ); 
+	} 
+	*/
+}

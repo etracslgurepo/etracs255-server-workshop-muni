@@ -1,0 +1,44 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+
+class DefaultMobileSessionService
+{
+	@ActiveDB(value='session', em='system')
+    def em; 
+
+	@Service('DateService')
+	def dateSvc;
+
+	@ProxyMethod 
+	public Map createSession( userid, username, clienttype ) {
+		if (!userid) throw new Exception('Please specify userid'); 
+		if (!username) throw new Exception('Please specify username'); 
+
+		def sess = [
+			sessionid: 	'SESS'+new java.rmi.server.UID(), 
+			userid: 	userid,
+			username: 	username, 
+			clienttype: clienttype, 
+			timein: 	dateSvc.serverDate.toString() 
+		];
+		sess.accesstime = sess.timein; 
+		em.create(sess); 
+		return sess;
+	}
+
+	@ProxyMethod 
+	public void closeSession( sessionid ) {
+		def sess = getSession(sessionid); 
+		if (!sess) return;
+
+		sess.timeout = dateSvc.serverDate.toString();
+		sess.state = 'LOGOUT'; 
+		em.create(sess, 'log');
+		em.delete(sess);
+	} 
+
+	@ProxyMethod 
+	public Map getSession( sessionid ) {
+		return em.read([sessionid: sessionid]);
+	}
+}

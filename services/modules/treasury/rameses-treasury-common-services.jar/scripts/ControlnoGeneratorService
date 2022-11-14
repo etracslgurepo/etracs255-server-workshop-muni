@@ -1,0 +1,74 @@
+import com.rameses.annotations.*;
+
+import treasury.utils.*;
+import treasury.facts.*;
+import enterprise.utils.*;
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import java.util.*;
+import java.util.regex.*;
+import com.rameses.rules.common.RuleExecutionContext;
+
+public class ControlnoGeneratorService {
+	
+	@DataContext(dynamic=true)
+	def em;
+
+	@Service("DateService")
+	def dateSvc;
+
+	@Service("SequenceService")
+	def seqSvc;
+
+	@Env
+	def env;
+
+	def pattern = Pattern.compile("\\[.*?\\]");
+
+	@ProxyMethod
+	public def formatNumber( def d, def handler, int num ) {
+	    def m = pattern.matcher( d );
+	    def sb = new StringBuilder();
+	    int start = 0;
+	    
+	    while(m.find()) {
+	        int end = m.start();
+	        sb.append( d.substring(start, end)  );
+	        String mg = m.group();
+	        mg = mg.substring(1, mg.length()-1);
+	        sb.append( handler(mg, num) );
+	        start = m.end();
+	    }
+	    if( start < d.length() ) sb.append(d.substring(start));
+	    return sb.toString();
+	}
+
+	@ProxyMethod
+	public def generate( def pattern, int num ) {
+		def dt = dateSvc.getServerDate();
+
+		def handler = { pttn, n ->
+			if( pttn == "org") {
+				return env.ORGCODE;
+			}
+			else if(pttn.startsWith("%")) {
+				return String.format( pttn, n );
+			}
+			else {
+				def df = new java.text.SimpleDateFormat( pttn );
+				return df.format( dt );
+			}
+			return ret;
+		}
+		
+		return formatNumber( pattern, handler, num );
+	}
+
+	@ProxyMethod
+	public def getNextNo( def pattern ) {
+		def pttn = generate( pattern, 0 );
+		def i = seqSvc.getNextSeries( pttn );
+		return generate( pattern, i );
+	}
+}

@@ -1,0 +1,10 @@
+<schema>
+	<element tablename="bldgflooradditionalparam">
+		<field name="objid" primary="true" />
+		<field name="bldgflooradditionalid" required="true" />
+		<field name="bldgrpuid" required="true" />
+		<field name="param_objid" required="true" />
+		<field name="intvalue" type="integer"/>
+		<field name="decimalvalue" type="decimal"/>
+	</element>
+</schema>

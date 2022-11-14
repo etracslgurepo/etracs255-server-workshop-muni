@@ -1,0 +1,18 @@
+<schema>
+	<element tablename="afunit">
+		<field name="objid" primary="true"/>
+		<field name="itemid" required="true" caption="AF"/>
+		<field name="unit" required="true" caption="Unit"/>
+		<field name="qty" required="true" type="integer" caption="Unit Qty"/>
+		<field name="saleprice" required="true" type="decimal" caption="Sale Price"/>
+		<field name="interval" required="true" type="integer" defaultValue="1" />		
+		<field name="cashreceiptprintout" caption="Receipt Printout"/>
+		<field name="cashreceiptdetailprintout" caption="Detail Printout"/>
+
+		<complex name="af" ref="af" jointype="many-to-one" required="false">
+			<key field="itemid" target="objid" /> 
+		</complex>	
+	</element>
+</schema>
+
+

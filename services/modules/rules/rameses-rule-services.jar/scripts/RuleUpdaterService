@@ -1,0 +1,72 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.common.*
+import com.rameses.services.extended.*;
+
+
+class RuleUpdaterService  {
+
+	@DataContext("sys_rule")
+	def sysRule;
+
+	@DataContext("sys_rule_deployed")
+	def sysRuleDeployed;
+
+	@Resource("RuleService")	
+	def ruleSvc;
+
+	@ActiveDB("rule")
+	def em;
+
+	@Service("TemplateService")
+	def template;
+
+	@Service("RuleMgmtService")
+	def ruleMgmt;
+
+	@ProxyMethod
+	public def undeployForUpgrade( def o ) {
+		def ruleset = o.ruleset;
+		if(!ruleset) 
+			throw new Exception("Please provide a ruleset");
+
+		//update first 	
+		sysRule.find( [ruleset: ruleset] ).where("state = 'DEPLOYED' ").update( [state: 'UPGRADE'] );	
+
+		sysRule.undeployForUpgrade( [ruleset: ruleset] );
+
+		//delete all rule deployed
+		ruleMgmt.reload( ruleset ); 
+	}
+	
+	@ProxyMethod
+	public def redeployUpgrade( def x ) {
+		def ruleset = x.ruleset;
+		if(!ruleset) 
+			throw new Exception("Please provide a ruleset");
+
+		//update first 	
+		def list = sysRule.find( [ruleset: ruleset] ).where("state = 'UPGRADE' ").list();
+		list.each { r ->
+			def o = ruleMgmt.open(r);
+			o.vars = em.getRuleVars(o); 
+			String ruletext =  template.get( "rules/rule", [rule: o, templateSvc: template ] );
+			try {
+				sysRuleDeployed.create( [objid:o.objid, ruletext: ruletext ] );
+				sysRule.find( [objid: o.objid] ).update( [state: 'DEPLOYED'] );	
+			}
+			catch(e) {
+				println "----------ERROR--------"
+				println ruletext;
+				println e.message;
+				println "------------------------"
+				throw e;
+			}
+		};
+		//delete all rule deployed
+		ruleMgmt.reload( ruleset ); 
+	}
+
+
+}

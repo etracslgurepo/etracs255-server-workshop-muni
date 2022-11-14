@@ -1,0 +1,10 @@
+<schema>
+
+	<element tablename="sys_orgclass">
+		<field name="name" primary="true" caption="Name" visible="true"/>
+		<field name="title" caption="Title"/>
+		<field name="parentclass" caption="Parent Class"/>
+		<field name="handler" caption="Handler"/>
+	</element>
+
+</schema>

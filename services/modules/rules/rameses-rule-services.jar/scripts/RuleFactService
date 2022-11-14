@@ -1,0 +1,117 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.common.*
+import com.rameses.services.extended.*;
+
+class RuleFactService  {
+
+	@ActiveDB("rule")
+	def em;
+	
+	@Service("DateService")
+	def dateSvc;
+
+	@DataContext("sys_ruleset_fact")
+	def rfact;
+
+	@DataContext("sys_rule_fact")
+	def factEm;
+
+	@Env
+	def env;
+
+	@ProxyMethod
+	public def find( def o ) {
+		def f = em.read( o, "fact" );
+		f.fields = em.getFactFields(o);
+		f.rulesets = em.getFactRulesets(o);
+		return f;
+	}
+
+	@ProxyMethod
+	public def save( def o ) {
+		if(!o.fields || o.fields.size() < 1)
+			throw new Exception("There must be at least one field");
+
+		if(!o.sortorder) o.sortorder = 0;
+		em.save(o, "fact");
+		o._deleted_fields?.each { 
+			em.delete(it, "fact_field");
+		}
+		int i= 1;
+		o.fields.each {
+			it.sortorder = (i++);
+			it.parentid = o.objid;
+			em.save( it, "fact_field" );
+		}
+	}
+
+	@ProxyMethod
+	public void copy( def o ) {
+		if(!o.oldid) throw new Exception("oldid is required in RuleFactService.copy");
+		if(!o.newid) throw new Exception("newid is required in RuleFactService.copy");
+		if( o.newid.matches(".*\\s{1,}.*"))
+			throw new Exception("Fact Class must not contain spaces");
+		
+		factEm.copyFact(o);
+		factEm.copyFactField(o);
+		factEm.copyRulesetFact(o);
+	}
+
+	/**********************************************************************************************
+	* refactor changes the objid of the action to its classname, 
+	* also updates action params objid to classname + parameter name
+	* it also updates all links to all rule actions and rule action parameters 
+	**********************************************************************************************/
+	@ProxyMethod
+	public void refactor( def o ) {
+		if(!o.oldid) throw new Exception("oldid is required in RuleFactService.copy");
+		if(!o.newid) throw new Exception("newid is required in RuleFactService.copy");
+
+		if( o.newid.matches(".*\\s{1,}.*"))
+			throw new Exception("Fact Class must not contain spaces");		
+
+		o.copyruleset = true;	
+		copy(o);
+		
+		//refactor conditions
+		factEm.refactorCondition(o);
+		factEm.refactorConstraint(o);
+
+		//remove old fact
+		factEm.removeRulesetFact(o);
+		factEm.removeFactField(o);
+		factEm.removeFact(o);
+	}
+	
+	/**********************************************************************************************
+	* merge is similar to refactor except it does not make a new copy
+	* instead it will use an existing copy and links that instead
+	**********************************************************************************************/
+	@ProxyMethod
+	public void merge( def o ) {
+		if(!o.oldid) throw new Exception("oldid is required in RuleFactService.copy");
+		if(!o.newid) throw new Exception("newid is required in RuleFactService.copy");
+
+		if( o.newid.matches(".*\\s{1,}.*"))
+			throw new Exception("Fact Class must not contain spaces");
+
+		def m = factEm.find( [objid: o.newid ] ).first();
+		if( !m) throw new Exception("Class definition does not exist. Please makre sure the target class is updated before proceeding");					
+		if( m.objid != o.newid) throw new Exception("Class must match exact objid");
+
+		factEm.copyRulesetFact(o);
+
+		//refactor conditions
+		factEm.refactorCondition(o);
+		factEm.refactorConstraint(o);
+
+		//remove old fact
+		factEm.removeRulesetFact(o);
+		factEm.removeFactField(o);
+		factEm.removeFact(o);
+	}
+
+
+}

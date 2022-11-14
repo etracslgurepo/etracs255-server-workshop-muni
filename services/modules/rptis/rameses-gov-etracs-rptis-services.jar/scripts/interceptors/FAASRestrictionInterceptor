@@ -1,0 +1,81 @@
+import com.rameses.annotations.*
+import com.rameses.eserver.*;
+import com.rameses.common.*;
+
+class FAASRestrictionInterceptor
+{
+	@Service('FAASRestrictionService')
+	def svc 
+
+	@Service('LogService')
+	def logSvc
+
+	@DataContext('faas_restriction')
+	def em_restriction 
+
+
+	@After(pattern="FAASRestrictionService.approve") 
+	public void afterApprove( evt ) {
+		def entity = evt.result 
+		logSvc.log('approve', 'faas_restriction', entity.objid)
+		if (entity.ledger){
+			logSvc.logA('add_restriction', 'rptledger', entity.ledger.objid, 'Add ' + entity.restrictiontype.name + ' restriction.')
+		}
+	}
+
+	@After(pattern="FAASRestrictionService.removeRestriction") 
+	public void afterRemove( evt ) {
+		def entity = evt.args[0] 
+		if (entity.ledger){
+			logSvc.logA('remove_restriction', 'rptledger', entity.ledger.objid, 'Remove ' + entity.restrictiontype.name + ' restriction.')
+		}
+	}
+
+	@After(pattern="FAASRestrictionService.cancel") 
+	public void afterCancel( evt ) {
+		def entity = evt.args[0] 
+		logSvc.log('cancel', 'faas_restriction', entity.objid)
+	}
+
+	@After(pattern="FAASRestrictionService.reactivate") 
+	public void afterReactivate( evt ) {
+		def entity = evt.args[0] 
+		logSvc.log('reactivate', 'faas_restriction', entity.objid)
+	}
+
+	@After(pattern="RPTReceiptService.create", index=10000) 
+	public void cancelRestrictions(evt) {
+		def receipt = evt.result 
+		receipt.ledgers.each {
+			def restriction = em_restriction.where('ledger_objid = :objid', it).first()
+			if (restriction) {
+				receipt.toyear = it.toyear 
+				receipt.toqtr = it.toqtr 
+				svc.cancel(restriction, receipt)
+				receipt.remove('toyear')
+				receipt.remove('toqtr')
+			}
+		}
+	}
+
+	@After(pattern="RPTReceiptService.voidReceipt", index=10000) 
+	public void reactivateRestrictions(evt) {
+		def receipt = evt.args[0] 
+		em_restriction.where('receipt_objid = :objid', receipt).list().each {
+			svc.reactivate(it)
+		}
+	}
+
+	@After(pattern="FAASService.openFaas", index=10000) 
+	public void addActiveRestrictionMessage(evt) {
+        def faas = evt.result;
+        def restriction = em_restriction
+                            .select('objid')
+                            .find([parent_objid: faas.objid, state: 'ACTIVE'])
+                            .first()
+        if (restriction) {
+            faas.messagelist << 'FAAS has active restriction.'
+        }
+	}
+}
+

@@ -1,0 +1,31 @@
+import com.rameses.annotations.*
+
+class RPTLedgerRedFlagListInterceptor {
+
+	@Env 
+	def env
+
+	@After(pattern="QueryService.getNodeList", eval="#{ args[0]._schemaname == 'rptledger_redflag' }")
+	public void getNodes( evt ) { 
+		def result = evt.result 
+		result << [id: 'draft', title: 'Draft']
+		result << [id: 'open', title: 'Open']
+		result << [id: 'resolved', title: 'Resolved']
+	}
+
+	@Before(pattern="QueryService.getList", eval="#{ args[0]._schemaname == 'rptledger_redflag' }")
+	public void beforeGetList( evt ) {
+		def o = evt.args[0]
+		if( !o.node?.id ) return
+
+		def qmap = [state: o.node.id]
+
+		if( o.where ) {
+			o.where[0] = "state = :state AND " + o.where[0]	
+			o.where[1].putAll(qmap)
+		}
+		else {
+			o.where = ["state = :state", qmap]
+		} 
+	} 
+}

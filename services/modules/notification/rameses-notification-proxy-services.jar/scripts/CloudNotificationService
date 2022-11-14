@@ -1,0 +1,59 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+
+class CloudNotificationService
+{   
+    @Service(value='CloudNotificationService', connection="notification_proxy")
+    def proxy; 
+
+    @ProxyMethod 
+    public def addMessage( data ) { 
+        return proxy.addMessage( data ); 
+    } 
+
+    @ProxyMethod 
+    public void removeMessage( params ) { 
+        proxy.removeMessage( params ); 
+    } 
+
+    @ProxyMethod 
+    public def addAttachment( data ) { 
+        return proxy.addAttachment( data ); 
+    } 
+
+    @ProxyMethod 
+    public void removeAttachment( params ) { 
+        proxy.removeAttachment( params ); 
+    }  
+
+    @ProxyMethod 
+    public def getAttachments( params ) { 
+        return proxy.getAttachments( params ); 
+    }
+
+    @ProxyMethod 
+    public def getList( params ) {
+        return proxy.getList( params ); 
+    } 
+
+    @Async 
+    @ProxyMethod
+    public void markAsFailed( params ) { 
+        proxy.markAsFailed( params ); 
+    } 
+
+    @ProxyMethod 
+    public void markAsDelivered( params ) {
+        proxy.markAsDelivered( params ); 
+    }
+
+    @ProxyMethod 
+    public void rescheduleFailedMessage( params ) {
+        proxy.rescheduleFailedMessage( params ); 
+    } 
+
+    @ProxyMethod 
+    public void rescheduleFailedMessages( params ) {
+        proxy.rescheduleFailedMessages( params ); 
+    } 
+} 

@@ -1,0 +1,92 @@
+import com.rameses.annotations.*
+import com.rameses.util.*
+import com.rameses.services.extended.*
+
+class RPTMasterSyncDataService
+{
+	@Env
+	def env 
+
+	@Service('DateService')
+    def dtSvc
+
+	@Service('RPTMainSyncDataService')
+	def syncSvc 
+
+    @Service('RPTSyncDataService')
+    def rptSync
+
+    @Service('RPTMasterSupportService')
+    def supportSvc
+
+    def getActions(){
+		return  [
+	    	'RPT-MASTER-SYNC': [send: sendMasterForSync, receive: saveMasterData, schedule: scheduleSubmitToMunicipality],
+	    ]
+	}
+
+
+	/*---------------------------------------------------------
+	*
+	* SCHEDULING SYNC SUPPORT 
+	*
+	---------------------------------------------------------*/
+	@ProxyMethod
+	public void schedule(data) {
+		def action= getActions()[data.action]
+		if (!action) throw new Exception('Scheduler not found for action ' + data.action)
+        data.remote = supportSvc.getRemoteOrg(data)
+        def syncdata = syncSvc.create(data)
+		action.schedule(syncdata, [:])
+	}
+
+	def createItem(item, syncdata, action, async) {
+		return [
+			refid: item.objid ? item.objid : 'SM' + new java.rmi.server.UID(), 
+			reftype: syncdata.reftype, 
+			refno: syncdata.refno, 
+			async: (async == null ? syncdata.async : async),
+			action: (action ? action : syncdata.action),
+		]
+	}
+
+	void createSyncItem(entity, syncdata, action) {
+		createSyncItem(entity, syncdata, action, null)
+	}
+
+	void createSyncItem(entity, syncdata, action, async) {
+		def item = createItem(entity, syncdata, action, async)
+        syncSvc.createItem(syncdata, item)
+	}
+
+	def scheduleSubmitToMunicipality = {syncdata, master ->
+		syncdata.info = syncdata.info ? syncdata.info : [:]
+		createSyncItem(master, syncdata, syncdata.action)
+	}
+
+	/*---------------------------------------------------------
+	* SEND/RECEIVE HANDLERS 
+	---------------------------------------------------------*/
+	@ProxyMethod
+	public void send(syncdata) {
+		rptSync.send(syncdata, getActions())
+	}
+
+	@ProxyMethod
+	public void receive(syncdata) {
+		rptSync.receive(syncdata, getActions())
+	}
+
+
+	/*---------------------------------------------------------
+	* SUPPORT METHODS
+	---------------------------------------------------------*/
+	def sendMasterForSync = {syncdata ->
+        return supportSvc.getMasterData(syncdata.parent.info);
+	}
+
+	def saveMasterData = {syncdata ->
+		supportSvc.saveMasterData(syncdata.data )
+	}
+}
+ 

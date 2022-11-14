@@ -1,0 +1,13 @@
+<schema adapter="image">
+	<element tablename="image_header">
+		<field name="objid" primary="true"/>
+		<field name="refid" />
+		<field name="parentid" />
+		<field name="title" />
+		<field name="filesize"/>
+		<field name="extension" />
+	</element>
+</schema>
+
+
+

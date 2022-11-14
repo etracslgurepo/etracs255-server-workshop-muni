@@ -1,0 +1,167 @@
+import com.rameses.annotations.*;
+import com.rameses.util.DateBean;
+
+class UnremittedCollectionReportService {
+	
+	@DataContext('sys_org')
+	def em_org; 
+
+	@ActiveDB('monitoring/unremitted_collection')
+	def em_report; 
+
+	@Env
+	def env; 
+
+	@Service('DateService')
+	def dateSvc; 
+
+	@Service('Var')
+	def var; 	
+
+	@Service( dynamic=true )
+	def dynaSvc; 
+
+	@ProxyMethod 
+	public def initReport( param ) { 
+		def resp = [:];
+		resp.year = dateSvc.getServerYear(); 
+		resp.domains = [];
+
+		def orgs = var.treasury_remote_orgs;
+		if ( orgs ) {
+			orgs.split(",").each{
+				def o = em_org.find([ objid: it.trim() ]).first();
+				if ( o ) resp.domains << o; 
+			} 
+			resp.domains.sort{ it.name } 
+		}
+		return resp; 
+	} 
+
+	@ProxyMethod 
+	public def getReport( params ) { 
+		if ( !params.template?.objid ) throw new Exception("params.template.objid  parameter is required");  
+		if ( !params.period?.type ) throw new Exception("params.period.type  parameter is required");  
+
+		def result = [:]; 
+		if ( params.domain?.objid ) { 
+			def remoteSvc = dynaSvc.lookup('RemoteCoordinatorService', 'coordinator-script-service'); 
+
+			def mm = [:];
+			mm.reftype = 'treasury-monitoring';
+			mm.reportConnection = 'treasury';
+			mm.reportService = 'monitoring/UnremittedCollectionReportService';
+			mm.reportMethod = 'getReport';
+
+			def mmm = [:]; 
+			mmm.putAll( params ); 
+			mmm.remove('domain'); 
+			mm.reportParam = mmm; 
+
+			def remoteConfig = [
+				orgcode   : params.domain.objid,
+				connection: mm.reportConnection,
+				module    : "etracs25"
+			];  
+
+			mm = remoteSvc.onMessage( mm, remoteConfig ); 
+			result.reportdata = mm.reportdata; 
+			result.header = mm.header; 
+			result.header.DOMAIN_TITLE = params.domain?.name; 
+
+		} 
+		else {
+			buildParams( params ); 
+			result.reportdata = [ templateid: params.template?.objid ]; 
+			result.reportdata.summaries = [];
+			result.header = params.header; 
+
+			result.reportdata.items = em_report.getReportA( params.filter ); 
+
+			def list = []; 
+			result.reportdata.items.groupBy{ it.collector?.name }.each{ k,v-> 
+				if ( k ) {
+					list << [
+						category: 'Summary By Collector',
+						amount: v.sum{( it.amount ? it.amount: 0 )}, 
+						particulars: k 
+					]; 
+				}
+			}
+			list.sort{ it.particulars }
+			result.reportdata.summaries.addAll( list ); 
+			list.clear();
+
+			result.reportdata.items.groupBy{ it.collectiontype?.name }.each{ k,v-> 
+				if ( k ) {
+					list << [
+						category: 'Summary By Collection Type',
+						amount: v.sum{( it.amount ? it.amount: 0 )}, 
+						particulars: k 
+					]; 
+				}
+			}
+			list.sort{ it.particulars }
+			result.reportdata.summaries.addAll( list ); 
+			list.clear();
+		}
+
+		if ( !result.reportdata ) 
+			throw new Exception("No available record(s) that matches your criteria");  
+
+		return result; 
+	}
+
+	void buildParams( params ) { 
+
+		if ( !params.year ) throw new Exception('params.year parameter is required'); 
+
+		def origdate = java.sql.Date.valueOf(""+ params.year +"-12-31"); 
+		def startdate = new DateBean( origdate ).add('1d'); 
+		startdate = resolveDate( startdate );
+
+		def header = [:]; 
+		def filter = [:]; 
+		filter.startdate = startdate; 
+
+		def YMD = new java.text.SimpleDateFormat('yyyy-MM-dd'); 
+
+		header.PERIOD_TYPE = params.period.type.toString().toLowerCase(); 
+		switch ( header.PERIOD_TYPE ) {
+			case 'asofyear': 
+				header.PERIOD_TITLE = 'AS OF YEAR '+ new java.text.SimpleDateFormat('yyyy').format( origdate );
+				break; 
+
+			default: 
+				throw new Exception(''+ params.PERIOD_TYPE +' period option not supported'); 
+				break; 
+		} 
+
+		header.REPORT_TITLE = 'UNREMITTED COLLECTIONS REPORT'; 
+
+		def templateid = params.template?.objid.toString();
+
+		params.filter = filter; 
+		params.header = header; 
+	}
+
+	def resolveDate( value ) {
+		if ( !value ) return null; 
+		if ( value instanceof java.sql.Date ) return value; 
+
+		if ( value instanceof java.util.Date ) {
+			return new java.sql.Date( value.time ); 
+		}
+
+		try {
+			return java.sql.Date.valueOf( value.toString()); 
+		} catch(Throwable t) {;}
+
+		try {
+			def o = java.sql.Timestamp.valueOf( value.toString()); 
+			return new java.sql.Date( o.time ); 
+		} catch(Throwable t) {;}
+
+		return null; 
+	} 
+}

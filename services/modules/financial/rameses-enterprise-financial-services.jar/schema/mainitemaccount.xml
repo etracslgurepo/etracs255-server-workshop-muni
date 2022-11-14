@@ -1,0 +1,8 @@
+<schema>
+
+	<element tablename="itemaccount">
+		<field name="objid" primary="true" prefix="ITMACCT"/>	
+		<field name="code" required="true" indexed="true" caption="Acct Code" searchable="true"/>
+		<field name="title" required="true" indexed="true" caption="Acct Title" searchable="true"/>
+	</element>
+</schema>

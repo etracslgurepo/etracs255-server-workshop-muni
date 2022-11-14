@@ -1,0 +1,49 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+import com.rameses.util.*;
+
+class WsCloudChannelListener { 
+
+	@Service('AsyncRequestExecutor')
+	def asyncReqExecutor;
+
+    @Service('CloudSettings') 
+    def settings;    	
+
+	@Service(value='CloudNotificationService') 
+	def localSvc;
+
+	@Service(value='CloudNotificationService', connection='cloud_notification') 
+	def remoteSvc;
+
+	@Service 
+	def self;
+
+	@OnMessage('ws_cloud_channel') 
+	public void receive( params ) { 
+        if ( !settings.isEnabled() ) { 
+            //facility is disabled, exit immediately 
+            return;  
+        } 
+        		
+		println '[WsCloudChannelListener] '+ params.channel+'_'+params.origin +': Sender='+ params.sender +', MsgType='+ params.messagetype +', Msg='+ params.message; 
+
+		if ( params.immediate == true ) {
+			self.processImmediateMessage( params ); 
+			return; 
+		} 
+
+		if ( !localSvc.findHeader( params ) ) {
+			def header = remoteSvc.openHeader( params ); 
+			if ( header ) localSvc.createMessageForDownload( params ); 
+		} 
+
+		remoteSvc.markAsReceived( params ); 
+	} 
+
+	@Async 
+	@ProxyMethod(local=true) 
+	void processImmediateMessage( params ) { 
+		asyncReqExecutor.process( params ); 
+	} 
+} 

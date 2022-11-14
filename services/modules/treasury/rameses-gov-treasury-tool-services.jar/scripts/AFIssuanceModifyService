@@ -1,0 +1,30 @@
+import com.rameses.annotations.*;
+
+class AFIssuanceModifyService {
+
+	@Service('PersistenceService') 
+	def persistenceSvc; 
+
+	@Service('AFTxnService') 
+	def aftxnSvc; 
+
+
+
+	@ProxyMethod 
+	public void changeTxnType( param ) {
+		def mm = [_schemaname: 'aftxnitem', _tag: 'change-txntype-issuance']; 
+		param.items.each{ o-> 
+			mm.objid = o.objid; 
+			mm.txntype = o.txntype; 
+			persistenceSvc.update( mm ); 
+		} 
+
+		param.costitems.each{ o-> 
+			aftxnSvc.changeSaleCost([ 
+				aftxnitemid: o.aftxnitemid, 
+				batchref: o.batchref, batchno: o.batchno, 
+				salecost: (o.salecost ? o.salecost : 0.0)  
+			]); 
+		} 
+	}
+}

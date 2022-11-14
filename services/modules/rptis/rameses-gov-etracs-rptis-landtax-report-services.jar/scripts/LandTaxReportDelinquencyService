@@ -1,0 +1,189 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class LandTaxReportDelinquencyService
+{
+	@Env
+	def env 
+
+	@Service('RPTBillingService')
+	def billSvc
+
+	@Service('DateService')
+	def dtSvc 
+
+	@Service('NumberService')
+	def numSvc 
+
+	@ActiveDB('landtaxreport_rptdelinquency')
+	def em 
+
+	@DataContext('propertyclassification')
+	def em_classification
+
+	@DataContext('barangay')
+	def em_barangay
+
+	@DataContext('report_rptdelinquency')
+	def em_delinquency
+
+	@DataContext('report_rptdelinquency_barangay')
+	def em_delinquency_barangay
+
+
+	@ProxyMethod
+	public def getBarangayList(  ) {
+		return em_barangay.select('objid,name').where('1=1').list() 
+	}
+
+	@ProxyMethod
+	public def getClassifications(  ) {
+		return em_classification.where("state = 'APPROVED'").orderBy('orderno').list()
+	}	
+
+
+	@Async
+	@ProxyMethod
+	public def buildReport( params ) {
+		validate(params)
+
+		def currentyear = dtSvc.getServerYear(); 
+		if ( !params.year ) params.year = currentyear;
+
+		params.filter = '';
+		if ( params.period?.code == 'FOR_THE_YEAR' ) {
+			params.filter = ''' AND year = $P{year} ''';
+		} else if ( params.period?.code == 'AS_OF_YEAR' ) {
+			params.filter = ''' AND year <= $P{year} ''';
+		} else if ( params.period?.code == 'YEAR_RANGE' ) {
+			params.filter = ''' AND year >= $P{fromyear} AND year <= $P{toyear} ''';
+		} else { 
+			params.filter = ''' AND year < $P{year} ''';
+			params.year = currentyear; 
+		} 
+
+		params.classificationid = (params.classification ? params.classification.objid : '%')
+		params.taxpayerid = params.taxpayer ? params.taxpayer.objid : '%' 
+
+		params.barangayid = params.barangay?.objid; 
+		if ( !params.barangayid ) params.barangayid='%'; 
+
+		params.orderby = ' rl.fullpin '; 
+		if ( params.sorttype == 'taxpayer' ) {
+			params.orderby = ' e.entityname ';
+		} else if ( params.sorttype == 'tdno' ) {
+			params.orderby = ' rl.tdno ';
+		} 
+
+		def list = null; 
+		if ( params.reporttype == 'summary' ) {
+			list = em.getDelinquentLedgersSummary( params ); 
+			if ( !list ) throw new Exception('No records found. Try rebuilding the delinquency')
+		} 
+		else if ( params.reporttype == 'certifiedlist' ) {
+			list = em.getCertifiedList( params ); 
+			if ( !list ) throw new Exception('No records found. Try rebuilding the delinquency')
+		} 
+		else if ( params.reporttype == 'byclassification' ) {
+			list = buildDelinquentLedgersByClassification(params)
+		} 
+		else if ( params.reporttype == 'byclassdetailed' ) {
+			list = buildDelinquencyByClassificationDetailed(params)
+		} 
+		else {
+			if (params.format.type.equalsIgnoreCase('format2')){
+				params.filter = ''' AND year <= $P{year} ''';
+				list = em.getDelinquentLedgers2( params ).each{
+					def orno = em.findLatestPayment(it)
+					if(orno){
+						it.putAll(orno)
+					}
+				} 
+			}
+			else if (params.format.type.equalsIgnoreCase('format3')){
+				if ( params.period?.code == 'FOR_THE_YEAR' ) {
+					params.toyear = params.year 
+					params.filter = ''' AND year = $P{year} ''';
+				} else if ( params.period?.code == 'AS_OF_YEAR' ) {
+					params.toyear = params.year 
+					params.filter = ''' AND year <= $P{year} ''';
+				} else if ( params.period?.code == 'YEAR_RANGE' ) {
+					params.toyear = params.toyear 
+					params.filter = ''' AND year >= $P{fromyear} AND year <= $P{toyear} ''';
+				} else { 
+					params.year = currentyear; 
+					params.toyear = params.year
+					params.filter = ''' AND year <= $P{year} ''';
+				} 
+				list = em.getDelinquentLedgers3( params )
+				if (list.size() > 1){
+					def previd = list[0].rptledgerid 
+					for(int i=1; i<list.size(); i++){
+						def curr = list[i]
+						if (previd == curr.rptledgerid){
+							curr.taxpayer = null 
+						}
+						else{
+							previd = curr.rptledgerid 
+						}
+					}
+				}
+			}
+			else {
+				list = em.getDelinquentLedgers( params ); 
+			}
+
+			if ( !list ) throw new Exception('No records found. Try rebuilding the delinquency for this barangay.')
+
+			list.each{
+				if (it.classcode?.matches('A|AGR')) { 
+					it.area = numSvc.format('#,##0.0000', it.totalareaha) + ' ha.' 
+				} else {  
+					it.area = numSvc.format('#,##0.00', it.totalareasqm) + ' sqm' 
+				} 
+				if (it.administrator && it.administrator.name){
+					it.taxpayername += '\nAdmin: ' + it.administrator.name 
+				}
+			} 
+		} 
+		return [reportdata:list]; 
+	}
+
+	def buildDelinquentLedgersByClassification(params){
+		def list = em.getDelinquentLedgersByClassification( params ); 
+		if ( !list ) throw new Exception('No records found. Try rebuilding the delinquency')
+		return list;
+	}
+
+	def buildDelinquencyByClassificationDetailed(params){
+		def list = em.getDelinquentLedgersByClassificationDetailed( params ); 
+		if ( !list ) throw new Exception('No records found. Try rebuilding the delinquency')
+		return list;
+	}
+
+
+	/* if per lgu, report_rptdelinquency state should be COMPLETED
+	*  if by barangay, report_rptdelinquency_barangay processed > 0 and errors = 0 
+	*/
+	void validate(params){
+		if (params.barangay){
+			def brgy = em_delinquency_barangay.find([barangayid: params.barangay.objid]).first()
+			if (brgy.count > 0 && (brgy.processed = 0 || brgy.errors > 0)){
+				throw new Exception('Delinquencies for Barangay ' + params.barangay.name + ' has not yet been fully generated.\nOpen the realty tax delinquency build facility and complete the process.')
+			}
+		} else {
+			def build = em_delinquency.where('1=1').first();
+			if (!build){
+				throw new Exception('Realty Tax Delinquencies has not yet been generated.\nBuild the delinquecies first inorder to generate this report.')
+			}
+			if (!'COMPLETED'.equalsIgnoreCase(build.state)){
+				throw new Exception('Realty tax delinquency build has not completed.\nOpen the realty tax delinquency build facility and complete the process.')
+			}
+		}
+
+		if (params.period.code == 'YEAR_RANGE' && params.fromyear > params.toyear)
+		throw new Exception("From Year must be less than or equal to To Year")
+	}
+}
+

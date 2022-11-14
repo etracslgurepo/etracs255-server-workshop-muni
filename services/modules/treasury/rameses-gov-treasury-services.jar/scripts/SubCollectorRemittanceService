@@ -1,0 +1,122 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.common.*
+import com.rameses.services.extended.*
+
+class SubCollectorRemittanceService  {
+
+	@ActiveDB("subcollector_remittance")
+	def em; 
+
+	@Service("DateService")
+	def dateSvc;
+
+	@Service("SequenceService")
+	def seqSvc;
+
+	@Env
+	def env;
+
+	@ProxyMethod
+	public def getCollectorList() {
+		return em.getCollectors( subcollectorid: env.USERID );
+	}
+
+	@ProxyMethod 
+	public def getItems(entity) {
+		return em.getItemsRemittance(entity)	
+	}
+
+	@ProxyMethod
+	public def open( entity ) { 
+		entity = em.read(entity); 	
+		entity.items = getItems(entity); 
+		entity.otherpayments = em.getRemittedChecks([ remittanceid: entity.objid ]); 
+		return entity; 
+	}
+
+
+	@ProxyMethod
+	public def getUremittedCollections(def p) {
+		p.subcollector = [objid:env.USERID, name:env.NAME, title:env.JOBTITLE];
+		if(!p.collector) {
+			p.items = [];
+			p.checksum = [:];
+			p.amount = 0;
+		}
+		else {
+			def params = [collectorid:p.collector.objid, subcollectorid:p.subcollector.objid ];
+			p.items = em.getUremittedCollectionSummary( params );
+			p.checksum = em.findSummaryTotals( params );
+			p.amount = (p.checksum.amount == null ? 0.0 : p.checksum.amount);
+			p.totalnoncash = (p.checksum.totalnoncash == null ? 0.0 : p.checksum.totalnoncash);
+			p.totalcash = p.checksum.totalcash; 
+		} 
+		return p;
+	}
+
+	@ProxyMethod 
+	public def getCheckPaymentsByRemittanceid(params) {
+		return em.getCheckPaymentByRemittanceId( params );
+	}
+
+	@ProxyMethod 
+	public def getCheckPaymentsBySubcollector(params ) {
+		params.subcollectorid = env.USERID; 
+		return em.getCheckPaymentBySubcollector( params )
+	}
+
+
+	@ProxyMethod
+	public def post(def p) {
+		def params = [
+			collectorid:p.collector.objid, 
+			subcollectorid:p.subcollector.objid,
+			remittanceid: p.objid 
+		];
+		def ctest = em.findSummaryTotals( params );
+		def chksum = p.checksum;
+		if( chksum != ctest )
+			throw new Exception("Changes have been made prior to posting. Please redo transaction");
+
+		def txncode = "SUBREM";	
+		p.txnno = txncode + seqSvc.getNextFormattedSeries(txncode);	
+		p.txndate = dateSvc.serverDate;	
+		p.dtposted = dateSvc.serverDate;	
+		p.state = "OPEN";
+		p.collectionsummaries = getCollectionSummaries(params)
+		em.create(p);	
+		em.collectReceipts(params);
+		em.updateCashReceiptState(params);
+		return p;
+	}
+
+
+	@ProxyMethod
+	public def getCollectionSummaries( params ) { 
+		return em.getCollectionSummaries( params ); 
+	}
+
+	@ProxyMethod
+	public def generateDCR( objid ) {
+		def entity = open([ objid: objid ]);
+		entity.cashbreakdown.sort{ -it.denomination.toInteger() } 
+
+		entity.denomination = [:]; 
+		entity.cashbreakdown.each{ o-> 
+			entity.denomination.put( o.denomination.toInteger(), [qty: o.qty, amount: o.amount]); 
+		} 
+		entity.collectionsummaries.each { 
+			if ( it.qtyreceived instanceof String ) it.qtyreceived = Integer.parseInt(it.qtyreceived); 
+			if ( it.qtyissued instanceof String ) it.qtyissued = Integer.parseInt(it.qtyissued); 
+			if ( it.qtyending instanceof String ) it.qtyending = Integer.parseInt(it.qtyending); 
+
+			if ( it.qtyending == 0 ) {
+				it.endingstartseries = it.endingendseries = it.qtyending = null; 
+			}
+		}
+		return entity; 
+	}
+
+}

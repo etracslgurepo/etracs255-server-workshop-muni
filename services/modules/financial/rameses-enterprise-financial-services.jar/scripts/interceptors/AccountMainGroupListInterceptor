@@ -1,0 +1,12 @@
+import com.rameses.annotations.*;
+
+class AccountMainGroupListInterceptor  {
+
+	@After(pattern="QueryService.getList", eval="#{ args[0]._schemaname == 'account_maingroup' }")
+	public void afterGetList( evt ) {
+		def res = evt.result; 
+		res.each{
+			it.system = (it.system.toString() == '1' ? 1 : 0);
+		}
+	}
+}

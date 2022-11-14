@@ -1,0 +1,16 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+
+
+class DateListServiceInterceptor  {		
+
+	@Service("DateService")
+	def dateSvc;
+
+    @After( pattern="ListService.getList", eval="#{args[0].name == 'months'}" )
+    public void getMonths( def evt ) {
+    	def result = evt.result;
+        result.addAll( dateSvc.getMonths() );
+    }
+	
+}

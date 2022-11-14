@@ -1,0 +1,79 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class LandTaxReportTopNRealPropertyTaxpayerService
+{
+    @ActiveDB('landtaxreport_topn_realty_taxpayer')
+    def em
+
+    @Service('DateService')
+    def dtSvc 
+
+    @Service('RPTUtil')
+    def util
+
+
+	@Async
+    @ProxyMethod
+	public def buildReport(params){
+		params._limit = params.topn 
+		params.type = '%'
+		
+		if (params.rputype) {
+			params.type = params.rputype
+		}
+
+		def list = []
+		em.getTopNPayments(params).each{
+			list += em.getTopNTaxpayerPayments([
+				year: params.year, 
+				amount: it.amount,
+				type: params.type,
+			])
+		}
+
+		if (!list) throw new Exception('There are no records found.');
+
+		int rank = 0
+		def prevamt = 0.0
+		for(int i = 0; i < list.size(); i++){
+			def item = list[i]
+			item.period = item.fromyear + '-' + item.toyear 
+			if (prevamt != item.amount){
+				rank++;
+				prevamt = item.amount 
+			}
+			
+			if ( rank > params.topn)
+				break;
+
+			item.rank = rank;
+		}
+
+		def firstitem = em.findFirstItem(params)
+		list[0].dtgenerated = firstitem.dtgenerated
+
+		def p = [:]
+		p.TOPN = params.topn 
+		p.YEAR = params.year 
+		p.TITLE = 'Top ' + params.topn + ' Realty Tax Payers '
+		if (params.rputype) p.TITLE += ' (' + params.rputype.toUpperCase() + ')'
+		return [reportdata:list, parameters:p]; 
+	}
+
+    @ProxyMethod
+    public void buildSummary(params) {
+        if (!params.year) throw new Exception('year must be specified');
+        params.fromdate = params.year + '-01-01'
+        params.todate = (params.year+1) + '-01-01'
+        params.dtgenerated = dtSvc.serverDate
+
+        println 'buildSummary: deleteSummaries...'
+        em.deleteSummaries(params)
+        println 'buildSummary: insertSummaries...'
+        em.insertSummaries(params)
+        println 'buildSummary: done'
+    }
+
+}

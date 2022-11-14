@@ -1,0 +1,78 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.common.*
+import com.rameses.services.extended.*
+
+public class CollectionSummaryService  {
+
+	@ActiveDB('collectionsummary')
+	def adb;
+
+	@Env
+	def env;
+
+	@Service('DateService')
+	def dateSvc;	
+
+	@ProxyMethod
+	public def getCollectionsByCount( arg ) { 
+		def params = [userid: env.USERID]; 
+		if ( arg instanceof Number ) { 
+			params.receiptcount = arg; 
+		} 
+		else { 
+			params.receiptcount = arg.receiptcount; 
+			params.tag = arg.tag; 
+		} 
+
+		def filters = []; 
+		if ( params.tag == 'subcollection' ) {
+			filters << "cr.subcollector_objid = '" + params.userid + "'"; 
+			filters << "cr.state = 'DELEGATED'";
+		}
+		else {
+			filters << "cr.collector_objid = '" + params.userid + "'"; 
+			filters << "cr.state = 'POSTED'";
+		}
+		
+		params.filters = filters.join(" AND "); 
+		return adb.getCollectionsByCount( params ); 
+	} 
+
+	@ProxyMethod
+	public def getCollections( param ) { 
+		param.userid = env.USERID;
+
+		if ( !param.todate ) param.todate = param.fromdate; 
+
+		param.fromdate = resolveDate( param.fromdate ); 
+		param.todate   = resolveDate( param.todate ); 
+		if ( param.todate ) param.todate = dateSvc.add( param.todate, '1d' ); 
+
+		def filters = []; 
+		if ( param.fromdate ) filters << ''' cr.receiptdate >= $P{fromdate} '''; 
+		if ( param.todate ) filters << ''' cr.receiptdate < $P{todate} '''; 
+		if ( param.formno ) filters << ''' cr.formno LIKE $P{formno} '''; 
+
+		if ( !filters ) return []; 
+		
+		param.filters = filters.join(' AND ');
+		return adb.getCollections( param );
+	}
+
+
+	private def YMD =  new java.text.SimpleDateFormat('yyyy-MM-dd'); 
+	private def resolveDate( value ) { 
+		if ( value == null ) return null; 
+		
+		def dt = null; 
+		if ( value instanceof java.util.Date ) {
+			dt = value; 
+		}
+		else {
+			dt = YMD.parse( value.toString() ); 
+		}
+		return new java.sql.Date( dt.time ); 
+	}
+}

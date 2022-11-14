@@ -1,0 +1,34 @@
+<schema>
+	<element name="mcsettlement" tablename="mcsettlement">
+		<field name="objid" primary="true" />
+		<field name="state" required="true" />
+		<field name="txnno" required="true" />
+		<field name="effectivityyear" type="integer" required="true" />
+		<field name="effectivityqtr" type="integer" required="true" />
+		<field name="memoranda" />
+		<field name="prevfaas_objid" required="true" />
+		<field name="newfaas_objid" />
+		<field name="newtdno" />
+		<field name="lgutype" required="true" />
+		<field name="lguid" required="true" />
+		<complex name="signatories" type="list" required="true" serializer="default" />
+	</element>
+
+	<element name="otherclaim" tablename="mcsettlement_otherclaim">
+		<field name="objid" primary="true" />
+		<field name="mcsettlementid" required="true" />
+		<field name="faas_objid" required="true" />
+	</element>
+
+	<element name="affectedrpu" tablename="mcsettlement_affectedrpu">
+		<field name="objid" primary="true" />
+		<field name="mcsettlementid" required="true" />
+		<field name="rputype" required="true" />
+		<field name="prevfaas_objid" required="true" />
+		<field name="newfaas_objid" />
+		<field name="newtdno" />
+	</element>
+</schema>
+
+
+

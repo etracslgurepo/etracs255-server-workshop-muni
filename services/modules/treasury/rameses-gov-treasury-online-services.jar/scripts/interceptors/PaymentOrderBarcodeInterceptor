@@ -1,0 +1,15 @@
+import com.rameses.annotations.*;
+
+class PaymentOrderBarcodeInterceptor {
+
+	@Service( dynamic=true )
+	def dynaSvc;
+
+	@After( pattern="PaymentOrderService.getBarcodePrefix" )
+	public void afterGetBarcodePrefix( evt ) { 
+		def conn = evt.args[0]; 
+		def svc = dynaSvc.lookup('OnlinePaymentOrderService', 'etracs'); 
+		def key = svc.getPaymentOrderBarcodeKey([ connection: conn ]); 
+		evt.result.barcodeid = key; 
+	} 
+}

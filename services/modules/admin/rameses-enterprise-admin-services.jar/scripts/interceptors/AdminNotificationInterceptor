@@ -1,0 +1,20 @@
+import com.rameses.annotations.*;
+
+class AdminNotificationInterceptor {
+	
+	@ActiveDB('usergroupmember') 
+	def usergroupmember; 
+
+	@Env 
+	def env; 
+
+	@Before( pattern="NotificationService.getList", index=-9999 ) 
+	public void beforeGetList( evt ) {  
+		def params = evt.args[0]; 
+		if ( params.recipienttype == 'my-messages' ) { 
+			params.roles = usergroupmember.getRolesByUser([ userid: env.USERID ]); 
+			params.userid = env.USERID; 
+		} 
+	} 
+
+}

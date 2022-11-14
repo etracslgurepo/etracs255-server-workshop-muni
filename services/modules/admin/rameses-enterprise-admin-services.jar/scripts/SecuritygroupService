@@ -1,0 +1,19 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import java.rmi.server.UID;
+import com.rameses.util.*;
+import com.rameses.io.*;
+import com.rameses.services.extended.*;
+
+class SecuritygroupService extends ActiveCrudService {
+
+	@ActiveDB(value='securitygroup', em='admin')
+	def em;
+
+	@ProxyMethod 
+	public List getList( params ) {
+		if (!params.usergroupid) throw new Exception('Please specify usergroupid');
+		return em.getList([usergroupid: params.usergroupid]);
+	}
+
+}

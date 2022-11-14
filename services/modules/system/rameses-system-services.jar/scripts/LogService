@@ -1,0 +1,47 @@
+import com.rameses.annotations.*;
+import com.rameses.services.extended.*;
+import java.rmi.server.UID;
+
+
+class LogService
+{
+	@Env 
+	def env
+
+	@DataContext('log')
+	def logDb 
+
+	
+	@ProxyMethod
+	public def log( action, ref, refid ) {
+		logB( action, ref, refid, null, null);
+	}
+	
+	@ProxyMethod
+	public def logA( action, ref, refid, remarks ) {
+		logB( action, ref, refid, remarks, null);
+	}
+	
+	@ProxyMethod
+	public def logB( action, ref, refid, remarks, diff ) {
+		def log = [ 
+			objid      : "L" + new UID(),
+			schemaname : "log:log",
+			versionno  : "1.0",
+			ref        : ref,
+			refid      : refid,
+			txndate    : new Date(),
+			action     : action,
+			userid     : (env.USERID ? env.USERID : "SYSTEM"),
+			username   : (env.NAME ? env.NAME : "SYSTEM"),
+			remarks    : remarks,
+			diff       : diff,
+		];
+		logDb.create(log);
+	}
+
+	@ProxyMethod
+	public def getLogs( refid ) {
+		return logDb.find([refid:refid]).orderBy('txndate').list();	
+	}
+}

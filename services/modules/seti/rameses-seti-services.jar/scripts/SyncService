@@ -1,0 +1,69 @@
+import com.rameses.annotations.*
+
+class SyncService {
+
+	@Service("QueryService")
+	def localQrySvc;
+
+	@Service(value="QueryService", connection="syncserver")
+	def qrySvc;
+	
+	@Service(value="PersistenceService", connection="syncserver")
+	def persistenceSvc;
+
+	@Service( "OrgService")
+	def orgSvc;
+
+	@DataContext(dynamic=true)
+	def db;
+
+        @Env
+        def env;
+
+	/****************************************************
+	* This pulls data from the sync server 
+	* and saves it to the local server
+	****************************************************/
+	@ProxyMethod
+	public void pull( def o ) {
+		if( !o._schemaname ) throw new Exception("Please provide a _schemaname");
+		def em = db.lookup( o._schemaname );
+		o._start = 0;
+		o._limit = 10;
+		while(true) {
+			def list = qrySvc.getList( o );
+			if( !list ) break;
+			list.each {
+                            it.system = 1;
+                            em.save( it );
+			}
+			o._start += o._limit;
+		}
+	}
+
+	/****************************************************
+	* This pulls data from the local server 
+	* and saves it to the sync server
+	****************************************************/
+	@ProxyMethod
+	public void push( def o ) {
+		if( !o._schemaname ) throw new Exception("Please provide a _schemaname");
+		def orgid = orgSvc.getRoot().objid;
+		def em = db.lookup( o._schemaname );
+		o._start = 0;
+		o._limit = 10;
+		while(true) {
+			def list = localQrySvc.getList( o );
+			if(!list) break;
+			list.each {
+				it.orgid = orgid;
+			}
+			def  p = [_schemaname: o._schemaname, data: list ];
+			persistenceSvc.batchSave( p );
+			o._start += o._limit;
+		}
+	}
+
+}
+
+

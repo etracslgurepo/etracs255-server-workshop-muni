@@ -1,0 +1,32 @@
+<schema>
+	<element tablename="faas_restriction">
+		<field name="objid" primary="true" prefix="FR"/>
+		<!-- STATES: DRAFT, ACTIVE, UNRESTRICTED -->
+		<field name="state" required="true" caption="State" searchable="true" indexed="true"/>
+		<field name="parent_objid" required="true" />
+		<field name="ledger_objid" />
+		<field name="restrictiontype_objid" required="true" />
+		<field name="txndate" caption="Txn Date" indexed="true" />
+		<field name="remarks" />
+		<field name="receipt_objid"  />
+		<field name="receipt_receiptno"  caption="Receipt No." searchable="true" indexed="true" />
+		<field name="receipt_receiptdate"  type="date" caption="Receipt Date" />
+		<field name="receipt_amount"  type="decimal" caption="Receipt Amount" />
+		<field name="receipt_lastyearpaid"  type="integer" caption="Last Year Paid" />
+		<field name="receipt_lastqtrpaid"  type="integer" caption="Last Year Paid" />
+		<field name="createdby_objid" />
+		<field name="createdby_name" />
+		<field name="dtcreated" type="timestamp" />
+		<field name="rpumaster_objid" />
+		<complex name="parent" ref="faas" jointype="many-to-one" required="true"
+			includefields="tdno,fullpin,owner_name,rpuid,lguid,originlguid">
+			<key field="parent_objid" target="objid" />
+		</complex>
+		<complex name="restrictiontype" ref="faas_restriction_type" jointype="many-to-one" required="true">
+			<key field="restrictiontype_objid" target="objid" />
+		</complex>
+	</element>
+</schema>
+
+
+

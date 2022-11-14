@@ -1,0 +1,140 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import java.rmi.server.UID;
+import com.rameses.util.*;
+
+class BusinessCaptureInterceptor {
+	
+	@ActiveDB(value="etracs18", em="etracs18")
+	def em;
+
+	@Service("DateService")
+	def dateSvc;
+
+	@After(pattern="BusinessCaptureService.getSources")
+	def addSource(def evt) {
+		def result = evt.result;
+		result << [title: 'ETRACS 1.87', code:'etracs18'];
+	}
+
+	@After(pattern="BusinessCaptureService.search", eval="#{ args[0].source == 'etracs18' }")
+	def hookSearch(def evt) { 
+		def params = evt.args[0]; 
+		params.searchlevel = 0;
+
+		if ( params.tradename ) {
+			if ( !params.ownername ) params.ownername = '%';
+
+			params.searchlevel = 1;
+
+		} else if ( params.ownername ) {
+			params.searchlevel = 2; 
+
+		} 
+
+		params._pagingKeys = 'b.objid'; 
+		def slist = em.getList( params );
+		evt.result.addAll( slist );
+	}
+
+	@After(pattern="BusinessCaptureService.getInfo", eval="#{ args[0].source == 'etracs18' }")
+	def getInfo( evt ) {
+		def p = evt.args[0];
+		def info = em.findInfo([ objid: p.objid ]); 
+		if ( !info ) throw new Exception('No active application for this business'); 
+		if ( info.actualtype == 'RETIRE' ) {
+			throw new Exception('The current business application type is RETIRE'); 
+		}
+
+		if ( info.actualstate.toString().matches('CLOSED|DRAFT|EXPIRED|RENEWED|RETIRED') ) {
+			throw new Exception('No active application for this business'); 
+		} 
+		if ( info.actualstate.toString().matches('ACTIVE|PERMIT_PENDIN|PERMIT_PENDING') ) {
+			info.actualstate = 'COMPLETED'; 
+		} 
+		if ( info.actualstate.toString().matches('APPROVED|FOR_APPROVAL|FOR_REVIEW') ) {
+			info.actualstate = 'INFO'; 
+		} 
+
+		def result = evt.result;
+		result.putAll( info ); 
+		result.lobs = em.getLobs([ businessid: p.objid ]); 
+		result.assessmentinfos = em.getAssessmentInfos([ businessid: p.objid ]); 
+		result.assessmentinfos.each{ 
+			it.phase = (it.type=='appinfo'? 0 : 1); 
+			it.level = (it.type=='appinfo'? 0 : 1); 
+		} 
+	} 
+
+	@After(pattern="BusinessCaptureService.getReceivables", eval="#{ args[0].source == 'etracs18' }")
+	def getReceivables( evt ) {
+		def p = evt.args[0];
+		def result = evt.result;
+		result.receivables = []; 
+
+		def receivables = em.getReceivables([ businessid: p.oldbusinessid ]); 
+		receivables.findAll{ it.oldlob?.objid != null }.each {
+			result.receivables << it; 
+		}
+		receivables.findAll{ it.oldlob?.objid == null }.groupBy{ it.oldaccount?.objid }.each{k,v-> 
+			def item = v.first();
+			item.assessmenttype = p.apptype; 
+			result.receivables << item; 
+		}
+		receivables.clear(); 
+	}
+
+	@Before(pattern="BusinessApplicationService.create", eval="#{ args[0].source == 'etracs18' }")
+	void beforeCreate( evt ) { 
+		def app = evt.args[0]; 
+		app.assessmentinfos.findAll{ it.oldlobid != null }.each{ o-> 
+			def oitem = app.lobs.find{ it.oldlobid == o.oldlobid } 
+			if (oitem) { 
+				o.lob = [objid: oitem.lobid, name: oitem.name]; 
+			} else {
+				app.assessmentinfos.remove( o ); 
+			} 
+		} 
+
+		app.appinfos = []; 		
+		app.assessmentinfos.findAll{ it.attribute?.name=='GROSS' }.each{ o-> 
+			def oitem = o.clone();
+			oitem.attribute = [objid: 'DECLARED_GROSS', name: 'DECLARED_GROSS'];
+			oitem.type = 'appinfo'; 			
+			oitem.phase = 0;
+			oitem.level = 0;
+			app.appinfos << oitem;  
+		}
+		app.assessmentinfos.findAll{ it.attribute?.name=='CAPITAL' }.each{ o-> 
+			def oitem = o.clone();
+			oitem.attribute = [objid: 'DECLARED_CAPITAL', name: 'DECLARED_CAPITAL'];
+			oitem.type = 'appinfo'; 			
+			oitem.phase = 0;
+			oitem.level = 0;
+			app.appinfos << oitem;  
+		} 
+	} 
+
+	@After(pattern="BusinessApplicationService.create", eval="#{ args[0].source == 'etracs18' }")
+	def onCreateApplication( evt ) {
+		def r = evt.args[0];
+		def result = evt.result;
+		em.create( [oldbusinessid: r.oldbusinessid, businessid:result.business.objid ], "business" );
+
+		r.lobs.each { 
+			def o = [ 
+				oldlob_objid: it.oldlobid, oldlob: [objid: it.oldlobid, name:it.oldname], 
+				lob:[objid: it.lobid, name: it.name] 
+			]; 
+			em.save( o, 'lob' ); 
+		} 
+
+		r.taxfees.each { 
+			def tf = [ 
+				oldaccount_objid: it.oldaccount.objid, oldaccount: it.oldaccount, 
+				account: [ objid: it.account.objid,  title: it.account.title ] 
+			]; 
+			em.save( tf, 'account'); 
+		} 
+	} 
+} 

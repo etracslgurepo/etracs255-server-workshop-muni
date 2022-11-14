@@ -1,0 +1,393 @@
+
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class CancelledFAASService
+{
+	@DataContext('cancelledfaas')
+    def em
+    
+	@Env
+	def env
+
+	@Service('TxnRefService')
+    def txnRef
+
+    @Service('DateService')
+    def dateSvc
+
+    @Service('SequenceService')
+    def seqSvc
+
+    @Service('RPTUtil')
+    def util 
+    
+    @DataContext('cancelfaasreason')
+    def em_cancelfaasreason
+
+    @DataContext('rptledger')
+    def em_rptledger
+
+    @DataContext('rptledger_faas')
+    def em_rptledger_faas
+
+    @Service('FAASService')
+    def faasSvc 
+
+    @DataContext('faas_list')
+    def faaslistDb
+
+    @DataContext('cancelledfaas_task')
+    def em_task
+
+    @DataContext('cancelledfaas_signatory')
+    def em_signatory
+
+    @Service('ReportParameterService')
+    def paramSvc 
+
+    @Service('SignatureService')
+    def sigSvc 
+
+
+    def STATE_DRAFT 		= 'DRAFT'
+    def STATE_FORAPPROVAL 	= 'FORAPPROVAL'
+    def STATE_APPROVED 		= 'APPROVED'
+    
+    def SCHEMA_NAME = 'cancelledfaas'
+	def SCHEMA_SIGNATORY = 'signatory'
+    
+
+	@ProxyMethod
+    public def getList( params ) {
+    	params.searchtext = (params.searchtext ? params.searchtext : '') + '%'
+        def filters = [
+            ' and f.tdno LIKE $P{searchtext}',
+            ' and f.owner_name LIKE $P{searchtext}',
+            ' and r.fullpin LIKE $P{searchtext}',
+        ]
+        return util.getListFromQuery( 'cancelledfaas:getList' , filters, params, 'cf.objid' )
+    }
+
+    @ProxyMethod
+    public def init(entity){
+        create(entity)
+        return entity
+    }
+
+    @ProxyMethod
+    public def create(entity){
+        if (!entity._options || entity._options.checkreference) {
+            txnRef.checkReference(entity.faas.objid)
+        }
+        validateFaas(entity.faas)
+        entity.faasid = entity.faas.objid 
+        if (!entity.lguid)
+            entity.lguid = entity.faas.lguid 
+        if (!entity.originlguid)
+            entity.originlguid = env.ORGID 
+        if (!entity.txnno)
+            entity.txnno = getNextTempSeries(entity)
+        if (!entity.txndate)
+            entity.txndate = dateSvc.serverDate
+        if (!entity.state ) {
+            entity.state = STATE_DRAFT
+        }
+        em.create(entity)
+        txnRef.insertRef( entity.faas.objid, entity.objid, 'FAAS is currently referenced by Cancellation No. ' + entity.txnno + '.')
+        saveSignatory(entity)
+        return entity
+    }
+
+
+    @ProxyMethod
+    public def update( entity) {
+        def old = open(entity)
+        if (old.state == STATE_APPROVED ) 
+            throw new Exception('Document has already been approved.')
+        em.update(entity)
+        return entity 
+    }
+
+
+    @ProxyMethod
+    public def delete( entity ) {
+        txnRef.delete(entity.objid)
+        em.deleteSignatories(entity)
+        em.deleteRequirements(entity)
+        em.deleteTasks(entity)
+        em.delete(entity)
+        return entity 
+    }
+
+
+    @ProxyMethod
+    public def open( entity ) {
+        entity = em.findById(entity)
+        if (!entity)
+            throw new Exception('Record does not exist or has already been deleted.')
+        return entity 
+    }
+
+
+    @ProxyMethod
+    public def submitForApproval(entity){
+        entity.state = STATE_FORAPPROVAL
+        update(entity)
+        return entity 
+    }
+
+
+    @ProxyMethod
+    public def disapprove( entity ) {
+        entity.state = STATE_DRAFT
+        update(entity)
+        return entity 
+    }
+
+
+    @ProxyMethod
+    public def approve( entity ) {
+        entity.state = STATE_APPROVED
+        if (entity.txnno.startsWith('TMP')) {
+            entity.txnno = getNextSeries(entity)
+            entity.txndate = dateSvc.serverDate
+        }
+        em.update(entity)
+
+        cancelFaas(entity)
+        postLedgerCancellation(entity)
+        txnRef.delete(entity.objid)
+        return entity 
+    }
+
+    @ProxyMethod
+    public def onlineApprove( entity ) {
+        return approve(entity)
+    }
+
+    @ProxyMethod
+    public def getCancelReasons(  ) {
+        return em_cancelfaasreason.find([state:'APPROVED']).orderBy('code').list()
+    }
+
+
+    @ProxyMethod
+    public void updateSignatoryInfo(task) {
+        if (task.state.matches('assign.*') || env.action?.matches('return.*'))
+            return 
+        if (!task.state.matches('taxmapper|taxmapper_chief|appraiser|appraiser_chief|provrecommender|recommender|approver|provtaxmapper|provtaxmapperchief|provappraiser|provappraiserchief|reviewer'))
+            return
+
+        def state = task.state.replaceAll('_', '') 
+
+        def updatefields = '';
+        updatefields += state + '_taskid = $P{' + state + '_taskid},'
+        updatefields += state + '_objid = $P{' + state + '_objid},'
+        updatefields += state + '_name = $P{' + state + '_name},'
+        updatefields += state + '_title = $P{' + state + '_title},'
+        updatefields += state + '_dtsigned = $P{' + state + '_dtsigned}'
+
+        def params = [
+            objid                   : task.refid,
+            (state + '_taskid')     : task.objid,
+            (state + '_objid')      : task.actor.objid,
+            (state + '_name')       : task.actor.name,
+            (state + '_title')      : task.actor.title,
+            (state + '_dtsigned')   : task.enddate,
+            updatefields            : updatefields,
+        ]
+        em.updateSignatoryInfo(params)
+    }    
+
+    @ProxyMethod
+    public void saveSignatory( signatory ) {
+        if (signatory) {
+            if (!signatory.assessor) {
+                def param = paramSvc.getStandardParameter()
+                signatory.assessor = [name: param?.ASSESSORNAME, title: param?.ASSESSORTITLE]
+            }
+            em_signatory.save(signatory)
+        }
+    }
+
+
+    @ProxyMethod
+    public def buildReportData(entity){
+        entity = open(entity)
+        def signatory = em_signatory.read(entity)
+        if (signatory){
+            entity.putAll(signatory)
+        }
+
+        if ('province'.equalsIgnoreCase(env.ORGCLASS))
+            entity.salutation = 'To the Municipal Treasurer'
+        else if ('municipality'.equalsIgnoreCase(env.ORGCLASS))
+            entity.salutation = 'To the Provincial Treasurer'
+        else 
+            entity.salutation = 'To the City Treasurer'
+
+        entity.location = 'Barangay ' + entity.barangay 
+
+        def parentlgu = em.findParetLguByBarangayId(entity)
+        if(parentlgu){
+            if (parentlgu.iscity == 1){
+                if (parentlgu.cityprov.toLowerCase().matches('.*city.*')) {
+                    entity.location += ', ' + parentlgu.cityprov
+                } else {
+                    entity.location += ', City of ' + parentlgu.cityprov
+                }
+            }
+            else {
+                entity.location += ', Municipality of ' + parentlgu.munidistrict 
+                entity.location += ', ' + parentlgu.cityprov 
+            }
+        }
+
+        entity.signatories = [:]
+        def retval = sigSvc.decodeSignatories(em.getSignatories(entity))
+        entity.signatories = retval.signatories 
+        entity.signaturetampered = retval.tampered
+        entity.tamperedsigmsg = retval.tamperedsigmsg
+
+        def approver = retval.signatories.approver
+        if (approver) {
+            entity.approver.name = approver.actor.name
+            entity.approver.title = approver.actor.title
+            entity.approver.dtsigned = approver.dtsigned
+        }
+
+        if (isRecommenderAuthorized(entity)){
+            entity.authorized = true
+        }   
+
+        return entity 
+    }
+
+    def isRecommenderAuthorized(entity){
+        if (entity.recommender && entity.recommender.name && 
+               entity.recommender.name.equalsIgnoreCase(entity.approver?.name)){
+            entity.recommender = [name:null, dtsigned:null]
+            return true 
+        }
+        return false 
+    }
+
+
+    void validateFaas(faas){
+        //validate state 
+        def state = faasSvc.getState(faas.objid)
+        if ( state == 'CANCELLED') throw new Exception('FAAS has already been cancelled.')
+        if ( state != 'CURRENT') throw new Exception('FAAS is not yet approved. Only current record is allowed.')
+
+        //if land check that all improvements are cancelled
+        if (faas.rputype == 'land'){
+            def improvements = em.getNonCancelledImprovements([realpropertyid:faas.realpropertyid])
+
+            if (improvements.size() == 1) {
+                throw new Exception('Improvement with TD No. ' + improvements[0].tdno + ' is not yet cancelled. Cancel this improvement first before cancelling this land.')
+            }
+            else if( improvements.size() > 1 ){
+                def tdnos = improvements.tdno.join(', ')
+                throw new Exception('Improvements with TD No(s). ' + tdnos + ' are not yet cancelled. Cancel these improvements first before cancelling this land.')
+            }
+        }
+    }
+
+    void cancelFaas(entity){
+        if (!entity.dtapproved)
+            entity.dtapproved = dateSvc.serverDate
+        def pdate = dateSvc.parseDate(entity.dtapproved, null)
+
+        def faas = entity.faas 
+        if (!faas) faas = [objid: entity.faasid]
+
+        def cancelledbytdnos = 'Cancellation No. ' + entity.txnno
+        if (entity.cancelledbytdnos){
+            cancelledbytdnos = entity.cancelledbytdnos
+        }
+
+        def cancelinfo = [
+            objid : faas.objid,
+            state  : 'CANCELLED',
+            cancelreason : entity.reason.code,
+            cancelledbytdnos : cancelledbytdnos,
+            canceldate   : pdate.date, 
+            cancelledyear : pdate.year, 
+            cancelledqtr  : pdate.qtr,
+            cancelledmonth : pdate.month,
+            cancelledday : pdate.day 
+        ] 
+
+        em.cancelFaas(cancelinfo)
+        em.cancelRpu([objid:faas.rpuid])
+        if (faas.rputype == 'land'){
+            em.cancelRealProperty([objid:faas.realpropertyid])
+        }
+
+        faaslistDb.update(cancelinfo)
+    }
+
+    def getNextSeries(entity){
+        def lguid =  entity.lguid.replaceAll('-','')
+        def key = 'CANCELLEDFAAS-' + lguid 
+        return lguid + seqSvc.getNextFormattedSeries(key)
+    }
+
+    def getNextTempSeries(entity){
+        def lguid =  entity.lguid.replaceAll('-','')
+        def key = 'CANCELLEDFAAS-TMP-' + lguid 
+        return 'TMP'+ lguid + seqSvc.getNextFormattedSeries(key)
+    }
+
+    /*========================================
+    * Rules:
+    *   - cancel the ledger if fullypaid as of txndate
+    *   - terminate the corresponding ledger faas history set toyear = year(txndate) and toqtr = 4 
+    =========================================*/
+    @ProxyMethod
+    public void postLedgerCancellation(entity){
+        def ledger = em_rptledger.select('objid,lastyearpaid,lastqtrpaid').find([faasid:entity.faas.objid]).first()
+        if (!ledger) 
+            return 
+
+        entity.txndate = entity.txndate ? entity.txndate : dateSvc.serverDate
+        def txnyear = dateSvc.getYear(dateSvc.parse('yyyy-MM-dd', entity.txndate))
+        if (entity.lasttaxyear && entity.lasttaxyear > 0) {
+            txnyear = entity.lasttaxyear
+        }
+
+        //check if fully paid then cancel
+        if (ledger.lastyearpaid > txnyear || (ledger.lastyearpaid == txnyear && ledger.lastqtrpaid == 4)){
+            em_rptledger.find([objid:ledger.objid]).update([state:'CANCELLED'])
+        }
+
+        //terminate toyear and toqtr 
+        def lf = em_rptledger_faas.select('objid').find([rptledgerid:ledger.objid, toyear:0, state: 'APPROVED']).first()
+        if (lf){
+            em_rptledger_faas.find([objid:lf.objid]).update([toyear:txnyear, toqtr:4])
+        }
+    }
+
+
+    /*----------------------------------------------------------------------------------------------
+    *
+    * REMOTE SUPPORT 
+    *
+    ----------------------------------------------------------------------------------------------*/
+    @ProxyMethod
+    public void postRemoteApproval(entity) {
+        approve(entity)
+        
+        em_task.where('refid = :objid and enddate is null', entity).delete()
+
+        entity.tasks.each{
+            em_task.save(it)
+        }
+
+        em_signatory.save(entity.signatory)
+    }
+
+}
+

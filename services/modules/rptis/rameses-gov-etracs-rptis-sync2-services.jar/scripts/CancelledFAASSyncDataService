@@ -1,0 +1,187 @@
+import com.rameses.annotations.*
+import com.rameses.util.*
+import com.rameses.services.extended.*
+
+class CancelledFAASSyncDataService
+{
+	@Env
+	def env 
+
+	@Service('DateService')
+    def dtSvc
+
+	@Service('RPTMainSyncDataService')
+	def syncSvc 
+
+    @Service('RPTSyncDataService')
+    def rptSync
+
+    @Service('RPTSyncDataSupport')
+    def support
+
+    @Service('CancelledFAASService')
+    def svc
+
+	@Service('CancelledFAASWorkflowService')
+	def workflowSvc
+
+    @DataContext('cancelledfaas')
+    def em_cancelledfaas
+
+    @DataContext('cancelledfaas_signatory')
+    def em_signatory
+
+    @DataContext('cancelledfaas_task')
+    def em_task
+	
+
+
+	def getActions(){
+		return  [
+	    	'CANCELLEDFAAS-MANUAL-APPROVED': [send: sendData, receive: saveApprovedData, schedule: scheduleManualApproved],
+	    	'CANCELLEDFAAS-FORAPPROVAL': [send: sendData, receive: saveDataForApproval, schedule: scheduleSubmitToProvince],
+	    	'CANCELLEDFAAS-ONLINE-APPROVED': [send: sendData, receive: postOnlineApproval, schedule: scheduleOnlineApproved],
+	    ]
+	}
+
+	/*---------------------------------------------------------
+	*
+	* SCHEDULING SYNC SUPPORT 
+	*
+	---------------------------------------------------------*/
+	@ProxyMethod
+	public void schedule(data) {
+		def action= getActions()[data.action]
+		if (!action) throw new Exception('Scheduler not found for action ' + data.action)
+
+		def cancelledfaas = svc.open([objid: data.objid])
+		data.remote = rptSync.getRemoteOrg(cancelledfaas)
+        def syncdata = syncSvc.create(data)
+
+		action.schedule(syncdata, cancelledfaas)
+	}
+
+	def createItem(item, syncdata, action) {
+		return [
+			refid: item.objid, 
+			reftype: syncdata.reftype, 
+			refno: syncdata.refno, 
+			action: (action ? action : syncdata.action)
+		]
+	}
+
+	void createSyncItem(entity, syncdata, action) {
+		def item = createItem(entity, syncdata, action)
+        syncSvc.createItem(syncdata, item)
+	}
+
+
+
+	
+	def scheduleManualApproved = {syncdata, cancelledfaas ->
+		createSyncItem(cancelledfaas, syncdata, 'CANCELLEDFAAS-MANUAL-APPROVED')
+        scheduleSharedData(syncdata, cancelledfaas)
+	}
+
+	def scheduleSubmitToProvince = {syncdata, cancelledfaas ->
+		createSyncItem(cancelledfaas, syncdata, 'CANCELLEDFAAS-FORAPPROVAL')
+        scheduleSharedData(syncdata, cancelledfaas)
+	}	
+
+	def scheduleOnlineApproved = {syncdata, cancelledfaas ->
+		createSyncItem(cancelledfaas, syncdata, 'CANCELLEDFAAS-ONLINE-APPROVED')
+	}	
+
+	void scheduleSharedData(syncdata, cancelledfaas) {
+		rptSync.scheduleExaminations(syncdata, cancelledfaas.objid)
+    	rptSync.scheduleRequirements(syncdata, cancelledfaas.objid)
+    }	
+
+	
+	/*---------------------------------------------------------
+	* SEND/RECEIVE HANDLERS 
+	---------------------------------------------------------*/
+	@ProxyMethod
+	public void send(syncdata) {
+		rptSync.send(syncdata, getActions())
+	}
+
+	@ProxyMethod
+	public void receive(syncdata) {
+		rptSync.receive(syncdata, getActions())
+	}
+
+	/*---------------------------------------------------------
+	* SUPPORT METHODS
+	---------------------------------------------------------*/
+	def sendData = {syncdata ->
+		def cancelledfaas = [objid: syncdata.refid]
+		cancelledfaas.putAll(svc.open(cancelledfaas))
+
+		cancelledfaas.tasks = em_task.where("refid = :objid AND enddate is not null AND state not like 'assign%'", cancelledfaas)
+										.orderBy('startdate').list()
+
+		cancelledfaas.signatory = em_signatory.read(cancelledfaas)
+
+		if (!cancelledfaas.signatory) {
+			cancelledfaas.signatory = [:]
+		}
+		return cancelledfaas
+	}
+
+
+
+	def saveApprovedData = {syncdata ->
+		def cancelledfaas = syncdata.data 
+		def cf = em_cancelledfaas.find([objid: cancelledfaas.objid]).first()
+		if (!cf) {
+			cancelledfaas.state = 'FORAPPROVAL'
+			svc.create(cancelledfaas)
+		}
+		svc.postRemoteApproval(cancelledfaas)
+	}
+
+	def saveDataForApproval = {syncdata ->
+		def cancelledfaas = syncdata.data 
+
+		def cf = em_cancelledfaas.find([objid: cancelledfaas.objid]).first()
+		if (!cf) {
+			svc.create(cancelledfaas)
+		} else {
+			svc.update(cancelledfaas)
+		}
+
+		cancelledfaas.tasks.each {
+			em_task.save(it)
+		}
+
+		em_signatory.save(cancelledfaas.signatory)
+		startWorkflow(syncdata, cancelledfaas)
+	}
+
+	def postOnlineApproval = {syncdata ->
+		def cancelledfaas = syncdata.data 
+		svc.postRemoteApproval(cancelledfaas)
+	}
+
+
+	void startWorkflow(syncdata, cancelledfaas){
+		def tasks = workflowSvc.start([refid:cancelledfaas.objid, data:cancelledfaas])
+		if (tasks)
+			cancelledfaas.taskid = tasks[0].objid
+
+		notifyGroup(syncdata, cancelledfaas)
+	}
+
+	void notifyGroup(syncdata, cancelledfaas){
+        def param = [:]
+        param.objid = cancelledfaas.objid 
+        param.sender = syncdata.sender
+        param.recipientid = 'assign-receiver'
+        param.filetype = 'cancellefaas'
+        param.msg = 'FAAS Cancellation No. ' + cancelledfaas.txnno + ' (assign-receiver) submitted by ' + syncdata.sender.name + '.'
+        param.taskid = cancelledfaas.taskid 
+        support.notifyGroup(param)
+	}
+}
+ 

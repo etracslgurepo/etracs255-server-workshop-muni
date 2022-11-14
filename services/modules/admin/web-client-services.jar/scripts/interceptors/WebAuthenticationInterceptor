@@ -1,0 +1,16 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+
+class WebAuthenticationInterceptor
+{
+	@Service('AdminAuthService')
+	def authSvc;
+
+	@After(pattern="AuthenticationService.authenticate", eval="env.CLIENTTYPE=='web'") 
+	public void authenticate( evt ) {
+		def username = evt.args[0];
+		def password = evt.args[1];
+		evt.result.putAll( authSvc.authenticate(username, password) );
+		evt.result.HANDLER = true;
+	} 
+}

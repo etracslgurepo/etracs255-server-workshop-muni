@@ -1,0 +1,345 @@
+import com.rameses.annotations.*
+import com.rameses.util.*
+import com.rameses.services.extended.*
+
+class FAASSupportService
+{
+	@Env
+	def env 
+
+	@Service("Var")
+	def var;
+
+	@ActiveDB('faas_support')
+	def em 
+
+	@ActiveDB('faas_task')
+	def taskEm
+
+	@Service('FAASService')
+	def faasSvc
+
+	@Service('EntityService')
+	def entitySvc
+
+	@Service('RealPropertyService')
+	def rpSvc
+
+	@Service('RPUService')
+	def rpuSvc 
+
+	@Service('ExaminationService')
+	def examinationSvc
+
+	@Service('RPTRequirementService')
+	def reqSvc 
+
+	@Service('RPTUtil')
+	def util
+
+	@Service('RPTLedgerService')
+	def ledgerSvc
+
+	@Service('DBImageService')
+	def imageSvc
+
+	@DataContext('faas_list')
+	def faaslistDb 
+
+	@DataContext('rptledger')
+	def em_rptledger
+
+	@DataContext('rptledger_faas')
+	def em_rptledger_faas
+
+	@Service('FAASStewardshipService')
+	def stewardshipSvc
+
+	@Service("PersistenceService")
+	def persistence
+
+
+	@ProxyMethod
+	public def findFaasById( faas ) {
+		return em.findFaasById(faas)
+	}
+
+	@ProxyMethod
+	public def getFaasData(faas){
+		def faasdata = faasSvc.openFaas(faas)
+		faasdata.rpu.rpumaster = rpuSvc.openRpuMaster(faasdata.rpu)
+		faasdata.taxpayer = entitySvc.open(faasdata.taxpayer)
+		faasdata.examinationfindings = examinationSvc.getFindings( faasdata.objid ).each{
+			it = examinationSvc.open(it)
+		}
+		faasdata.requirements = reqSvc.getRequirements(faasdata.objid)
+		faasdata.image = getImageData(faasdata)
+		faasdata.tasks = faasSvc.getTasks(faasdata)
+		faasdata.signatory = faasSvc.findSignatory(faasdata)
+
+		faasdata.affectedrpus = stewardshipSvc.getAffectedRpus(faasdata.objid)
+		faasdata.affectedfaases = []
+		faasdata.affectedrpus.each{
+			if (it.newfaasid){
+				faasdata.affectedfaases << getFaasData([objid:it.newfaasid])
+			}
+		}
+
+		if (faasdata.parentfaasid){
+			faasdata.parentfaas = getFaasData([objid: faasdata.parentfaasid])
+			faasdata.stewardfaas = stewardshipSvc.findStewardFaas(buildStewardFaasParam(faasdata))
+		}
+
+
+		faasdata.drawing = faasSvc.openSketch(faas)
+
+		return faasdata 
+	} 
+
+	@ProxyMethod
+	public void saveFaasData( faasdata ) {
+		saveEntity(faasdata)
+
+		if (faasSvc.faasExist(faasdata))
+			faasSvc.updateFaas(faasdata)
+		else
+			faasSvc.createFaas(faasdata)
+
+		saveRequirements(faasdata)
+
+		faasdata.examinationfindings.each{
+			examinationSvc.save(it)
+		}
+
+		faasdata.tasks.each{
+			taskEm.save(it)
+		}
+
+		faasSvc.saveSignatory(faasdata.signatory)
+
+		saveImageData(faasdata)
+
+		faasdata.affectedfaases.each{
+			saveFaasData(it)
+		} 
+		
+		faasdata.affectedrpus.each{
+			faasSvc.saveAffectedRpu(it)
+		}
+
+
+		if (faasdata.parentfaas){
+			saveFaasData(faasdata.parentfaas)
+			faasSvc.cancelPreviousFaases(faasdata.parentfaas)
+			stewardshipSvc.insertStewardFaas(faasdata.stewardfaas)
+		}
+
+		faasSvc.saveSketch(faasdata.drawing)
+	}
+
+
+	@ProxyMethod
+	public def getApprovedFaasData( faas ) {
+		def faasdata = faasSvc.openFaas(faas)
+		faasdata.rpu.rpumaster = rpuSvc.openRpuMaster(faas.rpu)
+		faasdata.taxpayer = entitySvc.open(faas.taxpayer)
+		faasdata.tasks = em.getApproverTasks(faas)
+		faasdata.signatory = faasSvc.findSignatory(faas)
+		return faasdata 
+	}
+
+
+
+
+
+	@ProxyMethod
+	public def getImageByIds(imageids){
+		def image = [headers:[], chunks:[]]
+
+		imageids.each{
+			def param = [objid:it]
+			def header = imageSvc.openHeader(param)
+			if (header){
+				image.headers << header;
+				image.chunks += imageSvc.getImageItems(param)
+			}
+		}
+		return image;
+	}
+	
+
+	@ProxyMethod
+	public def getImage( imageid ) {
+		def image = [objdi:imageid]
+		return [
+			header :  imageSvc.openHeader(image),
+			items  : imageSvc.getItems(image),
+		]
+	}
+
+	@ProxyMethod
+	public def getRequirements( faas ) {
+		faas.requirements = reqSvc.getRequirements(faas.objid)			
+		faas.image = getImageData(faas)
+		return faas 
+	}
+
+	@ProxyMethod
+	public def getFaasImages(faas){
+		faas.examinationfindings = examinationSvc.getFindings( faas.objid ).each{
+			it = examinationSvc.open(it)
+		}
+		faas.requirements = reqSvc.getRequirements(faas.objid)
+		faas.image = getImageData(faas)
+		return faas 
+	}
+
+	@ProxyMethod
+	public def getSketchImageData( faas ) {
+		def refids = [faas.objid]
+		return util.getImageData(refids)
+	}
+
+
+	def getImageData(faasdata){
+		def refids = [faasdata.objid]
+		if (faasdata.examinationfindings)
+			refids += faasdata.examinationfindings.objid 
+		if (faasdata.requirements)
+			refids += faasdata.requirements.objid
+		return util.getImageData(refids)
+	}
+
+
+	@ProxyMethod
+	public void changeModeToDataCapture( tdno ) {
+		if (!tdno) 
+			return
+
+		def faas = faasSvc.getFaasByTdNo(tdno)
+		if (faas.state != 'INTERIM')
+			throw new Exception('FAAS state is invalid. Only INTERIM state is allowed.')
+
+		def f = [objid:faas.objid, datacapture:1, taskid:null, taskstate:null, assignee:null]
+		em.updateDataCaptureFlag(f)
+		faaslistDb.update(f)
+		em.deleteTasks(faas)
+	}	
+
+
+	@ProxyMethod
+	public def deleteApprovedFaas( params ) {
+		if (!params.tdno) {
+			return
+		}
+
+		def faas = faasSvc.getFaasByTdNo(params.tdno)
+		if (!faas) {
+			throw new Exception('FAAS does not exist.')
+		}
+		
+		if (util.toBoolean(faas.datacapture, true) ==  false ) {
+			def msg = 'The FAAS was processed online and cannot be deleted.\n'
+			msg += "Only manually captured record is allowed."
+			throw new Exception(msg)
+		}
+
+		checkPaymentMade(faas)
+		checkExistingImprovements(faas)
+
+		def ledger = em.findLedgerByFaasId(faas)
+		if (ledger){
+			ledger._schemaname = "rptledger";
+			persistence.removeEntity(ledger)
+		}
+
+		faas.allowdelete = true 
+		faasSvc.deleteFaas(faas)
+		return params 
+	}
+
+	void checkPaymentMade(faas){
+		if (util.isTrue(var.faas_force_delete_current_record)) {
+			def rptledger = em_rptledger.select('objid').find([faasid: faas.objid]).first()
+			if (rptledger) {
+				em_rptledger.find([objid: rptledger.objid]).update([faasid: null])
+				em_rptledger_faas.find([rptledgerid: rptledger.objid]).update([faasid: null])
+			}
+		} else {
+			def pmt = em.findOnlinePaymentByFaas(faas)
+			if (pmt) {
+				throw new Exception('Cannot delete FAAS. Payment has already been made.')
+			}
+		}
+	}
+
+
+	void checkExistingImprovements(faas){
+		if ( ! faas.rpu.rputype.equalsIgnoreCase('land')) {
+			return 
+		}
+
+		def improvements = em.findExistingImprovements(faas)
+		if (improvements) {
+			def msg = 'The FAAS is already referenced by improvements and cannot be deleted.\n'
+			msg += 'You may delete all improvements first and then perform the transaction again.'
+			throw new Exception(msg)
+		}
+	}
+
+	@ProxyMethod
+	public void deleteImageData( faas ) {
+		if (!faas.image) return
+
+		faas.image.headers.each{
+			imageSvc.deleteImage(it)
+		}
+	}
+
+
+	@ProxyMethod
+	public void saveImageData(faas){
+		if (!faas.image) return
+		
+		faas.image.headers.each{
+			imageSvc.saveHeader(it)
+		}
+		faas.image.chunks.each{
+			imageSvc.saveItem(it)
+		}
+	}
+
+	@ProxyMethod
+	public def saveRequirements( faasdata ) {
+		faasdata.requirements.each{
+			reqSvc.save(it)
+		}
+	}
+
+	void saveEntity(faas){
+		def addr = faas.taxpayer.address
+		if (!addr) {
+			addr = [parentid:faas.taxpayer.objid, type:'local', text:'.']
+			faas.taxpayer.address = addr;
+		}
+		else if (addr instanceof String) {
+			def s = addr; 
+			addr = [parentid:faas.taxpayer.objid, type:'local', text:s]
+			faas.taxpayer.address = addr;
+		}
+		if (!faas.taxpayer.state) faas.taxpayer.state = 'ACTIVE'
+		entitySvc.save(faas.taxpayer)
+		faas.taxpayer.address = faas.taxpayer?.address?.text 
+	}
+
+
+	def buildStewardFaasParam(faasdata){
+		def param = [:]
+		param.rpumasterid  = faasdata.parentfaas.rpu.rpumasterid
+		param.stewardrpumasterid = faasdata.rpu.rpumasterid 
+		param.ry = faasdata.rpu.ry 
+		param.stewardshipno = faasdata.rp.stewardshipno
+		return param
+	}
+}
+ 

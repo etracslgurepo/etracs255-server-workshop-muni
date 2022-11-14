@@ -1,0 +1,40 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import com.rameses.services.extended.*
+
+class LandTaxLGUAccountMappingService
+{
+	@Env 
+	def env 
+
+	@DataContext('landtax_lgu_account_mapping')
+	def em_mapping
+
+	@ProxyMethod 
+	public def buildAccounts( params ) {
+		em_mapping.deleteLandTaxAccountTags()
+		em_mapping.deleteLandTaxAccounts()
+
+		em_mapping.insertRevenueAccounts()
+		em_mapping.insertRevenueAccountTags()
+
+		if ('MUNICIPALITY'.equalsIgnoreCase(env.ORGCLASS)) {
+			em_mapping.insertProvinceSharePayableAccounts()
+			em_mapping.insertProvinceSharePayableAccountTags()
+			em_mapping.buildMunicipalityRevenueAccounts()
+			em_mapping.buildProvinceShareAccounts()
+		} 
+		else if ('PROVINCE'.equalsIgnoreCase(env.ORGCLASS)) {
+			em_mapping.insertMunicipalitySharePayableAccounts()
+			em_mapping.insertMunicipalitySharePayableAccountTags()
+			em_mapping.buildProvinceRevenueAccounts()
+			em_mapping.buildMunicipalityShareAccounts()
+		} else {
+			em_mapping.buildCityRevenueAccounts()
+		}
+
+		em_mapping.insertBrgySharePayableAccounts()
+		em_mapping.insertBrgySharePayableAccountTags()
+		em_mapping.buildBrgyShareAccounts()
+	}
+}

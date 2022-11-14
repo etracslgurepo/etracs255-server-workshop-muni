@@ -1,0 +1,29 @@
+<schema>
+	<element name="municipality_taxacct_mapping" tablename="municipality_taxaccount_mapping">
+		<field name="lguid" primary="true" />
+		<field name="basicadvacct_objid" />
+		<field name="basicprevacct_objid" />
+		<field name="basicprevintacct_objid" />
+		<field name="basicprioracct_objid" />
+		<field name="basicpriorintacct_objid" />
+		<field name="basiccurracct_objid" />
+		<field name="basiccurrintacct_objid" />
+
+		<field name="basicidleadvacct_objid" />
+		<field name="basicidleprevacct_objid" />
+		<field name="basicidleprevintacct_objid" />
+		<field name="basicidlecurracct_objid" />
+		<field name="basicidlecurrintacct_objid" />
+
+		<field name="sefadvacct_objid" />
+		<field name="sefprevacct_objid" />
+		<field name="sefprevintacct_objid" />
+		<field name="sefprioracct_objid" />
+		<field name="sefpriorintacct_objid" />
+		<field name="sefcurracct_objid" />
+		<field name="sefcurrintacct_objid" />
+	</element>
+</schema>
+
+
+

@@ -1,0 +1,17 @@
+<schema>
+	<element tablename="examiner_finding">
+		<field name="objid" primary="true" />
+		<field name="parent_objid" required="true" />
+		<field name="txnno" required="true" searchable="true" />
+		<field name="dtinspected" required="true" />
+		<field name="findings" required="true" />
+		<field name="recommendations" />
+		<field name="notedby" required="true" />
+		<field name="notedbytitle" required="true" />
+		<field name="inspectors" required="true" />
+		<field name="inspectedby_objid"  />
+		<field name="inspectedby_name"  />
+		<field name="inspectedby_title"  />
+		<field name="doctype" />
+	</element>
+</schema>

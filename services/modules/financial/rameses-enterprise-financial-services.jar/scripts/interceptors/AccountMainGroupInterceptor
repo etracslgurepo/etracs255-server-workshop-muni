@@ -1,0 +1,16 @@
+import com.rameses.annotations.*;
+
+class AccountMainGroupInterceptor  {
+
+	@Before(pattern="PersistenceService.create", eval="#{ args[0]._schemaname == 'account_maingroup' }")
+	public void beforeCreate( evt ) {
+		def o = evt.args[0]; 
+		o.objid = o.name; 
+	}
+
+	@After(pattern="PersistenceService.read", eval="#{ args[0]._schemaname == 'account_maingroup' }")
+	public void afterRead( evt ) {
+		def res = evt.result; 
+		res.system = (res.system.toString() == '1' ? 1 : 0);
+	}	
+}

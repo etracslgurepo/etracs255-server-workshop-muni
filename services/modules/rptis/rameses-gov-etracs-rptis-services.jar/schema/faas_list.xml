@@ -1,0 +1,49 @@
+<schema adapter="main">
+	<element tablename="faas_list">
+		<field name="objid" primary="true"/>
+		<field name="state" />
+		<field name="tdno" searchable="true" caption="TD No."/>
+		<field name="utdno" />
+		<field name="datacapture" type="boolean" />
+		<field name="titleno" />
+		<field name="rputype" />
+		<field name="txntype_objid" />
+		<field name="taxpayer_objid" />
+		<field name="owner_name"  searchable="true" caption="Owner"/>
+		<field name="owner_address" />
+		<field name="administrator_name" />
+		<field name="administrator_address" />
+		<field name="pin"  searchable="true" caption="PIN" />
+		<field name="displaypin"  searchable="true" caption="PIN" />
+		<field name="ry" />
+		<field name="classification_objid" />
+		<field name="classcode" />
+		<field name="effectivityyear" type="integer" />
+		<field name="effectivityqtr" type="integer" />
+		<field name="cancelreason" />
+		<field name="cancelledbytdnos" />
+		<field name="cadastrallotno"  searchable="true" caption="Lot No." />
+		<field name="blockno" />
+		<field name="surveyno" />
+		<field name="prevtdno" />
+		<field name="barangay" caption="Barangay" searchable="true" indexed="true" />
+		<field name="totalareaha" type="decimal" caption="Area (ha)" />
+		<field name="totalareasqm" type="decimal" caption="Area (sqm)" />
+		<field name="totalmv" type="decimal" caption="Market Value"/>
+		<field name="totalav" type="decimal" caption="Assessed Value" />
+		<field name="publicland" type="boolean" />
+		<field name="taskid" />
+		<field name="taskstate" />
+		<field name="assignee_objid" />
+		<field name="rpuid" />
+		<field name="realpropertyid" />
+		<field name="lguid" />
+		<field name="originlguid" />
+		<field name="trackingno" />
+		<field name="fullpin" expr="displaypin" />
+		<complex name="taxpayer" ref="entity" jointype="many-to-one" 
+			required="false" includefields="entityno">
+			<key field="taxpayer_objid" target="objid" /> 
+		</complex>
+	</element>
+</schema>

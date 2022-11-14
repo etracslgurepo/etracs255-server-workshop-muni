@@ -1,0 +1,243 @@
+import com.rameses.annotations.*
+import com.rameses.util.*
+import com.rameses.services.extended.*
+
+class BatchGrSyncDataService
+{
+	@Env
+	def env 
+
+	@Service('DateService')
+    def dtSvc
+
+	@Service('RPTMainSyncDataService')
+	def syncSvc 
+
+    @Service('RPTSyncDataService')
+    def rptSync
+
+    @Service('RPTSyncDataSupport')
+    def support
+
+    @Service('BatchGRService')
+    def svc
+
+	@Service('BatchGRSupportService')
+    def supportSvc
+
+	@Service('BatchGRWorkflowService')
+	def workflowSvc
+
+	@Service('FAASService')
+	def faasSvc
+
+	@Service('FAASSyncDataService')
+	def faasSyncSvc
+
+	@Service('CancelledFAASService')
+    def cancelFaasSvc
+
+
+    @DataContext('batchgr')
+    def em_batchgr
+
+    @DataContext('batchgr_item')
+    def em_batchgr_item
+
+    @DataContext('batchgr_task')
+    def em_task
+
+    @DataContext('cancelledfaas')
+    def em_cancelledfaas
+
+    @DataContext('cancelledfaas_signatory')
+    def em_cancelledfaas_signatory
+
+    def TXNTYPE_GR = 'GR';
+
+
+    def getActions(){
+		return  [
+	    	'BATCHGR-FORAPPROVAL': [send: sendForApproval, receive: postForApproval, schedule: scheduleSubmitToProvince],
+	    	'BATCHGR-REQUIREMENTS': [send: {}, receive: {}, schedule: scheduleRequirements],
+	    	'BATCHGR-FAAS-APPROVED': [send: sendApprovedFaas, receive: postApprovedFaas, schedule: {}],
+	    	'BATCHGR-APPROVED': [send: sendApprovedBatchGr, receive: postApprovedBatchGr, schedule: scheduleBatchGrApproval],
+	    	'BATCHGR-DISAPPROVAL': [send: sendDisapprovedBatchGr, receive: postDisapprovedBatchGr, schedule: scheduleBatchGrDisapproval],
+	    	'BATCHGR-DISAPPROVAL': [send: sendDisapprovedBatchGr, receive: postDisapprovedBatchGr, schedule: scheduleBatchGrDisapproval],
+	    	'BATCHGR-EXCLUDE-ITEM': [send: sendExcludedBatchGrItem, receive: postExcludedBatchGrItem, schedule: scheduleExcludedBatchGrItem],
+	    ]
+	}
+
+
+	/*---------------------------------------------------------
+	*
+	* SCHEDULING SYNC SUPPORT 
+	*
+	---------------------------------------------------------*/
+	@ProxyMethod
+	public void schedule(data) {
+		def action= getActions()[data.action]
+		if (!action) throw new Exception('Scheduler not found for action ' + data.action)
+
+		def batchgr = em_batchgr.find([objid: data.objid]).first()
+		data.remote = rptSync.getRemoteOrg(batchgr)
+        def syncdata = syncSvc.create(data)
+
+		action.schedule(syncdata, batchgr)
+	}
+
+	def createItem(item, syncdata, action, async) {
+		return [
+			refid: item.objid, 
+			reftype: syncdata.reftype, 
+			refno: syncdata.refno, 
+			async: (async == null ? syncdata.async : async),
+			action: (action ? action : syncdata.action),
+		]
+	}
+
+	void createSyncItem(entity, syncdata, action) {
+		createSyncItem(entity, syncdata, action, null)
+	}
+
+	void createSyncItem(entity, syncdata, action, async) {
+		def item = createItem(entity, syncdata, action, async)
+        syncSvc.createItem(syncdata, item)
+	}
+
+
+	def scheduleSubmitToProvince = {syncdata, batchgr ->
+		syncdata.info = syncdata.info ? syncdata.info : [:]
+    	syncdata.info.txntype = TXNTYPE_GR
+
+        em_batchgr_item.find([parent_objid: batchgr.objid]).list().each {
+        	faasSyncSvc.scheduleFaasData(syncdata, [objid: it.newfaasid])
+        }
+
+		createSyncItem(batchgr, syncdata, 'BATCHGR-FORAPPROVAL')
+        rptSync.scheduleExaminations(syncdata, batchgr.objid)
+    	rptSync.scheduleRequirements(syncdata, batchgr.objid)
+	}
+
+	def scheduleRequirements = {syncdata, batchgr ->
+		syncdata.info = syncdata.info ? syncdata.info : [:]
+    	syncdata.info.txntype = TXNTYPE_GR
+    	rptSync.scheduleRequirements(syncdata, batchgr.objid)
+	}
+
+
+	def scheduleBatchGrApproval = {syncdata, batchgr ->
+        em_batchgr_item.find([parent_objid: batchgr.objid]).list().each {
+        	def faas = [objid: it.newfaasid]
+        	createSyncItem(faas, syncdata, 'BATCHGR-FAAS-APPROVED')
+        }
+		createSyncItem(batchgr, syncdata, 'BATCHGR-APPROVED')
+        rptSync.scheduleExaminations(syncdata, batchgr.objid)
+	}
+
+	def scheduleBatchGrDisapproval = {syncdata, batchgr ->
+		createSyncItem(batchgr, syncdata, 'BATCHGR-DISAPPROVAL')
+	}
+
+	def scheduleExcludedBatchGrItem = {syncdata, batchgr ->
+		createSyncItem(batchgr, syncdata, 'BATCHGR-EXCLUDE-ITEM')
+	}
+
+	
+	/*---------------------------------------------------------
+	* SEND/RECEIVE HANDLERS 
+	---------------------------------------------------------*/
+	@ProxyMethod
+	public void send(syncdata) {
+		rptSync.send(syncdata, getActions())
+	}
+
+	@ProxyMethod
+	public void receive(syncdata) {
+		rptSync.receive(syncdata, getActions())
+	}
+
+
+	/*---------------------------------------------------------
+	* SUPPORT METHODS
+	---------------------------------------------------------*/
+	def sendForApproval = {syncdata ->
+		def batchgr = [objid: syncdata.refid]
+		return supportSvc.buildData(batchgr)
+	}
+
+	def postForApproval = {syncdata ->
+		def batchgr = syncdata.data 
+		supportSvc.postData(batchgr)
+		startWorkflow(syncdata, batchgr)
+	}
+
+
+	def sendApprovedFaas = {syncdata ->
+		return getApprovedFaas(syncdata)
+	}
+
+	def getApprovedFaas = {syncdata ->
+		def faas = [objid: syncdata.refid]
+		return supportSvc.getApprovedFaas(faas)
+	}
+
+	def postApprovedFaas = {syncdata ->
+		def faas = syncdata.data 
+		supportSvc.postApprovedFaas(faas)
+
+	}
+
+	def sendApprovedBatchGr = {syncdata ->
+		def batchgr = [objid: syncdata.refid]
+		return supportSvc.buildData(batchgr)
+	}
+
+	def postApprovedBatchGr = {syncdata ->
+		def batchgr = syncdata.data 
+		supportSvc.postApprovedBatchGr(batchgr)
+
+	}
+	
+	def sendDisapprovedBatchGr = {syncdata ->
+		return [objid: syncdata.refid]
+	}
+
+	def postDisapprovedBatchGr = {syncdata ->
+		def batchgr = syncdata.data 
+		supportSvc.postDisapprovedBatchGr(batchgr)
+
+	}
+
+	def sendExcludedBatchGrItem = {syncdata ->
+        return syncdata.parent.info.batchgritem
+	}
+
+	def postExcludedBatchGrItem = {syncdata ->
+        def batchgritem = syncdata.data;
+        supportSvc.postExcludedBatchGrItem(batchgritem);
+	}
+
+	void startWorkflow(syncdata, batchgr){
+		def currtask = em_task.select('objid').where('refid = :objid and enddate is null', batchgr).first()
+		if (!currtask) {
+			def tasks = workflowSvc.start([refid:batchgr.objid, data:batchgr])
+			if (tasks){
+				batchgr.taskid = tasks[0].objid
+			}
+			notifyGroup(syncdata, batchgr)
+		}
+	}
+
+	void notifyGroup(syncdata, batchgr){
+        def param = [:]
+        param.objid = batchgr.objid 
+        param.sender = syncdata.sender
+        param.recipientid = 'assign-receiver'
+        param.filetype = 'batchgr'
+        param.msg = 'Batch GR No. ' + batchgr.txnno + ' (assign-receiver) submitted by ' + syncdata.sender.name + '.'
+        param.taskid = batchgr.taskid 
+        support.notifyGroup(param)
+	}
+}
+ 

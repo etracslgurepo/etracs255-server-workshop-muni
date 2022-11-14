@@ -1,0 +1,13 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+
+
+class TestService2  {		
+
+    @ProxyMethod
+    public def getName(name) {
+        return  "Hello from test 2 " + name;
+    }
+
+    
+}

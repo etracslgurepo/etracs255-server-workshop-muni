@@ -1,0 +1,77 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import javax.mail.*;
+import javax.mail.internet.*;
+import javax.activation.*;
+import java.util.*;
+
+public class SmtpService {
+
+	@XConnection("smtp")
+	def mailSvc;
+
+	@ProxyMethod(local=true)
+	@Async
+	public def send( o ) {
+		if ( !o.to ) throw new Exception("to is required in SmtpService");
+		if ( !o.subject ) throw new Exception("subject is required in SmtpService"); 
+		if ( !o.message ) throw new Exception("message is required in SmtpService"); 
+		  
+		def conf = mailSvc.conf;
+		String smtphost = conf.get("mail.smtp.host"); 
+		if ( !smtphost ) throw new Exception("mail.smtp.host is required in smtp file"); 
+
+		String smtpport = conf.get("mail.smtp.port"); 
+
+		String from = conf.get("mail.from"); 
+		String to = o.to;
+		String subject = o.subject;
+		String txtmsg = o.message;
+
+		Properties properties = System.getProperties();  
+		properties.setProperty("mail.smtp.host", smtphost);  
+		if ( smtpport ) {
+			properties.setProperty("mail.smtp.port", smtpport);  
+		}
+
+		Session session = Session.getDefaultInstance( properties );   
+
+		try { 
+		    MimeMessage message = new MimeMessage(session);  
+		    message.setFrom(new InternetAddress(from));  
+		    message.addRecipient(Message.RecipientType.TO, new InternetAddress(to)); 
+		    if (subject) message.setSubject(subject); 
+
+		    if ( o.attachments ) {
+		     	BodyPart messageBodyPart = new MimeBodyPart();
+		     	if ( txtmsg ) messageBodyPart.setText( txtmsg );
+
+		     	Multipart multipart = new MimeMultipart();
+		     	multipart.addBodyPart(messageBodyPart);
+
+		     	o.attachments.each { filename->
+		         	messageBodyPart = new MimeBodyPart();
+		         	DataSource source = new FileDataSource(filename);
+			        messageBodyPart.setDataHandler(new DataHandler(source));
+			        messageBodyPart.setFileName(filename);
+			        multipart.addBodyPart(messageBodyPart);
+		     	} 
+		     	message.setContent(multipart); 
+		    } 
+		    
+		    else if ( txtmsg ) { 
+		    	message.setContent(txtmsg, "text/html");
+		    }
+
+		    Transport.send(message); 
+		    return "OK";
+		} 
+		catch (RuntimeException re) { 
+			throw re;  
+		} 
+		catch (Exception e) {  
+			throw e; 
+		}  
+	}
+
+}

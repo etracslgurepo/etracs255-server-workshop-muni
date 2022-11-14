@@ -1,0 +1,165 @@
+import com.rameses.annotations.*
+import com.rameses.util.*
+import com.rameses.services.extended.*
+
+class RedFlagSyncDataService
+{
+	@Env
+	def env 
+
+	@Service('DateService')
+    def dtSvc
+
+	@Service('RPTMainSyncDataService')
+	def syncSvc 
+
+    @Service('RPTSyncDataService')
+    def rptSync
+
+    @Service('RPTSyncDataSupport')
+    def support
+
+    @Service('RPTRedFlagService')
+    def svc
+
+	@Service('RPTUtil')
+    def util
+
+	@DataContext('rpt_redflag')
+    def em_redflag;
+
+
+	def getActions(){
+		return  [
+	    	'RPT-REDFLAG-FOR-MUNICIPALITY': [send: sendDataToResolve, receive: postDataToResolve, schedule: scheduleSubmitToMunicipality],
+	    	'RPT-REDFLAG-RESOLVED': [send: sendResolvedData, receive: postResolvedData, schedule: scheduleResolvedRedFlag],
+	    ]
+	}
+
+	/*---------------------------------------------------------
+	*
+	* SCHEDULING SYNC SUPPORT 
+	*
+	---------------------------------------------------------*/
+	@ProxyMethod
+	public void schedule(data) {
+		def action= getActions()[data.action]
+		if (!action) throw new Exception('Scheduler not found for action ' + data.action)
+
+		def redflag = svc.open([objid: data.objid])
+		data.remote = rptSync.getRemoteOrg(redflag)
+        def syncdata = syncSvc.create(data)
+
+		action.schedule(syncdata, redflag)
+	}
+
+	def createItem(item, syncdata, action) {
+		return [
+			refid: item.objid, 
+			reftype: syncdata.reftype, 
+			refno: syncdata.refno, 
+			action: (action ? action : syncdata.action)
+		]
+	}
+
+	void createSyncItem(entity, syncdata, action) {
+		def item = createItem(entity, syncdata, action)
+        syncSvc.createItem(syncdata, item)
+	}
+
+	
+	def scheduleSubmitToMunicipality = {syncdata, redflag ->
+		createSyncItem(redflag, syncdata, 'RPT-REDFLAG-FOR-MUNICIPALITY')
+	}
+
+	def scheduleResolvedRedFlag = {syncdata, redflag ->
+        createSyncItem(redflag, syncdata, 'RPT-REDFLAG-RESOLVED')
+        if ('add_faas_requirement_document'.matches(redflag.action)) {
+        	def reqid = redflag.info.requirementtype.objid
+        	rptSync.scheduleRequirements(syncdata, reqid)
+    	}
+	}
+
+	/*---------------------------------------------------------
+	* SEND/RECEIVE HANDLERS 
+	---------------------------------------------------------*/
+	@ProxyMethod
+	public void send(syncdata) {
+		rptSync.send(syncdata, getActions())
+	}
+
+	@ProxyMethod
+	public void receive(syncdata) {
+		rptSync.receive(syncdata, getActions())
+	}
+
+
+	/*---------------------------------------------------------
+	* SUPPORT METHODS
+	---------------------------------------------------------*/
+	def sendDataToResolve = {syncdata ->
+		def redflag = [objid: syncdata.refid]
+		return svc.getDataToResolve(redflag)
+	}
+
+	def postDataToResolve = {syncdata ->
+		def redflag = syncdata.data 
+        redflag = svc.postDataToResolve(redflag)
+		notifyRecommender(syncdata, redflag)
+	}
+
+	def sendResolvedData = {syncdata ->
+		def redflag = [objid: syncdata.refid]
+		return svc.getResolvedData(redflag)
+	}
+
+	def postResolvedData = {syncdata ->
+		def redflag = syncdata.data 
+		notifyFiledBy(syncdata, redflag)
+		return svc.postResolvedData(redflag)
+	}
+
+
+	void notifyRecommender(syncdata, redflag){
+        def currtask = svc.getCurrentTask(redflag);
+        def filetype = currtask?.filetype;
+        if (redflag.info.parentschema) filetype = redflag.info.parentschema;
+        def msg = util.capitalize(filetype) + ' ' + redflag.refno + ' Red Flag #' + redflag.caseno 
+		msg += ' was submitted by ' + redflag.filedby.name 
+
+        def param = [:]
+        param.objid = 'N' + new java.rmi.server.UID();
+        param.sender = syncdata.sender
+        param.recipientid = (currtask?.assignee?.objid ? currtask.assignee.objid : '-')
+        param.recipienttype = 'user'
+        param.filetype = filetype;
+		param.msg = msg;
+        if (redflag.info.parentschema) {
+            param.taskid = svc.getCurrentParentTask(redflag).objid;
+        } else {
+            param.taskid = currtask.objid 
+        }
+        support.notifyGroup(param)
+	}
+
+	void notifyFiledBy(syncdata, redflag){
+		def currtask = svc.getCurrentTask(redflag)
+        def filetype = currtask?.filetype;
+        if (redflag.info.parentschema) filetype = redflag.info.parentschema;
+		def msg = util.capitalize(filetype) + ' ' + redflag.refno + ' Red Flag #' + redflag.caseno + ' resolved.'
+		def param = [:]
+        param.objid = redflag.refid
+        param.sender = syncdata.sender
+        param.recipientid = redflag.filedby.objid
+        param.recipienttype = 'user'
+        param.filetype = filetype;
+        param.msg = msg
+        if (redflag.info.parentschema) {
+            param.taskid = svc.getCurrentParentTask(redflag).objid;
+        } else {
+            param.taskid = currtask.objid 
+        }
+        support.notifyGroup(param)
+	}
+}
+ 

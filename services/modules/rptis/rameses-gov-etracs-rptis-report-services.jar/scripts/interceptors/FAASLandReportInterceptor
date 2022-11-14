@@ -1,0 +1,149 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.util.*;
+import com.rameses.services.extended.*;
+
+class FaasLandReportInterceptor
+{
+	@ActiveDB('faasreport_land')
+	def em
+
+	@Service('Var')
+	def var
+	
+	@Service('RPTUtil')
+	def util 
+
+	@Service('NumberService')
+	def numberSvc
+
+	@After(pattern="FAASReportService.getReportData", eval="#{result.rpu.rputype=='land'}")
+	public void buildReport(evt){
+		def faas = evt.result
+		buildLandAppraisals(faas)
+		buildPlantTreeAppraisals(faas)
+		buildAdjustments(faas)
+		buildBackTaxes(faas)
+		buildAssessments(faas)
+	}
+
+	void buildAdjustments(faas){
+		def adjs = em.getAdjustments(faas.rpu)
+		adjs.each{
+			it.params = em.getAdjustmentParameters(it)
+		}
+		
+		def groups = adjs.groupBy{it.basemarketvalue}
+		groups.each{k,v ->
+			def list = adjs.findAll{it.basemarketvalue == k}
+			for(int i=0; i< list.size(); i++){
+				if (i==0){
+					list[i].adjustment = v.adjustment.sum();
+					if (list[i].adjustment == null)
+						list[i].adjustment = 0.0
+					if (k == null)
+						k = 0.0
+					list[i].marketvalue = k + list[i].adjustment
+				}
+				else {
+					list[i].adjustment = null 
+					list[i].basemarketvalue = null 
+					list[i].marketvalue = null 
+				}
+			}
+		}
+		adjs.each {adj ->
+			def dkm = adj.params.find{it.param.name == 'DISTANCE_KM'}
+			def sdkm = (dkm ? '  (' + dkm.value.toString() + ' km)' : '')
+			adj.adjtypename = adj.adjtypename + sdkm
+		}
+		
+		faas.landadjustments = adjs
+
+		//append plant/tree adjustments
+		def showplantadj = util.toBoolean(var.faas_display_plant_adjustments, true) 
+		if (showplantadj){
+			def plantadj = em.findPlantTreeAdjustment(faas.rpu)
+			if (plantadj){
+				if (faas.landadjustments.size()  != 0) {
+					if (faas.landadjustments.size()  == 1) {
+						faas.landadjustments << [:]
+					}
+					faas.landadjustments[1].basemarketvalue = plantadj.basemarketvalue
+					faas.landadjustments[1].adjustment = plantadj.adjustment
+					faas.landadjustments[1].marketvalue = plantadj.marketvalue
+				}
+			}
+		}
+
+		faas.landadjustments << [:]
+		faas.landadjustments << [:]
+
+	}
+
+
+	void buildPlantTreeAppraisals(faas){
+    	def filter = 'WHERE landrpuid = $P{objid}'
+    	def appraisals = em.getPlantTreeAppraisals([objid:faas.rpu.objid, filter:filter]).each{
+    				  		it.planttreename = it.planttreename + ' - ' + it.subname
+    				  		it.nonproductiveage = (it.nonproductiveage != null ? it.nonproductiveage + '' : '')
+    				  	}
+		util.buildEmptyRows( appraisals, 5)
+    	faas.planttreesappraisals = appraisals
+	}
+
+	void buildLandAppraisals(faas) {
+    	def appraisals = em.getLandAppraisals(faas.rpu).each{
+    		it.subclass = it.specificname + ' - ' + it.subname
+    		if (it.areatype == 'SQM'){
+	    		it.areatext = numberSvc.format('#,##0.00', it.areasqm) 
+	    		//it.areatext += ' sqm'
+	    		it.areatext += ' sqm'
+    		}
+    		else {
+    			it.areatext = numberSvc.format('#,##0.000000', it.areaha) 
+	    		it.areatext += ' Ha.'	
+    		}
+    	}
+
+    	def areatypes = appraisals.areatype.unique()
+    	def totalarea = 0.0 
+    	if (areatypes.size() == 1){
+    		if (areatypes[0] == 'SQM'){
+    			totalarea = appraisals.areasqm.sum()
+    			faas.totalareatext = numberSvc.format('#,##0.00', totalarea)
+    			faas.totalareatext += ' sqm';
+    		}
+    		else{
+    			totalarea = appraisals.areaha.sum()
+    			faas.totalareatext = numberSvc.format('#,##0.000000', totalarea)
+    			faas.totalareatext += ' Ha.';
+    		}
+    	}
+    	else{
+    		totalarea = appraisals.areaha.sum()
+    		faas.totalareatext = numberSvc.format('#,##0.000000', totalarea)
+    		faas.totalareatext += ' Ha.';
+    	}
+		util.buildEmptyRows( appraisals, 5)
+		faas.landappraisals = appraisals
+    }	
+	
+	void buildAssessments(faas){
+		faas.propertyassessments = em.getLandPropertyAssessments( faas.rpu )
+		if (util.isFalse(var.faas_display_zero_assessement)) { 
+			faas.propertyassessments.removeAll( faas.propertyassessments.findAll{ it.assessedvalue == 00 } );
+		}
+
+		faas.propertyassessments << [:]
+	}
+
+	void buildBackTaxes(faas){
+		faas.backtaxes = em.getBackTaxes(faas).each{
+			it.effectivity = it.effectivityqtr + 'Q-' + it.effectivityyear 
+			it.taxability = ( it.taxable == 1 ? 'TAXABLE' : 'EXEMPT' )
+		}
+	}
+
+
+}

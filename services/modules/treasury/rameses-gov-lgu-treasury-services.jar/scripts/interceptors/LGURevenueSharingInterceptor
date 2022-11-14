@@ -1,0 +1,48 @@
+import com.rameses.annotations.*;
+import treasury.facts.*; 
+
+class LGURevenueSharingInterceptor {
+
+	@After( pattern="RevenueSharingService.getFacts" )
+	void afterGetFacts( evt ) {
+		def rct = evt.args[0]; 
+		if ( rct == null ) return; 
+
+		def result = evt.result; 
+		
+		def prov = rct.province; 
+		if ( prov instanceof Map && prov.objid != null ) {
+			loadOrg( prov, result ); 
+		}
+
+		def muni = rct.municipality; 
+		if ( muni instanceof Map && muni.objid != null ) {
+			loadOrg( muni, result ); 
+		}
+
+		def brgy = rct.barangay; 
+		if ( brgy instanceof Map && brgy.objid != null ) {
+			loadOrg( brgy, result ); 
+		}
+	}
+
+	void loadOrg( data, results ) {
+		def org = null; 
+		def orgclass = data.orgclass.toString().toLowerCase();
+		if ( orgclass == 'province' ) {
+			org = new LGUProvince(); 
+		}
+		else if ( orgclass == 'municipality' ) {
+			org = new LGUMunicipality(); 
+		}
+		else if ( orgclass == 'barangay' ) {
+			org = new LGUBarangay(); 
+		}
+
+		if ( org ) {
+			org.orgid = data.objid; 
+			org.root = (data.root.toString() == '1'); 
+			results << org; 
+		}
+	}
+}

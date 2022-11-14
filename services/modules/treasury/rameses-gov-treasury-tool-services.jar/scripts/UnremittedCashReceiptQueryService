@@ -1,0 +1,36 @@
+import com.rameses.annotations.*;
+
+class UnremittedCashReceiptQueryService {
+
+	@ActiveDB("cashreceipt_query")
+	def em;
+	
+	@ProxyMethod
+	public def getColumns( m ) {
+		return [
+			[name:"formno", caption:"FormNo."],
+			[name:"receiptno", caption:"ReceiptNo."],
+			[name:"receiptdate", caption:"ReceiptDate"],
+			[name:"txnmode", caption:"Mode"],
+			[name:"paidby", caption:"PaidBy"],
+			[name:"amount", caption:"Amount", type:"decimal"],
+			[name:"totalcash", caption:"Cash", type:"decimal"],
+			[name:"totalnoncash", caption:"NonCash", type:"decimal"],
+			[name:"collectiontype.name", caption:"Coll.Type"],
+			[name:"collector.name", caption:"Collector"],
+			[name:"subcollector.name", caption:"SubCollector"],
+			[name:"voided", caption:"Voided", type:'checkbox', checkedValue:1, uncheckedValue: 0]
+		];
+	}
+
+	public def getList( param ) { 
+		if ( !param.userid ) param.userid = ''; 
+		if ( !param.searchtext ) param.searchtext = ''; 
+
+		def filters = [];  
+		param.receiptno = param.searchtext+'%';
+		filters << ''' receiptno LIKE $P{receiptno} '''; 
+		param.filter = filters.join(' AND '); 
+		return em.getUnremittedCashReceipts( param ); 
+	} 
+}

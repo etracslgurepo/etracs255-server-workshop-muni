@@ -1,0 +1,146 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class RealtyTaxRegistryReportService
+{
+    @Env
+    def env
+
+    @ActiveDB('landtaxreport_realtytaxregistry')
+    def em;
+
+    @DataContext('rptledger_faas')
+    def em_ledgerfaas
+
+    @Service('DateService')
+    def dtSvc 
+
+    @Service('RPTBillingService')
+    def billSvc
+
+    @Service('RPTUtil')
+    def util
+
+    
+    def fields = [
+            'basic', 'basicint', 'basicdisc', 
+            'sef', 'sefint', 'sefdisc', 
+            'basicidle', 'basicidleint', 'basicidledisc', 
+            'sh', 'shint', 'shdisc',
+            'firecode', 
+        ]
+
+
+    @ProxyMethod
+    public def buildRealtyTaxRegistryData(params) {
+        def data = [:]
+        data.info = em.findLedgerInfo(params)
+        data.items = em.getLedgerCredits(params)
+        if (!data.items)
+            throw new Exception('There are no available credits for this ledger.')
+        util.buildPeriodCovered(data.items)
+        return data;
+    }
+
+    @ProxyMethod
+    public def getRptar(ledger) {
+        def rptar = em.findRptar(ledger)
+        if (!rptar) throw new Exception('Ledger does not exist or has already been deleted.')
+
+        rptar.orgclass = env.ORGCLASS
+        rptar.asof = dtSvc.serverDate
+        rptar.ownerships = getOwnerships(ledger)
+        def payments = em.getPayments(ledger)
+        def items = buildCollectedAndBalance(payments)
+        buildCurrentDues(ledger, items)
+        rptar.items = items
+        return rptar
+    }
+
+    /*
+    * Generate current billing and reconcile with the items
+    * For every billing year
+    *    if not existing in items, add as tax due
+    *    otherwise add the values to taxdue
+    */
+    void buildCurrentDues(ledger, items) {
+        def balances = getBillingByLedger(ledger)
+        if (!balances) return 
+
+        def faases = em_ledgerfaas.select('objid,tdno,assessedvalue')
+                                .find([rptledgerid: ledger.objid, state: 'APPROVED'])
+                                .list()
+
+        balances.each { bal ->
+            def item = items.find{it.taxyear == bal.taxyear} 
+            if (!item) {
+                def rlf = faases.find{it.objid == bal.rptledgerfaasid}
+                item = [:]
+                item.tdno = rlf?.tdno
+                item.assessedvalue = rlf?.assessedvalue
+                item.putAll(bal)
+                fields.each{fld ->
+                    item['bal'+fld] = bal[fld]
+                }
+                items << item
+            } else {
+                fields.each{fld ->
+                    if (item[fld] && bal[fld]) {
+                        item[fld] += bal[fld]
+                        item['bal'+fld] = bal[fld]
+                    }
+                }
+            }
+        }
+    }
+
+    def getOwnerships(ledger) {
+        def ROWS = 6
+        def list = em.getOwnerships(ledger)
+        for (int i = list.size(); i < ROWS; i++) {
+            list <<  [:]
+        }
+        return list;
+    }
+
+    def buildCollectedAndBalance(payments) {
+        payments.each {pmt ->
+            fields.each {fld -> 
+                pmt['coll' + fld] = pmt[fld]
+                pmt['bal' + fld] = 0.0
+            }
+        }
+        return payments
+    }
+
+    def getBillingByLedger(ledger){
+        def balances = []
+        def bill = billSvc.initBill([_generate_barcode:false])
+        bill.billdate = dtSvc.serverDate
+        bill.ledgers = [[objid:ledger.objid]]
+        bill._save = false      // not save billing information
+        bill._forpayment = true     // computes postingitems 
+        try {
+            billSvc.generateBill(bill)
+            def dues = bill.ledgers[0].postingitems
+            if (dues) {
+                def yrgroup = dues.groupBy{it.year}
+                yrgroup.each{yr, yrlist ->
+                    def bal = [taxyear: yr, rptledgerfaasid: yrlist.first().rptledgerfaasid]
+                    def revtypegroup = yrlist.groupBy{it.revtype}
+                    revtypegroup.each{revtype, list ->
+                        bal[revtype] = list.amount.sum()
+                        bal[revtype+'int'] = list.interest.sum()
+                        bal[revtype+'disc'] = list.discount.sum()
+                    }
+                    balances << bal
+                }
+            }
+        } catch( e ) {
+            //ignore current year billing errors 
+            e.printStackTrace()
+        }
+        return balances
+    }       
+}

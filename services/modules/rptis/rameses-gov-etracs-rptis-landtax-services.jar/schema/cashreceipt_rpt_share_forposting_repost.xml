@@ -1,0 +1,12 @@
+<schema>
+	<element tablename="cashreceipt_rpt_share_forposting_repost">
+		<field name="objid" primary="true" prefix="CRR" />
+		<field name="rptpaymentid" />
+		<field name="receiptid" />
+		<field name="receiptdate" />
+		<field name="rptledgerid" />
+		<field name="error" type="integer" />
+		<field name="msg" />
+		<field name="receipttype" />
+	</element>
+</schema>

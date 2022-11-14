@@ -1,0 +1,52 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import com.rameses.eserver.*;
+import java.rmi.server.UID;
+
+public class RPTOfficerLookupService
+{
+
+	@Service('LookupUtilService')
+	def util 
+	
+
+
+	@ProxyMethod
+	public def lookupOfficers( params ) {
+		params.role = ( params.role ? params.role : '%')
+		return util.lookup( 'rptofficer:lookupOfficers', params )
+	}
+
+
+	
+	@ProxyMethod
+	public def lookupAppraisers( params ) {
+		//TODO: user tags is much better 
+		params.role = ( params.role ? params.role : '%')
+		return util.lookup( 'rptofficer:lookupOfficers', params )
+	}
+	    
+	
+	@ProxyMethod
+	public def lookupRecommenders( params ) {
+		//TODO: user tags is much better 
+		params.role = ( params.role ? params.role : '%')
+		return util.lookup( 'rptofficer:lookupOfficers', params )
+	}
+
+
+	@ProxyMethod
+	public def lookupTaxmappers( params ) {
+		//TODO: user tags is much better 
+		params.role = ( params.role ? params.role : '%')
+		return util.lookup( 'rptofficer:lookupOfficers', params )
+	}
+
+
+	@ProxyMethod
+	public def lookupApprovers( params ) {
+		//TODO: user tags is much better 
+		params.role = ( params.role ? params.role : '%')
+		return util.lookup( 'rptofficer:lookupOfficers', params )
+	}
+}

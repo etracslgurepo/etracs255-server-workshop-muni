@@ -1,0 +1,62 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class MunicipalityRPTTransmittalImportSubdivisionInterceptor
+{
+	@Env 
+	def env 
+
+	@Service('MunicipalitySubdivisionRemoteCallHandler')
+	def svc 
+
+	@Service('RPTTransmittalImportService')
+	def importSvc 	
+
+	
+
+	@After(pattern='RPTTransmittalImportService.importData', eval="#{'subdivision'.equalsIgnoreCase(args[0].filetype) && 'FORAPPROVAL'.equalsIgnoreCase(args[0].type) && args[0].state=='APPROVED'}")
+	public void postApproval(evt){
+		def transmittalitem = evt.args[1].transmittalitem
+		def subdivisiondata = evt.args[1].subdivisiondata 
+		if ('APPROVED'.equalsIgnoreCase(transmittalitem.status)){
+			try{
+				subdivisiondata._transmittal = true
+				if (subdivisiondata.originlguid == env.ORGID)
+					svc.approveSubdivisionByProvince(subdivisiondata)
+				else 
+					svc.postApprovedSubdivisionFromProvince(subdivisiondata)	
+
+				transmittalitem.status = 'APPROVED'
+				importSvc.log(transmittalitem)
+			}
+			catch(e){
+				transmittalitem.status = 'ERROR'
+				transmittalitem.remarks = e.message 
+				importSvc.log(transmittalitem)
+			}
+		}
+		else if ('DISAPPROVED'.equalsIgnoreCase(transmittalitem.status)){
+			//TODO:
+		}
+	}
+
+	@After(pattern='RPTTransmittalImportService.importData', eval="#{'subdivision'.equalsIgnoreCase(args[0].filetype) && 'SYNC'.equalsIgnoreCase(args[0].type) && args[0].state=='SUBMITTED'}")
+	public void postProvinceCreatedSubdivision(evt){
+		def transmittalitem = evt.args[1].transmittalitem
+		def subdivisiondata = evt.args[1].subdivisiondata 
+		try{
+			subdivisiondata._transmittal = true
+			svc.postApprovedSubdivisionFromProvince(subdivisiondata)	
+			transmittalitem.status = 'SUCCESS'
+			importSvc.log(transmittalitem)
+		}
+		catch(e){
+			transmittalitem.status = 'ERROR'
+			transmittalitem.remarks = e.message 
+			importSvc.log(transmittalitem)
+		}
+	}
+
+}
+

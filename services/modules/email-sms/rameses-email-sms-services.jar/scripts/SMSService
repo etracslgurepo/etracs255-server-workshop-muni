@@ -1,0 +1,35 @@
+import com.rameses.annotations.*;
+
+class SMSService {
+
+	@Service 
+	def self; 
+
+	@Service(dynamic=true)
+	def dynaSvc; 
+
+
+	@ProxyMethod
+	public void send( Map param ) {  
+		if ( !param.phoneno ) throw new Exception('phoneno parameter is required in SMSService'); 
+		if ( !param.message ) throw new Exception('message parameter is required in SMSService'); 
+
+		self.sendAsync( param ); 
+	} 
+
+
+	@Async
+	@ProxyMethod
+	public void sendAsync( Map param ) {  
+		def map = [:]; 
+		map.objid = (param.objid ? param.objid : ('MSG'+ new java.rmi.server.UID())); 
+		map.phoneno = param.phoneno; 
+		map.message = param.message; 
+		map.state = 'PENDING'; 
+
+		def remoteSvc = dynaSvc.lookup('SMSService', 'sms'); 
+		
+		println 'Sending SMS -> ' + map; 		
+		remoteSvc.send( map ); 
+	} 
+} 

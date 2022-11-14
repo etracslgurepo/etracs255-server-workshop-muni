@@ -1,0 +1,13 @@
+<schema>
+	<element tablename="cashreceipt_slaughter">
+		<field name="objid" primary="true"/>
+		<field name="acctid" required="true" />
+		<field name="acctno" required="true" />
+		<field name="acctitle" required="true" />
+		<field name="permitamount" required="true" />
+		<field name="slaughterof" required="true" />
+		<field name="weight" required="true" />
+		<field name="ordinanceno" />
+		<field name="ordinancedate" />
+	</element>
+</schema>

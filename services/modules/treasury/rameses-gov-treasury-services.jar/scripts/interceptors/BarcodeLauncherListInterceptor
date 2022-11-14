@@ -1,0 +1,34 @@
+import com.rameses.annotations.*;
+
+class BarcodeLauncherListInterceptor {
+
+	@After(pattern="QueryService.getNodeList", eval="#{args[0]._schemaname == 'barcode_launcher'}")
+	public void getNodes( evt ) { 
+		def result = evt.result;
+		result << [  title: 'Active',   state:'ACTIVE' ];
+		result << [  title: 'Inactive', state:'INACTIVE' ];
+	}
+
+	@Before(pattern="QueryService.getList", eval="#{args[0]._schemaname == 'barcode_launcher'}")
+	public void beforeGetList( evt ) {
+		def param = evt.args[0];
+		if ( !param.node?.state ) return;
+
+		def wherelist = [];
+		def wheremap = [:];
+
+		wherelist << " state = :state ";
+		wheremap.state = param.node.state;
+		
+		if ( param.where ) {
+			wherelist << param.where[0];
+			wheremap.putAll( param.where[1] );
+
+			param.where[0] = wherelist.join(' AND '); 
+			param.where[1] = wheremap;
+		}
+		else {
+			param.where = [ wherelist.join(' AND '), wheremap ]; 
+		} 
+	} 
+}

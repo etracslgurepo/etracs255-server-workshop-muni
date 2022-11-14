@@ -1,0 +1,28 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import java.rmi.server.UID;
+import com.rameses.util.*;
+import com.rameses.io.*;
+
+class EntityFinderService {
+
+	@DataContext("entity")
+	def entityEm;
+
+	@DataContext(dynamic=true)
+    def db;
+
+	@ProxyMethod
+	public def find(  def finder ) {
+		def ent = entityEm.find( finder ).select("objid,type").first();
+		if(!ent) return null;
+		def n = "entity"+ent.type.toLowerCase().trim();
+		def em = db.lookup( n );
+		def ext = em.find( [ objid: ent.objid ] ).first(1);
+		if(ext) {
+			ent.putAll( ext );
+		}
+		return ent;
+	}
+
+}

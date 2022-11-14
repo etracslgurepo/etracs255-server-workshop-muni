@@ -1,0 +1,18 @@
+import com.rameses.annotations.*;
+
+class TreasuryMonitoringRemoteMessageInterceptor {
+
+	@Service( dynamic=true )
+	def dynaSvc; 
+
+	@After(pattern="RemoteMessageService.onMessage", eval="#{args[0].reftype == 'treasury-monitoring'}")
+	public void afterOnMessage( evt ) {
+		def param = evt.args[0]; 
+		if ( param.reportService ) {
+			def svc = dynaSvc.lookup( param.reportService, param.reportConnection ); 
+			def args = [ param.reportParam ] as Object[];
+			def resp = svc.invokeMethod( param.reportMethod, args ); 
+			if ( resp ) evt.result.putAll( resp ); 
+		}
+	}
+}

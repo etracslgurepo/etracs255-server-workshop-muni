@@ -1,0 +1,59 @@
+import com.rameses.annotations.*;
+import com.rameses.http.*;
+import com.rameses.util.*;
+
+class UploadNotificationTask {
+
+    @ActiveDB(value='notification', em='notification')
+    def em;
+
+    @Service('CloudSettings') 
+    def settings;     
+
+    @Service(value='CloudNotificationService', connection='cloud_notification')
+    def remote;
+
+	@Schedule(interval=1)
+	public void onUpload( task ) { 
+        if ( !settings.isEnabled() ) { 
+            //facility is disabled, exit immediately 
+            return; 
+        } 
+
+		def pendingdata = em.findPendingMessage(); 
+		if ( !pendingdata ) return; 
+
+		if ( !pendingdata.indexno ) {
+			uploadHeader( pendingdata ); 
+		} else if ( pendingdata.indexno <= pendingdata.chunksize ) {
+			uploadItems( pendingdata ); 
+		} else {
+			em.removePending( pendingdata ); 
+		}
+	} 
+
+	void uploadHeader( params ) {
+		def data = em.read( params ); 
+		if ( data ) {
+			remote.saveHeader( data );  
+			params.indexno += 1; 
+			em.update( params, 'pending' );  
+		} else {
+			em.removePending( params ); 
+		} 
+	}
+
+	void uploadItems( params ) {
+		params.parentid = params.objid;
+		params.startindexno = params.indexno; 
+		params.endindexno = params.indexno+4; 
+		def list = em.getData( params ); 
+		if ( list ) {
+			remote.saveItems([ objid: params.parentid, items: list ]);
+			params.indexno = params.endindexno+1; 
+			em.update( params, 'pending' ); 
+		} else {
+			em.removePending( params ); 
+		} 
+	}
+} 

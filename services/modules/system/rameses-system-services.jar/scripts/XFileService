@@ -1,0 +1,28 @@
+import com.rameses.annotations.*;
+
+class FileService {
+
+	@Service('DateService')
+	def dateSvc;
+
+	@ProxyMethod 
+	public def read( params ) { 
+		if ( !params.objid ) throw new Exception('objid parameter is required');  
+
+		return params; 
+	} 
+
+	@ProxyMethod 
+	public def getContent( params ) {
+		if ( !params.fileid ) throw new Exception('fileid parameter is required');  
+		if ( !params.startindexno ) throw new Exception('startindexno parameter is required');  
+		if ( !params.endindexno ) throw new Exception('endindexno parameter is required');  
+
+		return []; 
+	} 
+
+	@ProxyMethod 
+	public void removeFile( params ) {
+		if ( !params.fileid ) throw new Exception('fileid parameter is required');  
+	}
+} 

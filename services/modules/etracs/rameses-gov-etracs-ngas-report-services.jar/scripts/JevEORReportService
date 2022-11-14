@@ -1,0 +1,72 @@
+import com.rameses.annotations.*;
+
+class JevEORReportService  {
+
+	def PADDING_SIZE = 10;
+
+	@ActiveDB('jev_eor_report')
+	def em;
+
+	@DataContext('account_maingroup') 
+	def acctgroup_db;
+
+	@DataContext('fund') 
+	def fund_db;
+
+
+	@ProxyMethod 
+	public def initReport( param ) {
+		def mm = [:]; 
+		mm.funds = []; 
+		mm.acctgroups = acctgroup_db.where("reporttype IN ('NGAS','PPSAS')").orderBy('reporttype, version, title').list(); 
+
+		if ( param.funds ) {
+			param.funds.each{ 
+				def ff = findFund( it ); 
+				if ( ff ) mm.funds << ff;  
+			}
+		}
+		return mm;
+	}
+
+	@ProxyMethod
+	public def findFund( param ) { 
+		return fund_db.find([ objid: param.objid.toString() ]).first(); 
+	}
+
+	@ProxyMethod
+	public def getAccountMappings( param ) { 
+		if ( !param.maingroupid ) throw new Exception('maingroupid parameter is required'); 
+		if ( !param.acctids ) throw new Exception('acctids parameter is required'); 
+
+		return em.getAccountMappings( param );  
+	}
+
+	@ProxyMethod
+	public def findRPTReceivables( param ) { 
+		if ( !param.receiptids ) throw new Exception('receiptids parameter is required'); 
+		if ( !param.fundid ) throw new Exception('fundid parameter is required'); 
+		if ( !param.revtype ) throw new Exception('revtype parameter is required'); 
+
+		return em.findRPTReceivables( param );  
+	} 
+
+	@ProxyMethod
+	public def findRPTBasicDiscount( param ) { 
+		if ( !param.receiptids ) throw new Exception('receiptids parameter is required'); 
+		if ( !param.fundid ) throw new Exception('fundid parameter is required'); 
+		if ( !param.revtype ) throw new Exception('revtype parameter is required'); 
+
+		return em.findRPTBasicDiscount( param );  
+	} 
+
+	@ProxyMethod
+	public def getRPTShares( param ) { 
+		if ( !param.receiptids ) throw new Exception('receiptids parameter is required'); 
+		if ( !param.fundid ) throw new Exception('fundid parameter is required'); 
+		if ( !param.revtype ) throw new Exception('revtype parameter is required'); 
+		if ( !param.orgtype ) throw new Exception('orgtype parameter is required'); 
+
+		return em.getRPTShares( param );  
+	} 
+}

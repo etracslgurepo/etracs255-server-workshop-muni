@@ -1,0 +1,246 @@
+import com.rameses.common.*
+import com.rameses.annotations.*
+import com.rameses.util.*
+import com.rameses.services.extended.*
+
+class FAASAnnotationService 
+{
+	@DataContext('faasannotation')
+	def em
+
+	@DataContext('faasannotation_faas')
+	def em_annotation_faas
+	
+	@Service('TxnRefService')
+	def txnRef
+
+	@Service('SequenceService')
+	def seqSvc
+	
+	@Service('DateService')
+	def dateSvc
+
+	@Service('FAASService')
+	def faasSvc 
+	
+	@Service('RPTUtil')
+    def util 
+
+    @Service('DBImageService')
+    def imageSvc
+
+    @Service('Var')
+    def var 
+
+
+	@Env
+	def env
+
+	def SCHEMA_NAME = 'faasannotation'
+	
+	def STATE_DRAFT 		= 'DRAFT' 
+	def STATE_FORAPPROVAL 	= 'FORAPPROVAL' 
+	def STATE_APPROVED 		= 'APPROVED' 
+	def STATE_CANCELLED 	= 'CANCELLED' 
+	
+	
+	@ProxyMethod
+    public def getList( params ) {
+    	params.searchtext = (params.searchtext ? params.searchtext : '') + '%'
+        def filters = [
+            ' and fa.txnno LIKE $P{searchtext}',
+            ' and f.tdno LIKE $P{searchtext}',
+            ' and f.owner_name LIKE $P{searchtext}',
+            ' and r.fullpin LIKE $P{searchtext}',
+            ' and fa.fileno LIKE $P{searchtext}',
+        ]
+        return util.getListFromQuery( 'faasannotation:getList' , filters, params, 'fa.objid' )
+    }
+
+    @ProxyMethod
+    public def getColumns(params) {
+        return [
+            [name:"annotationtype.objid", caption:"Annotation Type", width:100],
+            [name:"memoranda", caption:"Memoranda", width:250],
+            [name:"fileno", caption:"File No.", width:100],
+            [name:"txnno", caption:"Txn No.", width:120],
+            [name:"txndate", caption:"Txn Date", width:150],
+            [name:"orno", caption:"O.R. No.", width:100],
+            [name:"ordate", caption:"O.R. Date", width:120],
+            [name:"oramount", caption:"O.R. Amount", type:'decimal', width:120],
+            [name:"state", caption:"State", width:100],
+        ]
+    }
+
+
+	@ProxyMethod
+	public List getAnnotationTypes() {
+		return em.getAnnotationTypes([:])
+	}
+	
+
+	@ProxyMethod
+	public def init( faas ) {
+		txnRef.checkReference(faas.objid)
+		if (faas.state == 'CANCELLED') throw new Exception('FAAS has already been cancelled.')
+		if (faas.state != 'CURRENT') throw new Exception('FAAS is not yet approved. Only current record is allowed.')
+		def entity = [
+			objid : util.generateId('FA'),
+			state : STATE_DRAFT,
+			oramount : 0.0,
+			faasid: faas.objid,
+			faas: faas,
+		]
+
+		entity.items = [
+			[parent: [objid: entity.objid], faas: faas]
+		]
+
+		return entity
+	}
+	
+	@ProxyMethod
+	public Map create( annotation ) {
+		validateInfo( annotation )
+		annotation.state  = STATE_DRAFT
+		annotation.txnno  = getNextSeries()
+		annotation.txndate  = dateSvc.serverDate
+		em.create(annotation)
+		//allow multiple annotations 
+		//txnrefSvc.insert(annotation.faasid,  annotation.objid, 'Annotation', 'FAAS is referenced by Annotation No. ' + annotation.docno + '.' )
+		return annotation 
+	}
+
+
+	@ProxyMethod
+	public Map update( annotation ) {
+		validateInfo( annotation )
+		em.update(annotation)
+		return annotation 
+	}
+
+
+	@ProxyMethod
+	public def open( annotation ) {
+		annotation = em.read(annotation)
+		if( !annotation ) throw new Exception('Record does not exist or has already been deleted.')
+		return annotation 
+	}
+
+	@ProxyMethod
+	public void saveImages(annotation) {
+		if (!annotation.image) return
+		annotation.image.headers.each{
+			imageSvc.saveHeader(it)
+		}
+		annotation.image.chunks.each{
+			imageSvc.saveItem(it)
+		}
+	}
+
+	@ProxyMethod
+	public def getImage( annotation ) {
+			def headers = imageSvc.getImages([refid:annotation.objid])
+			
+			def chunks = []
+			headers.each{
+				chunks += imageSvc.getImageItems(it)
+			}
+			return [headers:headers, chunks:chunks]
+	}
+
+
+	@ProxyMethod
+	public def delete( annotation ) {
+		txnRef.delete(annotation.objid)
+		em.delete(annotation)	
+	}
+
+
+	@ProxyMethod
+	public def cancel(annotation) {
+		annotation = open(annotation)
+		annotation.state = STATE_CANCELLED
+		em.update(annotation)
+	}
+
+
+	@ProxyMethod
+	public Map submitForApproval( annotation ) {
+		validateInfo( annotation )
+		annotation.state = STATE_FORAPPROVAL
+		em.update(annotation )
+		return annotation 
+	}
+
+
+	@ProxyMethod
+	public Map approve( annotation ) {
+		validateInfo(annotation)
+		annotation.state = STATE_APPROVED
+		em.update(annotation )
+		return annotation 
+	}
+
+
+	@ProxyMethod
+	public def disapprove( annotation ) {
+		annotation.state = STATE_DRAFT
+		em.update(annotation) 
+		return annotation 
+	}
+
+	@ProxyMethod
+	public def getAnnotationsByFaasId( faasid ) {
+		return em.getActiveAnnotationsByFaasId([faasid:faasid])
+	}
+
+
+	@ProxyMethod
+	public def getAnnotationHistoryByFaasId( faasid ) {
+		return em.getAnnotationHistoryByFaasId([faasid:faasid])
+	}
+
+	@ProxyMethod
+	public void checkActiveAnnotations(txntype, entity  ) {
+		if (util.isFalse(txntype.allowannotated)) {
+			def annotations = em.getActiveAnnotations(entity)
+			if (annotations){
+				def msg = 'Transaction is not allowed.\nFAAS has existing '
+				if (annotations.size() == 1)
+					msg += 'Annotation No ' + annotations.txnno.join(', ')
+				else 
+					msg += 'Annotations with No(s). ' + annotations.txnno.join(', ')
+				throw new Exception(msg)
+			}
+		}
+	}
+
+	void validateInfo( annotation ) {
+		def currdate = dateSvc.serverDate 
+		def ordate	 = dateSvc.parse('yyyy-MM-dd', annotation.ordate )
+		if( ordate > currdate ) throw new Exception('O.R. Date must not exceed current date.')
+		checkFaasCurrentState(annotation.faasid)
+	} 
+	
+
+	void checkFaasCurrentState( faasid ) {
+		def state = faasSvc.getState(faasid)
+		if( state != 'CURRENT' ) throw new Exception('FAAS to annotate is not current.\nOnly current record is allowed.')
+	}
+
+	def getNextSeries(){
+		return env.ORGID.replaceAll('-', '') + seqSvc.getNextFormattedSeries('FAASAnnotation')
+	}
+
+
+
+	@ProxyMethod
+	public void postRemote(annotation){
+		def exist = em.find([objid: annotation.objid]).first() != null
+		if (!exist) {
+			em.create(annotation)
+		}
+	}
+
+}

@@ -1,0 +1,197 @@
+import treasury.utils.*;
+import treasury.facts.*;
+import enterprise.utils.*;
+import enterprise.facts.*;
+import java.rmi.server.*;
+import java.util.*;
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import com.rameses.rules.common.RuleExecutionContext;
+
+public class BillingRuleService {
+	
+	@Service("DateService")
+	def dateSvc;
+
+	@Service("RuleExecutorService")
+	def ruleSvc;
+
+	@Service("FactBuilderService")
+	def factSvc;
+
+	@Service(value="HolidayService", connection="enterprise")
+	def holidaySvc;
+
+	/*******************************************************************************
+	* Parameters
+	* 1. rulename - name of rule
+	* 2. params = the data  
+	* 3. startgroup (optional) - rulegroup from where to start processing
+	* 4. 
+	********************************************************************************/
+	@ProxyMethod
+	public def execute( def request ) {
+		if( !request.rulename ) throw new Exception("BillingService error. rulename is required");
+		if( !request.params) throw new Exception("BillingService error. params is required");
+
+		def rulename = request.rulename;
+		def data = request.params;
+
+		def factBuilder = request.factBuilder;
+		if(!factBuilder ) {
+			factBuilder = factSvc.getFacts([ rulename: rulename, params: data ]);
+		}		
+		//throw new Exception("pass req" + data);
+
+		def facts = factBuilder.facts;
+		if(!facts) throw new Exception("There should be at least one fact in RuleProcessorService" );
+
+		def ctx = RuleExecutionContext.currentContext;
+		if( ctx == null ) {
+			ctx = new RuleExecutionContext(facts);
+		};
+
+		//set the variable info provider
+		if(!ctx.env.infoUtil) {
+			ctx.env.infoUtil = new VariableInfoUtil();
+			if( factBuilder.variableInfoProvider  ) ctx.env.infoUtil.provider = factBuilder.variableInfoProvider;
+		}	
+
+		def svrDate = dateSvc.getServerDate();
+		if( !facts.find{ it.class == treasury.facts.SystemDate.class } ) {
+			facts << new treasury.facts.SystemDate(svrDate);
+		};
+		if( !facts.find{ it.class == treasury.facts.BillDate.class } ) {
+			if( data.billdate ) {
+				facts << new BillDate( data.billdate );
+			}
+			else {
+				facts << new BillDate(svrDate);
+			}
+		};
+
+		if( request.request_action == "cashreceipt" ) { 
+			if ( !facts.find{( it instanceof CashReceipt )} ) {
+				facts << new CashReceipt();
+			}
+		}
+
+		//include holidays
+		facts << new HolidayFact(  
+			handler: { dt->
+				def h = holidaySvc.lookup(dt);
+				return (h!=null);
+			}
+		);
+
+		if( data.amtpaid ) {
+			def amt = new BigDecimal( data.amtpaid + "" );
+			facts << new treasury.facts.Payment( amount: amt );
+		}
+		def startgroup = request.startgroup;
+		boolean started = true;
+		if(startgroup) started = false;
+		def hdlr = { grpname ->
+			if(!started && startgroup == grpname ) started = true;
+			if(!started) return false;
+			if( ctx.result.askinfos ) return false;
+			return true;
+		};
+
+		//add infos and billitems if exist
+		if( data.infos ) {
+			factBuilder.addInfos( data.infos ); 
+		}	
+		if( data.billitems ) factBuilder.addBillItems( data.billitems ); 
+
+		def res = ruleSvc.execute( rulename, facts, null, hdlr );
+		if(!started) throw new Exception("No rules fired. Rulegroup " +  request.startgroup + " does not exist" ); 
+
+		if( res.askinfos ) {
+			return [askinfos : res.askinfos.collect{ it.toMap() } ];
+		}
+		
+		//-------  PRINT THE RESULT  --------//
+		
+
+		def m = [:];
+		m.items = [];
+		m.billitems = [];
+		m.infos = [];
+		m.requirements = [];
+
+		facts.each { o->
+			if( (o instanceof BillItem) || (o instanceof CreditBillItem ) || (o instanceof CreditBalanceBillItem ) ) {
+				def vv = o.toMap();
+				m.billitems << vv;
+				m.items << vv;
+			}
+			else if(o instanceof BillSubItem ) {
+				//this is only for discount, surcharge and interest
+				m.items << o.toMap();	
+			}
+			else if( o instanceof SummaryBillItem ) {
+				def vv = o.toMap();
+
+				//do not include in billitems if txntype is discount, surcharge or interest
+				if( !o.txntype?.matches("discount|surcharge|interest") ) {
+					m.billitems << vv;
+				}
+				m.items << vv;
+			}
+			else if( o instanceof VariableInfo ) {
+				if(o.system == 0 ) {
+					m.infos << o.toMap();	
+				}
+			}
+			else if( o instanceof DueDate ) {
+				if(o.tag) m[(o.tag)] = o.date;
+			}
+			else if( o instanceof BillDate ) {
+				m.billdate = o.date;
+			}
+			else if(factBuilder.outputHandler!=null) {
+				factBuilder.outputHandler.out( o, m );
+			}
+		}
+
+
+		//calc totals
+		if(m.items) {
+			m.amount = m.items.sum{ it.amount };
+		}
+
+		//items is used for cash receipt so it should not be a default behavior
+		//billitems is used almost everywhere so it should be the default
+
+		boolean include_billitems = ( request.include_billitems == null ) ? true : request.include_billitems;
+		boolean include_items = (request.include_items == null) ? false : request.include_items;
+
+		//fixed individual totals if any.
+		if( include_billitems ) {
+			if( m.billitems ) {
+				m.billitems.each {
+					if(!it.total) it.total = it.amount;
+				}
+				m.billitems = m.billitems.sort{ it.sortorder }
+			}
+		}
+		else {
+			m.remove("billitems");
+		}
+
+		if(!include_items) {
+			m.remove("items");
+		}
+
+		// println "BILLITEMS ";
+		// m.billitems.each {
+		// 	println "--->" + it.sortorder;
+		// }
+
+		//clean also requirements and infos
+		if( !m.requirements ) m.remove("requirements");
+		if( !m.infos ) m.remove("infos");
+		return m;
+	}
+}

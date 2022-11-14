@@ -1,0 +1,44 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+import java.rmi.server.UID
+
+class ProvinceOrgInterceptor {
+	
+	@PersistenceContext('main')	
+	def em
+		
+	def schemaName = 'province';
+
+	@After(pattern="OrgService.open", eval="#{args[0].orgclass=='PROVINCE'}")
+	public void onOpen( evt ) {
+		def orgdata = evt.args[0];
+		def provdata = em.read(schemaName, orgdata);
+		if (provdata) evt.result.putAll( provdata ); 
+	} 
+
+	@After(pattern="OrgService.update", eval="#{args[0].orgclass=='PROVINCE'}")
+	public void onUpdate( evt ) {
+		def data = evt.args[0];
+		data.state = 'DRAFT';		
+		//create the record if not exist 
+		def info = em.read(schemaName, data); 
+		if (info) 
+			em.update(schemaName, data); 
+		else 
+			em.create(schemaName, data);
+	}
+
+	@After(pattern="OrgService.removeEntity", eval="#{args[0].orgclass=='PROVINCE'}")
+	public void onRemove( evt ) {
+		def data = evt.args[0];
+		em.delete(schemaName, data); 
+	} 	
+	
+	@Before(pattern="OrgService.approve", eval="#{args[0].orgclass=='PROVINCE'}")
+	public void onChangeState( evt ) {
+		def params = evt.args[0];
+		params.newstate = 'APPROVED';
+		params.oldstate = params.state;
+		em.sqlContext.createNamedExecutor(schemaName+':changeState').setParameters(params).execute(); 
+	}		
+}

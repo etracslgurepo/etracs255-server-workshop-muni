@@ -1,0 +1,59 @@
+import com.rameses.annotations.*;
+import com.rameses.ftp.FtpException;
+import com.rameses.ftp.FtpLocationConf;
+import com.rameses.ftp.FtpSession;
+
+class SysFileServiceInterceptor {
+
+	@After(pattern="SysFileService.remove", index=9999999)
+	public void afterRemove( evt ) {
+		def res = evt.result; 
+		if ( !res.items ) return; 
+
+		res.items.each{ o-> 
+
+			def remote_fileid = [ o.fileloc.rootdir, o.objid ].findAll{( it )}.join('/'); 
+			remote_fileid = [ remote_fileid, o.filetype ].findAll{( it )}.join('.');
+
+			def filelocid = o.fileloc.objid; 
+			if ( !filelocid ) filelocid = o.filelocid; 
+
+			def conf = FtpLocationConf.add( filelocid );
+			conf.setHost( o.fileloc.url ); 
+			conf.setUser( o.fileloc.user.name ); 
+			conf.setPassword( o.fileloc.user.pwd ); 
+
+	        def sess = null; 
+	        boolean pass = false; 
+	        try {
+	            sess = new FtpSession( conf ); 
+	            sess.connect(); 
+	            pass = true; 
+	        }
+	        finally {
+	            if ( !pass ) {
+	                disconnect( sess ); 
+	            }
+	        }
+
+	        try { 
+	            sess.deleteFile( remote_fileid ); 
+	        } 
+	        catch(FtpException fe) { 
+	            System.out.println("FtpSession.deleteFile: "+ fe.getMessage());
+	        }
+	        finally {
+	            disconnect( sess ); 
+	        }
+		}
+	} 
+
+
+    private void disconnect( sess ) {
+        if ( sess != null ) {
+            try {
+                sess.disconnect(); 
+            } catch(Throwable t) {;} 
+        }
+    }
+} 

@@ -1,0 +1,17 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class LandTaxDishonoredCheckPaymentInterceptor
+{
+	@Service('LandTaxDishonoredCheckPaymentService')
+	def svc
+
+
+	@After(pattern="DishonoredCheckPaymentService.post", index=1000) 
+	public void postDishonoredCheck( evt ) {
+		def dishonoredCheck = evt.args[0];
+		svc.post(dishonoredCheck);
+	}
+}
+

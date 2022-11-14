@@ -1,0 +1,83 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class RPTReportApproveFaasListingService
+{
+    @Env
+    def env 
+
+    @ActiveDB('rptreport_approvefaaslisting')
+    def em
+
+    @DataContext('faas_previous')
+    def em_faas_previous 
+
+
+
+    @Service('RPTUtil')
+    def util
+
+    @Async
+    @ProxyMethod
+    public def getApproveFaasListing(params){
+    	params.lguid = params.lgu?.objid 
+        params.barangayid = params.barangay?.objid
+        params.section = (params.section ? params.section : '%')
+
+        util.buildEndingPeriodFilter(params)
+
+        def title = 'Approved FAAS Listing ' 
+
+        params.txntypeid = 'GR'
+        params.txntypefilter = '' 
+        if ('GR'.equalsIgnoreCase(params.reporttype)){
+            params.txntypefilter = ' AND f.txntype_objid = $P{txntypeid} '
+            title = 'Approved General Revision FAAS Listing'
+        }
+        else if ('MAINTENANCE'.equalsIgnoreCase(params.reporttype)){
+            params.txntypefilter = ' AND f.txntype_objid <> $P{txntypeid} '  
+            title = 'Approved Maintenance FAAS Listing' 
+        }
+
+        def list = em.getApproveFaasListing(params)
+		if ( !list ) throw new Exception('There are no records found.')
+
+        list.each{
+            def prevlist = em_faas_previous.find([faasid:it.objid]).list()
+            if (prevlist){
+                it.prevowner = prevlist.prevowner.join(' / ')
+                it.prevadministrator = prevlist.prevadministrator.join(' / ')
+            }
+            if (it.administrator && it.administrator.name){
+                it.owner.name = it.owner.name + '\nAdmin: ' + it.administrator.name 
+            }
+            if (it.prevadministrator){
+                it.prevowner + '\nAdmin: ' + it.prevadministrator 
+            }
+        }
+
+        def forlguname = env.ORGCLASS + ' OF ' + env.ORGNAME 
+        if (params.lgu){
+            forlguname = params.lgu.lgutype.toUpperCase() + ' OF ' + params.lgu.name
+        }
+
+        def p = [
+            PERIOD     : buildPeriod(params),
+            FORLGUNAME : forlguname,
+            TITLE      : title
+        ]
+
+		return [
+            parameters : p,
+            reportdata : list
+        ]
+    }
+
+    @ProxyMethod
+    public def buildPeriod( params ) {
+        return util.buildPeriod(params)
+    }
+
+
+}

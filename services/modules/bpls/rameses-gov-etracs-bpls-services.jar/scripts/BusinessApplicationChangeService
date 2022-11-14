@@ -1,0 +1,59 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.services.extended.*;
+
+class BusinessApplicationChangeService  {
+
+	@ActiveDB("business_change_log")
+	def em;
+
+	@Service("DateService")
+	def dateSvc;
+
+	@Service("SequenceService")
+	def seqSvc;
+
+	@Service("BusinessInfoService")
+	def bizInfoSvc;
+
+	@Service("BusinessLobService")
+	def lobSvc;
+
+	@Env
+	def env;
+
+	private void log(def o ) {
+		def m = [:];
+		m.objid = "BPLOG"+new UID();
+		m.entryno = "BPLOG-"+seqSvc.getNextFormattedSeries("BP_AMEND_LOG");
+		m.dtfiled = dateSvc.getServerDate();
+		m.filedby = [objid: env.USERID, name: env.FULLNAME];
+		m.changetype = o.amendtype;
+		m.oldvalue = o.oldvalue;
+		m.newvalue = o.newvalue;
+		m.reason = o.reason;
+		m.businessid = o.businessid;
+		m.applicationid = o.applicationid;
+		em.create(m);
+	}
+
+	@ProxyMethod
+	public void updateLobs(def o ) {
+		o.businessid = o.business.objid;
+		o.applicationid = o.objid;
+		o.activeyear = o.appyear;
+		lobSvc.addAppLobs(o);
+		bizInfoSvc.addAppInfos(o);
+	}
+
+	@ProxyMethod
+	public void updateInfos(def o ) {
+		o.businessid = o.business.objid;
+		o.applicationid = o.objid;
+		o.activeyear = o.appyear;
+		bizInfoSvc.addAppInfos(o);
+	}
+
+
+}

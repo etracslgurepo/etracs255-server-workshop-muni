@@ -1,0 +1,32 @@
+<schema>
+	<element name="assessmentnotice" tablename="assessmentnotice">
+		<field name="objid" primary="true" prefix="AN"/>
+		<field name="state" required="true" caption="State" searchable="true" indexed="true" />
+		<field name="txnno" required="true" caption="Txn No." searchable="true" />
+		<field name="txndate" required="true" caption="Txn Date"/>
+		<field name="assessmentyear" required="true" type="integer" />
+		<field name="taxpayerid" required="true" />
+		<field name="taxpayername" required="true"  caption="Taxpayer" indexed="true"/>
+		<field name="taxpayeraddress" required="true" caption="Address" />
+		<field name="administrator_name"  caption="Administrator"/>
+		<field name="administrator_address" />
+		<field name="createdbyid" />
+		<field name="createdbyname" required="true" />
+		<field name="createdbytitle" required="true" /> 
+		<field name="approvedbyid" />
+		<field name="approvedbyname" required="true" />
+		<field name="approvedbytitle" required="true" />
+		<field name="receivedby"  caption="Received By" searchable="true" />
+		<field name="dtdelivered"  caption="Date Received"/>
+		<field name="remarks"  caption="Remarks"/>
+		<field name="deliverydays" expr="30"  caption="Delivery Days" type="integer" />
+		<field name="deliverytype_objid" caption="Delivery Type" />
+		<complex name="info" required="false" serializer="default" />
+	</element>
+
+	<element name="item" tablename="assessmentnoticeitem">
+		<field name="objid" primary="true" />
+		<field name="assessmentnoticeid" required="true" />
+		<field name="faasid" required="true" />
+	</element>
+</schema>

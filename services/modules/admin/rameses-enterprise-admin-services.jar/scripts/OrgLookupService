@@ -1,0 +1,31 @@
+import com.rameses.annotations.*;
+import com.rameses.services.extended.*;
+
+class OrgLookupService extends ActiveCrudListService {
+
+	@ActiveDB(value='org', em='admin')
+	def	em; 
+	
+	@ProxyMethod
+	public def getColumns( def o ) {
+		return[
+			[name:'name', caption:'Name' ],
+			[name:'parent.name', caption:'Parent' ]
+		];
+	}
+	
+	public void beforeList( o ) {
+		o._listMethod = "getLookup";
+		
+		def filterList = []; 
+		if ( o.parent?.objid ) { 
+			filterList << ''' o.parent_objid = $P{parentid} '''; 
+			o.parentid = o.parent.objid; 
+		}
+
+		o.filters = "";
+		if ( filterList ) { 
+			o.filters = " AND "+ filterList.join(' AND '); 
+		}
+	}
+}

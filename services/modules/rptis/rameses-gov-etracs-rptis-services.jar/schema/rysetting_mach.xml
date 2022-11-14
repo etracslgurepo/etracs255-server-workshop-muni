@@ -1,0 +1,12 @@
+<schema>
+	<element tablename="machrysetting">
+		<field name="objid" primary="true"/>
+		<field name="state" required="true" caption="State" width="100"/>
+		<field name="ry" required="true" type="integer" searchable="true" indexed="true" width="100"/>
+		<field name="previd" />
+		<field name="ordinanceno" caption="Ordinance No."/>
+		<field name="ordinancedate" type="date" caption="Ordinance Date" />
+		<field name="appliedto" caption="Applied To" width="300"/>
+		<field name="remarks" caption="Remarks" width="300" />
+	</element>
+</schema>

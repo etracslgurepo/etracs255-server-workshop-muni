@@ -1,0 +1,64 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class SubdivisionRedFlagInterceptor
+{
+	@Service('SubdivisionService')
+	def svc 
+
+	@DataContext('subdivision_task')
+	def em_task;
+
+	@After(pattern="RPTRedFlagService.getEntity", index=2)
+	public void afterGetEntity(evt){
+		def redflag = evt.args[0]
+		def entity  = evt.result 
+		if (!entity.objid){
+			try{
+				def s = svc.open([objid:redflag.refid])
+				entity.putAll(s)
+			}
+			catch(e){
+				//ignore 
+			}
+		}
+	}
+
+
+	@After(pattern="RPTRedFlagService.getCurrentTask", index=1)
+	public void afterGetCurrentTask(evt){
+		def redflag = evt.args[0]
+		def task = evt.result 
+		if (!task.objid){
+			try {
+				def param = [objid:redflag.refid]
+				def t = svc.findOpenTask(param)
+				if (t){
+					t.filetype = 'subdivision'
+					task.putAll(t)
+				}
+			}
+			catch(Exception e) {
+				//ignore				
+			}
+			
+		}
+	}	
+
+	@After(pattern="RPTRedFlagService.getCurrentParentTask", index=1, eval="#{args[0]?.info?.parentschema =='subdivision'}")
+	public void afterGetCurrentParentTask(evt){
+		def redflag = evt.args[0]
+		def task = evt.result 
+		if (!task.objid){
+            def opentask = em_task.find([refid: redflag.parentid]).where('enddate is null').first();
+            if (opentask) {
+                opentask.filetype = 'subdivision'
+				task.putAll(opentask)
+            }
+		}
+	}	
+
+
+}
+

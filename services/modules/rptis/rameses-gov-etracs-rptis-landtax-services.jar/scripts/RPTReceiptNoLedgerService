@@ -1,0 +1,140 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import com.rameses.services.extended.*
+
+class RPTReceiptNoLedgerService
+{
+
+	@ActiveDB('cashreceiptrpt')
+	def em
+
+	@Service('DateService')
+	def dtSvc
+
+	@Service('NumberService')
+	def numSvc
+
+	@Service('RPTBillingService')
+	def billingSvc
+
+	@Service('FAASService')
+	def faasSvc
+
+	def SCHEMA_RECEIPT_ITEM_ONLINE = 'cashreceiptitem_online'
+	def SCHEMA_NOLEDGER_ITEM = 'noledgeritem'
+
+
+
+
+	@ProxyMethod
+	public def getTxntypes(  ) {
+		return faasSvc.getTxnTypes();	
+	}
+
+	@ProxyMethod
+	public def calculateDue(bill){
+		if (!bill.billdate) 
+			bill.billdate = dtSvc.serverDate 
+
+		bill.rptledger.putAll(createLedgerInfo(bill))
+
+		bill = billingSvc.generateNoLedgerBill(bill) 
+		bill.items.each{
+			it.general = it.basic + it.basicint - it.basicdisc + it.firecode
+			it.barangayid = bill.rptledger.barangayid
+		}
+
+		def info = [:]
+		info.total = bill.items.total.sum()
+		info.basicnet = bill.items.basicnet.sum()
+		info.sefnet = bill.items.sefnet.sum()
+		info.firecode = bill.items.firecode.sum()
+		info.general = bill.items.general.sum()
+		info.period = buildPeriod(bill)
+		bill.ledgerfaasinfo = info
+		return bill
+	}	
+
+	def buildPeriod(bill){
+		def first = bill.items.first();
+		def last = bill.items.last();
+		if (first.year == last.year && first.fromqtr == 1 && last.toqtr == 4)
+			return first.year + ''
+		if (first.year == last.year)
+			return first.fromqtr + '' + last.toqtr + 'Q, ' + first.year
+		if (first.year != last.year && first.fromqtr == 1 && last.toqtr == 4)
+			return first.year + '-' + last.year 
+		return first.fromqtr + 'Q, ' + first.year + '-' + last.toqtr + 'Q,' + last.year
+	}
+
+
+	@ProxyMethod
+	public def createReceipt( receipt ) {
+		def pdate = dtSvc.parseDate(receipt.txndate, null)
+		receipt.year = pdate.year
+		receipt.qtr = pdate.qtr
+		receipt.month = pdate.month
+		receipt.day = pdate.day
+		
+		em.create(receipt)
+		receipt.ledgerfaases.each{ rl ->
+			rl.items.each{rli ->
+
+				rli.rptledgerid = null
+				rli.rptreceiptid = receipt.objid 
+				rli.barangay = rl.barangay
+				rli.pin = rl.pin
+				rli.rputype = rl.rputype
+				rli.txntype = rl.txntype
+				rli.classification = rl.classification
+				rli.actualuse = rl.actualuse
+				rli.tdno = rl.tdno 
+				rli.owner = rl.owner 
+				rli.cadastrallotno = rl.cadastrallotno
+				em.create(rli, SCHEMA_RECEIPT_ITEM_ONLINE)
+				em.create(rli, SCHEMA_NOLEDGER_ITEM)
+			}
+
+			rl.taxes.each {
+				it.rptreceiptid = receipt.objid 
+				em.create( it, "account") 
+			}
+		}
+
+	}
+
+	@ProxyMethod
+	public def getItemsForPrinting( receipt ) {
+		return em.getNoLedgerItemsForPrinting(receipt)
+	}
+
+
+
+	def createLedgerInfo(bill){
+		def entity = bill.rptledger.faases.first()
+		entity.lastyearpaid = (entity.fromqtr == 1 ? entity.fromyear - 1 : entity.fromyear )
+		entity.lastqtrpaid  = (entity.fromqtr == 1 ? 4 : entity.fromqtr )
+		return [
+			lastyearpaid 	: entity.lastyearpaid,
+			lastqtrpaid		: entity.lastqtrpaid,
+			tdno			: entity.tdno,
+			rputype			: entity.rputype,
+			fullpin			: entity.pin ,
+			totalareaha		: 0.0 ,
+			totalareasqm	: 0.0,
+			totalav			: entity.assessedvalue ,
+			barangayid      : entity.barangay.objid,
+			cadastrallotno  : null ,
+			barangayid 		: entity.barangay.objid ,
+			classcode 		: entity.classification.code ,
+			actualusecode   : entity.actualuse.code,
+			fromyear 		: entity.fromyear,
+			fromqtr 		: entity.fromqtr,
+			barangay 		: entity.barangay,
+			classification 	: entity.classification,
+			actualuse   	: entity.actualuse,
+		]
+	}
+
+
+}

@@ -1,0 +1,17 @@
+<schema>
+    <element tablename="subdivisionaffectedrpu">
+        <field name="objid" primary="true" />
+        <field name="subdivisionid" required="true" />
+        <field name="subdividedlandid" />
+        <field name="prevfaasid" />
+        <field name="prevtdno" />
+        <field name="prevpin" />
+        <field name="newfaasid" />
+        <field name="newsuffix" />
+        <field name="newpin" />
+        <field name="newrpuid" required="true" />
+        <field name="newrpid" />
+        <field name="isnew" type="boolean" />
+    </element>
+</schema>
+

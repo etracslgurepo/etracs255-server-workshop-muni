@@ -1,0 +1,59 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+
+class BPComparativeReportService
+{
+	
+	@ActiveDB("bpreport")
+	def em
+
+	@Service("DateService")
+	def dtSvc 
+
+	@Service("NumberService")
+	def numSvc 
+
+	@ProxyMethod
+	public def getReport(def params) { 
+		checkComparativeYearRange( params );
+		def reportdata = [:];		
+		def list;
+		if( params.type == 'ANNUALLY' )
+			list = em.getAssessmentAnnuallyByVariable( params );
+		else
+			list = em.getAssessmentQuarterlyByVariable( params );
+
+		if( ! list ) throw new Exception( 'No records found.' );
+		reportdata.items = getAmtPercentage( list );
+		reportdata.type = params.type;
+		params.vartitle = params.varname.equals('GROSS') ? 'Gross Sales' : 'Capital Investment'
+		reportdata.title = "Comparative Report on $params.vartitle by Classification".toString();
+		return reportdata;
+	}
+
+	private void checkComparativeYearRange( params ){
+		if( params.yearfrom >= params.yearto ) 
+			throw new Exception( 'Year From field should be earlier than the Year To field.' )
+		else if( (params.yearto - params.yearfrom) > 1 ) 
+			throw new Exception( 'Year comparative range should not be greater than one.' )
+	}
+
+	private def getAmtPercentage( list ) {
+		list?.each{
+			if( it.amountto == 0.0 && it.amountfrom == 0.0 ) {
+				it.increaserate = 0.0;
+				it.percenttage = it.increaserate + '%';
+			}
+			else if( it.amountto == 0.0 ) {
+				it.increaserate = -100.0;
+				it.percenttage = it.increaserate + '%';
+			}				
+			else {
+				it.increaserate = (( it.amountto - it.amountfrom ) / it.amountto * 100) ;
+				it.percenttage =  numSvc.format('0.00', it.increaserate) + '%';
+			}
+		}
+		return list;
+	}
+
+}

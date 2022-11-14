@@ -1,0 +1,14 @@
+<schema>
+	<element tablename="report_bpdelinquency">
+		<field name="objid" primary="true"/>
+		<field name="state" required="true"/>
+		<field name="dtfiled" required="true"/>
+		<field name="userid" required="true"/>
+		<field name="username" required="true"/>
+		<field name="totalcount" />
+		<field name="processedcount" />
+		<field name="billdate" />
+		<field name="duedate" />
+		<field name="lockid"/>
+	</element>
+</schema>

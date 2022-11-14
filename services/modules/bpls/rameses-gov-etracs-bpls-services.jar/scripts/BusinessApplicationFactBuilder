@@ -1,0 +1,76 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.services.extended.*;
+import bpls.facts.*;
+
+public class BusinessApplicationFactBuilder {
+
+	@DataContext("lob")
+	def lobEm;
+	
+	@DataContext("lob_lobattribute")
+	def lobAttr;
+
+	@ProxyMethod
+	public void build(def app, def facts) {
+		def lobMap = [:];
+		def fapp = new BPApplication(app);
+		facts << fapp;
+		if( app.business?.address ) {
+			facts << new BusinessLocation( app.business.address );
+		}	
+		if(app.lobs!=null) {
+			app.lobs?.each {
+				//we need to retrieve lob to be absolutely sure.
+				def lobInfo = lobEm.find([ objid: it.lobid ]).first();
+				def oLOB = new LOB();
+				oLOB.objid = it.lobid;
+        		oLOB.lobid = it.lobid;
+        		oLOB.assessmenttype = it.assessmenttype;  				
+				oLOB.name = lobInfo.name;
+				oLOB.classification = lobInfo.classification?.objid;
+				oLOB.psicid = lobInfo.psic?.code; 
+				oLOB.psicdesc = lobInfo.psic?.description; 
+
+				def attrs = lobAttr.find([lobid: it.lobid]).list();
+				oLOB.attributes = "-" + attrs*.lobattributeid.join("-") + "-";
+				facts << oLOB;
+				lobMap.put( it.lobid, oLOB );
+			}
+		}
+		if(app.infos!=null ) {
+			app.infos?.each {
+				def dtype = it.attribute.datatype;
+				def f = new BusinessInfo(dtype, it.value);
+				f.objid = it.objid;
+				f.name = it.attribute.name;
+				if(it.lob) f.lob = lobMap[ it.lob.objid ];
+				facts << f;
+			}
+		}
+	}
+
+
+	@ProxyMethod
+	public void buildPaymentFacts(def app, def facts) {
+		//for payment routine
+		if(app.billitems) {
+			app.billitems.each {
+				def tf = new BillItem();
+				it.each { k,v->
+					try {tf[k] = v;} catch(ign){;}
+				}
+				//worked around fields
+				tf.deadline = it.duedate;
+				tf.type = it.taxfeetype;
+				if( it.lob?.objid ) {
+					tf.lob = lobMap[ it.lob.objid ];	
+				}
+				facts << tf;
+			}
+		}
+
+	}
+
+}

@@ -1,0 +1,209 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+
+class CollectionVoucherService  {
+
+	@Env
+	def env;
+
+	@Service("DateService")
+	def dateSvc;
+
+	@Service("CashBreakdownSummaryService")
+	def cashBreakdownSvc;
+
+	@Service('ControlService') 
+	def controlSvc;	
+
+	@Service("Var")
+	def var;	
+
+	@DataContext("remittance")
+	def remEm;
+
+	@DataContext("remittance_fund")
+	def remFundEm;
+
+	@DataContext("collectionvoucher")
+	def cvEm;
+
+	@DataContext("collectionvoucher_fund")
+	def cvFundEm;
+
+
+	@ProxyMethod
+	public def create( def pp ) {
+		if ( !pp.ids ) throw new Exception('Please specify at least one remittance to liquidate'); 
+
+
+		def wheres = []; 
+		wheres << "objid IN ('"+ pp.ids.join("','") +"')"; 
+		wheres << "state = 'POSTED' AND collectionvoucherid IS NULL"; 
+		wheres << "liquidatingofficer_objid = '"+ env.USERID +"'";
+		
+		// search if there is at least one for posting
+		def cnt = remEm.where( wheres.join(' AND ')).select("x:{COUNT(*)}").val();
+		if ( cnt == 0 ) throw new Exception("There are no remittances found that are POSTED within this date"); 
+
+		def m = [:];
+		m.dtposted = dateSvc.getServerDate();
+		m.controlno = 'TMP-LIQ-'+env.USERID; 
+		m.controldate = new java.sql.Date( m.dtposted.time );  
+		m.state = "OPEN";
+		m.amount = 0;
+		m.totalcash = 0;
+		m.totalcheck = 0;
+		m.totalcr = 0;
+		m.cashbreakdown = [];
+		m.liquidatingofficer = [objid:env.USERID, name: env.FULLNAME, title: env.JOBTITLE ]; 
+		m = cvEm.create( m );
+
+
+		def z = [ collectionvoucherid: m.objid ]; 
+
+		// update the collection voucher id for each remittance
+		remEm.where( wheres.join(' AND ')).update( z );
+
+		// build voucher funds
+		cvEm.insertCollectionVoucherFund( z );
+
+		// update cash breakdown totals in each collection fund
+		def lfList = cvFundEm.find( [ parentid: m.objid ] ).list();
+		lfList.each {
+			def cc = [cvid: it.parentid, fundid: it.fund.objid]; 
+			def subList = remFundEm.select("cashbreakdown").where( "remittance.collectionvoucherid=:cvid AND fund.objid=:fundid" , cc).list()*.cashbreakdown; 
+			def bd = cashBreakdownSvc.summarize( subList ); 
+			cvFundEm.find([ objid: it.objid ]).update([ cashbreakdown: bd ]); 
+		} 
+
+
+		// totals in collection
+		def u = [cashbreakdown: [], totalcash:0, totalcheck:0, totalcr: 0, amount:0 ];
+		def remList = remEm.find( z ).list().each { 
+			resolveCashbreakdown( it.cashbreakdown ); 
+			def bd = cashBreakdownSvc.summarize([ it.cashbreakdown ]); 
+
+			u.amount += it.amount; 
+			u.totalcash += it.totalcash; 
+			u.totalcheck += it.totalcheck; 
+			u.totalcr += it.totalcr; 
+			u.cashbreakdown << bd; 
+		} 
+
+		// there must be a cash, check or credit amount, if result is zero then this is not valid 
+		if ((u.totalcash + u.totalcheck + u.totalcr) == 0) {
+			// check if all receipts are voided 
+			// 
+			boolean pass = false;
+			def mm = cvEm.findReceiptSummary( z ); 
+			if ( mm ) {
+				def c_amount  = (mm.amount ? mm.amount : 0.0); 
+				def c_voidamt = (mm.voidamount ? mm.voidamount : 0.0); 
+				if ( c_amount > 0 && (c_amount - c_voidamt) == 0 ) {
+					// this transaction is valid since all receipts are voided 
+					// 
+					pass = true; 
+				}
+			}
+
+			if ( !pass ) throw new Exception("Total Cash must not be zero"); 
+		}
+
+		// validate totalcashbreakdown = totalcash 
+		def bd = cashBreakdownSvc.summarize( u.cashbreakdown ); 
+		bd.sort{ -((Number) it.denomination).intValue() } 
+
+		u.cashbreakdown = bd; 
+		cvEm.find([ objid: m.objid ]).update( u );
+		return m;
+	}
+
+	@ProxyMethod 
+	public def post( p ) { 
+		if ( !p.objid ) throw new Exception('objid parameter is required'); 
+
+		def cv = cvEm.find([ objid: p.objid ]).select('objid,state,totalcash,cashbreakdown').first(); 
+		if ( !cv ) throw new Exception('collection voucher record not found'); 
+
+		if ( cv.state.toString().toUpperCase() != 'OPEN' ) 
+			throw new Exception('Collection Voucher transaction no longer in OPEN status'); 
+
+		if ( cv.cashbreakdown == null ) cv.cashbreakdown = []; 
+
+		def cbamount = cv.cashbreakdown.sum{( it.amount ? it.amount: 0.0 )}
+		if ( cbamount == null ) cbamount = 0.0; 
+		if ( cbamount != cv.totalcash ) 
+			throw new Exception('Cash Breakdown does not matched with the Total Cash'); 
+
+		def m = [ state: 'POSTED' ]; 
+		m.dtposted = dateSvc.getServerDate(); 
+
+		if ( p.controlno.toString().toUpperCase().startsWith("TMP-")) {
+			def txncode = [ "LIQ", env.TXNCODE, env.ORGTXNCODE ].findAll{( it )}.join("-");
+			m.controlno = controlSvc.formatTxnno([ txncode: txncode, txndate: m.dtposted, format: var.liquidation_format, sequenceid_format: var.liquidation_sequenceid_format ]); 
+
+			cvFundEm.find([ parentid: p.objid ]).select('objid,fund.code').list().each{ 
+				def txnno = m.controlno + (it.fund?.code ? ('-'+it.fund.code) : ""); 
+				cvFundEm.find([ objid: it.objid ]).update([ controlno: txnno ]); 
+			} 
+		} 
+		cvEm.find([ objid: p.objid ]).update( m ); 
+
+		m.objid = p.objid; 
+		return m; 
+	}	
+
+	@ProxyMethod 
+	public def getReportData( params ) { 
+		return params; 
+	}
+
+
+	void resolveCashbreakdown( cbs ) { 
+		if ( !cbs ) return; 
+
+		cbs.findAll{( it.denomination > 1 )}.each{
+			it.denomination = ((Number) it.denomination).intValue(); 
+			it.caption = it.denomination; 
+		}
+		
+		def coins = cbs.find{( it.caption.toString().toLowerCase() == 'coins' )}
+		if ( coins ) {
+			cbs.remove( coins );
+
+			String[] arr = coins.amount.toString().split("\\."); 
+			def num = new BigDecimal( arr[0] +".00" ); 
+			if ( num >= 1.0 ) {
+				cbs << [denomination:1, caption:1, qty: num.intValue(), amount: num]; 
+			}
+
+			num = new BigDecimal( "0." + arr[1] ); 
+			arr[1] = new java.text.DecimalFormat('0.00').format( num ).split("\\.")[1];
+			if ( num > 0 ) { 
+				cbs << [
+					denomination:0.01, caption:0.01, 
+					qty: new BigDecimal( arr[1]), 
+					amount: num 
+				]; 
+			}
+		}
+
+		def result = [];
+		cbs.groupBy{ it.denomination }.each{ k,v-> 
+			def mm = [:]; 
+			mm.putAll( v.first()); 
+			mm.amount = v.sum{( it.amount ? it.amount : 0.00 )}
+			mm.qty = v.sum{( it.qty ? it.qty : 0 )}
+
+			if ( mm.qty == null ) mm.qty = 0; 
+			if ( mm.amount == null ) mm.amount = 0.00; 
+
+			result << mm; 
+		}
+
+		cbs.clear(); 
+		cbs.addAll( result ); 
+		result.clear();  
+	}
+}

@@ -1,0 +1,39 @@
+<!--
+DROP VIEW IF EXISTS vw_afunit;	
+CREATE  VIEW `vw_afunit` AS 
+SELECT
+   `u`.`objid` AS `objid`,
+   `af`.`title` AS `title`,
+   `af`.`usetype` AS `usetype`,
+   `af`.`serieslength` AS `serieslength`,
+   `af`.`system` AS `system`,
+   `af`.`denomination` AS `denomination`,
+   `af`.`formtype` AS `formtype`,
+   `u`.`itemid` AS `itemid`,
+   `u`.`unit` AS `unit`,
+   `u`.`qty` AS `qty`,
+   `u`.`saleprice` AS `saleprice`,
+    u.interval,
+    u.cashreceiptprintout,
+    u.cashreceiptdetailprintout
+FROM afunit u 
+INNER JOIN af on af.objid = u.itemid;
+-->	
+<schema>
+	<element tablename="vw_afunit">
+		<field name="objid" primary="true"/>
+		<field name="title" caption="Title" searchable="true"/>
+		<field name="usetype" caption="UseType"/>
+		<field name="serieslength" caption="SeriesLength"/>
+		<field name="system" caption="System"/>
+		<field name="denomination" caption="Denomination"/>
+		<field name="formtype" caption="FormType" searchable="true"/>
+		<field name="itemid" caption="FormNo" searchable="true"/>
+		<field name="unit" caption="Unit" searchable="true"/>
+		<field name="qty" caption="Qty"/>
+		<field name="saleprice" caption="SalePrice"/>
+		<field name="interval" caption="Interval"/>
+		<field name="cashreceiptprintout" caption="Printout"/>
+		<field name="cashreceiptdetailprintout" caption="DetailPrintout"/>
+	</element>
+</schema>

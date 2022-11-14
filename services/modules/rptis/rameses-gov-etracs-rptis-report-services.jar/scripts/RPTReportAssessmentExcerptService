@@ -1,0 +1,92 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class RPTReportAssessmentExcerptService
+{
+	@Env 
+	def env 
+
+    @ActiveDB('rptreport_assessment_excerpt')
+    def em
+
+    @Service('Var')
+    def var 
+
+    @Service('RPTUtil')
+    def util
+
+    @DataContext('propertyclassification')
+    def propertyclassification
+
+    @DataContext('exemptiontype')
+    def exemptiontype
+
+	@Async
+	@ProxyMethod
+	public Map buildReport(params) {
+		def data = [:]
+		params.lguid = params.lgu?.objid
+		params.type = params.valuationtype.type 
+
+		def title = 'EXCERPT FROM ASSESSMENT'
+		if ('av'.equalsIgnoreCase(params.type))
+			title = 'ASSESSED VALUE ' + title
+		else if ('mv'.equalsIgnoreCase(params.type))
+			title = 'MARKET VALUE ' + title
+
+		util.buildReportFormalTitlePeriod(title, params)
+
+		util.buildPreceedingPeriodFilter(params)
+		params.state = 'CURRENT'
+		data.preceeding = em.findExcerpt(params)
+		
+		util.buildCurrentPeriodFilter(params)
+		params.state = 'CURRENT'
+		data.current = em.findExcerpt(params)
+		util.buildCurrentCancelledPeriodFilter(params)
+		params.state = 'CANCELLED'
+		data.cancelled = em.findExcerpt(params)
+		addToPreceeding(data.preceeding, data.cancelled)
+		
+		util.buildEndingPeriodFilter(params)
+		params.state = 'CURRENT'
+		data.ending = em.findExcerpt(params)
+		
+		def forlguname = env.ORGCLASS +  ' OF ' + env.ORGNAME 
+		if (params.lgu){
+			forlguname = params.lgu.lgutype.toUpperCase() + ' OF ' + params.lgu.name
+		}
+
+		def p = [
+			PERIOD 		: params.period,
+			PERIODTYPE 	: params.periodtype,
+			TITLE 		: params.title,
+			FORLGUNAME  : forlguname,
+		]
+		return [
+			parameters  : p,
+			reportdata  : data,
+		]
+	}
+
+	void addToPreceeding(preceeding, cancelled){
+		preceeding.taxable += cancelled.taxable
+		preceeding.taxablecnt += cancelled.taxablecnt
+		preceeding.exempt += cancelled.exempt
+		preceeding.exemptcnt += cancelled.exemptcnt
+	}
+
+
+	@ProxyMethod
+    public def getClassifications(){
+    	return propertyclassification.find([state:'APPROVED']).orderBy('orderno').list()
+    }
+
+    
+    @ProxyMethod
+    public def getExemptionTypes(  ) {
+    	return 	exemptiontype.find([state:'APPROVED']).orderBy('orderno').list()
+    }
+
+}

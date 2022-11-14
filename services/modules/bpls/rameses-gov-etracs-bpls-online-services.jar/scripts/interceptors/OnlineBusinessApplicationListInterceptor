@@ -1,0 +1,46 @@
+import com.rameses.annotations.*;
+
+class OnlineBusinessApplicationListInterceptor {
+
+	@After(pattern="QueryService.getNodeList", eval="#{ args[0]._schemaname == 'vw_online_business_application' }")
+	public void afterGetNodeList( evt ) { 
+		def result = evt.result;
+		result << [  title: 'Draft', state:'PENDING' ];
+		result << [  title: 'Open', state:'OPEN' ];
+		result << [  title: 'Processing', state:'PROCESSING' ];
+		result << [  title: 'Completed', state:'COMPLETED' ];
+		result << [  title: 'Cancelled', state:'CANCELLED' ];
+	}
+
+	@Before(pattern="QueryService.getList", eval="#{ args[0]._schemaname == 'vw_online_business_application' }")
+	public void beforeGetList( evt ) { 
+		def param = evt.args[0];
+
+		def qmap = [:]; 
+		def wheres = [];
+
+		wheres << " state = :state "; 
+		qmap.state = param.node.state.toString(); 
+		
+		if ( param.node._filter ) {  
+			wheres << param.node._filter; 
+		} 
+
+		if ( param.where ) {
+			wheres << param.where[0]; 
+			param.where[0] = wheres.join(" AND ");
+			param.where[1].putAll( qmap ); 
+		}
+		else { 
+			param.where = [ wheres.join(" AND "), qmap ]; 
+		} 
+
+		wheres.clear(); 
+
+		if ( param.node.state.toString().matches('COMPLETED|CANCELLED')) {
+			param.orderBy = 'dtcreated DESC'; 
+		} else {
+			param.orderBy = 'dtcreated'; 
+		}
+	} 
+}

@@ -1,0 +1,23 @@
+import com.rameses.annotations.*;
+
+public class CashReceiptComputeShareInterceptor {
+	
+	@Service("RevenueSharingService")
+   	def sharingSvc;
+
+	@Before(pattern="(Cash|Noncash)ReceiptService.post",  index=50)
+	public void computeShare(def evt) {
+		def p = evt.args[0];
+
+		if ( !p.items )	{
+			p.sharing = [];
+			return; 
+		}
+
+		def sharing = sharingSvc.execute( p );
+		if ( sharing ) {
+			if ( !p.sharing ) p.sharing = [];
+			p.sharing.addAll( sharing );
+		} 
+	}
+}

@@ -1,0 +1,19 @@
+<schema>
+	<element tablename="vw_account_incometarget">
+		<field name="objid" primary="true"/>
+		<field name="itemid" required="true"/>
+		<field name="year" required="true" caption="Year" type="integer"/>
+		<field name="target" required="true" caption="Target" type="decimal"/>
+		<field name="maingroupid" required="true" caption="MainGroup"/>
+		<field name="item_objid" required="true" caption="AcctId"/>
+		<field name="item_code" required="true" caption="AcctCode" indexed="true" searchable="true"/>
+		<field name="item_title" required="true" caption="AcctTitle" indexed="true" searchable="true"/>
+		<field name="item_level" required="true" type="integer"/>
+		<field name="item_leftindex" required="true" type="integer"/>
+		<field name="group_objid" required="true" caption="GroupId"/>
+		<field name="group_code" required="true" caption="GroupCode" indexed="true" searchable="true"/>
+		<field name="group_title" required="true" caption="GroupTitle" indexed="true" searchable="true"/>
+		<field name="group_level" required="true" type="integer"/>
+		<field name="group_leftindex" required="true" type="integer"/>
+	</element>
+</schema>

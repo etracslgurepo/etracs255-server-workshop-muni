@@ -1,0 +1,196 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*
+import com.rameses.util.*
+
+class CollectorReportService { 
+
+	@ActiveDB('collectionreport')
+	def adb;
+
+	@Env
+	def env; 
+ 
+	@Service('DateService')
+	def dtSvc;
+
+	@Service('ReportParameterService')
+	def reportSvc;
+
+	@ProxyMethod
+	public def generateRaafData( params ) {
+		/* params -> [year, month] */ 
+
+		def data = [:]
+		data.items = getRaafData(params).each{
+			it.qtybegin = it.qtybegin ? (Integer) it.qtybegin : null 
+			it.beginstartseries = it.beginstartseries ? (Integer) it.beginstartseries : null 
+			it.beginendseries = it.beginendseries ? (Integer) it.beginendseries : null 
+			it.qtyreceived = it.qtyreceived > 0 ? (Integer) it.qtyreceived  : null
+			it.receivedstartseries =  it.receivedstartseries ? (Integer) it.receivedstartseries : null 
+			it.receivedendseries = it.receivedendseries ? (Integer) it.receivedendseries : null
+			it.qtyissued = it.qtyissued > 0 ? (Integer) it.qtyissued : null 
+			it.issuedstartseries = it.issuedstartseries ?  (Integer) it.issuedstartseries : null
+			it.issuedendseries =  it.issuedendseries ? (Integer) it.issuedendseries : null 
+			it.qtyending = it.qtyending > 0 ? (Integer) it.qtyending : null 
+			it.endingstartseries = it.endingstartseries ? (Integer) it.endingstartseries : null 
+			it.endingendseries = it.endingendseries ? (Integer) it.endingendseries : null
+		}
+		
+		if( !data.items ) throw new Exception("No record(s) found.            ")
+
+		data.info = [
+			COLLECTORNAME	: params.collector ? params.collector.fullname : env.FULLNAME,
+			COLLECTORTITLE  : params.collector ? params.collector.title : env.JOBTITLE,
+			PERIOD			: 'FOR THE MONTH OF ' + params.month.caption + ', ' + params.year,
+		]
+		return data
+	}
+
+	@ProxyMethod 
+	public def generateDailyCollectionReport( params ) { 
+		buildDateFilter(params)
+		if ( params.collector ) { 
+			params.collectorid = params.collector.objid; 
+		} else {  
+			params.collectorid = '%'; 
+		} 
+
+		params.postingtypeid = params.postingtype?.objid.toString(); 
+
+		def funds = adb.getCollectorFundList( params )
+		if( !funds ) throw new Exception("No record(s) found.    ")
+		
+		def subqry = []
+		def sqlqry = []
+		def header = [:]
+		def colindex = 0
+		funds.each {
+			subqry << "( select SUM(amount) from remittance_fund where objid = rf.objid and fund_objid='${it.fundid}' ) as col${colindex}"
+			sqlqry << " sum( col${colindex} ) as col${colindex} "
+			header['COL'+colindex] = it.title 
+			colindex++ 
+		}
+		params.subqry = subqry.join(",")
+		params.sqlqry = sqlqry.join(",")
+
+		def items = adb.getCollectorDailyCollectionByFund( params )
+		if( ! items) throw new Exception("No record(s) found.    ")
+		
+		header.REPORTTITLE = 'DAILY COLLECTION SUMMARY BY FUND';
+		header.PERIOD = 'FOR THE MONTH OF ' + params.month.title + ', ' + params.year;
+		header.POSTINGTYPE_FILTER = params.postingtype?.name;
+		if ( params.collectorid == '%' ) {
+			header.COLLECTOR_FILTER = 'ALL COLLECTORS'; 
+		} 
+		else if ( params.collector?.objid ) {
+			header.COLLECTOR_FILTER = params.collector.name; 
+		}
+
+		header.PREPAREDBY_NAME = env.NAME; 
+		header.PREPAREDBY_TITLE = env.JOBTITLE; 
+		return [ header: header,  items: items ]; 
+	}
+
+	def getRaafData(params) {
+		def p = [year:params.year, month:params.month.index]
+
+		if( params.collector )
+			p.collectorid  = params.collector.objid 
+		else 
+			p.collectorid  = env.USERID
+
+		def list = adb.getRaafData(p)
+		def data = []
+		
+		def afidgroups = list.groupBy{it.afid}
+
+		afidgroups.each{k, afids ->
+			afids.groupBy{it.name}.each{key, items->
+				buildRange(data, items.findAll{it.beginstartseries != null})
+				buildRange(data, items.findAll{it.receivedstartseries != null})
+			}
+		}
+
+		 // add all cashtickets
+	    def cashtickets = list.findAll{ it.formtype == 'cashticket'}
+	    if(cashtickets ) data += cashtickets 
+ 	    
+
+		data.sort{ a,b -> 
+		    def sa = a.afid + a.beginstartseries
+		    def sb = b.afid + b.beginstartseries    
+		    return sa <=> sb
+		}
+
+		return data;
+	}	
+
+	void buildRange(data, list) { 
+		if (!list) 
+	        return
+	    
+	    if (list.size() == 1){
+	        data << list[0] 
+	        return
+	    }
+	    
+	    def useditems = list.findAll{
+	        ! (it.endingstartseries.toString().endsWith('01') || it.endingstartseries.toString().endsWith('51'))
+	    }
+	    
+	    useditems.each{ 
+	    	if (it.receivedstartseries == null){
+	    		it.qtyreceived = null
+	    	}
+	    	data << it 
+	    }
+
+	    list.removeAll(useditems)    
+
+	    def prevseries = 0
+	    def qty = 0
+	    def start = null
+	    def end = null
+	    
+	    list.each{
+	        if ( prevseries + 1 == it.endingstartseries || prevseries == 0){
+	            if ( !start ) start = it;
+	            end = it;
+	            qty += 50
+	        }
+	        else {
+	            data << createItem(start, end, qty)
+	            start = it;
+	            end = it;
+	            qty = 50
+	        }
+	        prevseries = it.endingendseries
+	    }
+	    if (start && end && qty > 0){
+	    	data << createItem(start, end, qty)
+	    }
+	}
+
+	def createItem(start, end, qty) {
+		return  [
+			name 				: start.name,
+			remarks 			: start.remarks,
+        	afid 				: start.afid,
+        	receivedstartseries	: start.receivedstartseries  ? start.receivedstartseries: null ,
+        	receivedendseries 	: start.receivedstartseries ? end.endingendseries: null ,
+        	qtyreceived 		: start.receivedendseries ? qty : null,
+        	beginstartseries	: start.beginstartseries ? start.beginstartseries: null ,
+        	beginendseries 		: start.beginstartseries ? end.endingendseries: null ,
+        	qtybegin 			: start.beginendseries ? qty : null,
+        	endingstartseries	: start.receivedstartseries ? start.receivedstartseries: start.beginstartseries ,
+        	endingendseries		: end.endingendseries ,
+            qtyending  			: qty,
+        ]
+
+	}
+
+	void buildDateFilter(params) {
+		params.fromdate = dtSvc.parse('yyyy-MM-dd', params.year + '-' + params.month.index + '-01')
+		params.todate   = dtSvc.add( dtSvc.getMonthEndDate( params.fromdate ), '1d'); 
+	}
+}

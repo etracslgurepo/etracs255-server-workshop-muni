@@ -1,0 +1,17 @@
+<schema adapter="notification">
+
+	<element name="sys_notification" tablename="sys_notification">
+		<field name="notificationid" primary="true"/>
+		<field name="objid" required="true"/>
+		<field name="dtfiled" required="true"/>
+		<field name="sender" required="true"/>
+		<field name="senderid" required="true"/>
+		<field name="recipientid" />
+		<field name="recipienttype" />
+		<field name="message" required="true"/>
+		<field name="filetype" />
+		<field name="data"/>
+		<field name="tag"/>
+	</element>
+	
+</schema>

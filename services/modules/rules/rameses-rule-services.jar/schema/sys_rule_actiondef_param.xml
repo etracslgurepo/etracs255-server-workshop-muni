@@ -1,0 +1,20 @@
+<schema>
+
+	<element tablename="sys_rule_actiondef_param">
+		<field name="objid" primary="true"/>
+		<field name="parentid" required="true"/>
+		<field name="name" required="true"/>
+		<field name="sortorder" required="true"/>
+		<field name="title" required="true"/>
+		<field name="datatype" />
+		<field name="handler" required="true"/>
+		<field name="lookuphandler" />
+		<field name="lookupkey" />
+		<field name="lookupvalue" />
+		<field name="vardatatype" />
+		<field name="lovname" />
+	</element>	
+
+
+</schema>	
+

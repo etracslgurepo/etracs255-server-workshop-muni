@@ -1,0 +1,29 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.services.extended.*;
+
+public class BusinessMasterLookupService {
+
+	@ActiveDB("business")
+	def em;
+
+	@ProxyMethod
+	public def getColumns(o) {
+		def cols = [];
+		cols << [name:'bin', caption:'BIN', width:120, resizable:false];
+		cols <<	[name:'businessname', caption:'Business Name'];
+		cols <<	[name:'owner.name', caption:'Owner'];
+		cols <<	[name:'address.text', caption:'Business Address'];
+		return cols;
+	}
+
+	@ProxyMethod
+	public def getList(o) {
+		o.filter = '';
+		return em.getList( o );
+	}
+
+
+
+}

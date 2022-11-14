@@ -1,0 +1,51 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class FAASCaptureInterceptor
+{
+	@DataContext('faas_task')
+	def em_faas_task 
+
+	@Service('RPTUtil')
+	def util
+
+
+	@After(pattern="FAASService.open", eval="#{args[0].datacapture==1 || args[0].datacapture==true}") 
+	public void openCapture( evt ) {
+		def faas = evt.args[0]
+		faas.taskstate = '';
+		faas.assignee = [objid:'']
+	}
+
+	
+	@Before(pattern="FAASService.updateFaas", eval="#{!args[0]._approvetransmittal_ && (args[0].datacapture==1 || args[0].datacapture==true)}") 
+	public void validateDataCapture( evt ) {
+		def faas = evt.args[0]
+		util.required('Property Owner', faas.taxpayer)
+		util.required('Declare Owner', faas.owner)
+		util.required('Effectivity Year', faas.effectivityyear)
+		util.required('Effectivity Qtr', faas.effectivityqtr)
+		util.required('Appraiser Signatory', faas.appraiser)
+		util.required('Appraiser Name', faas.appraiser.name)
+		util.required('Appraiser Date Signed', faas.appraiser.dtsigned)
+		util.required('Approver Signatory', faas.approver)
+		util.required('Approver Name', faas.approver.name)
+		util.required('Approver Date Signed', faas.approver.dtsigned)
+		util.required('Memoranda', faas.memoranda)
+
+		if (util.isTrue(faas.rpu.taxable))
+			faas.rpu.exemptiontype = null;
+		else if ( ! util.isTrue(faas.rpu.taxable) &&  ! faas.rpu.exemptiontype )
+			throw new Exception('Exemption Type must be specified.')
+	}
+
+
+	@After(pattern="FAASService.(createFaas|updateFaas)", eval="#{!result._approvetransmittal_ && (result.datacapture==1 || result.datacapture==true)}") 
+	public void doDeleteDefaultTasks( evt ) {
+		def faas = evt.result 
+		em_faas_task.find([refid:faas.objid]).delete()
+	}
+
+}
+

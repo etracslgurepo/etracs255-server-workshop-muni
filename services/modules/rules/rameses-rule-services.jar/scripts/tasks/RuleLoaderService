@@ -1,0 +1,85 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+import java.rmi.server.UID;
+import com.rameses.util.*;
+
+class RuleLoaderService {
+
+
+	@Resource('RuleService')
+	def ruleSvc; 
+
+	@ActiveDB('rule')
+	def ruleDB;
+	
+	@Context
+	def appContext;
+	
+	@Resource('TemplateService')
+	def templateSvc; 
+	
+	@Cache
+	def cache;
+	
+	@Schedule
+	public void loadRules(tsk) {
+		try {
+			println "LOADING RULES V2: Started";
+			com.rameses.server.ServerPID.add('RuleLoaderService');
+			loadRulesImpl(tsk);
+			println "LOADING RULES V2: Finished";
+		} catch(e) {
+			throw e;
+		} finally {
+			com.rameses.server.ServerPID.remove('RuleLoaderService');
+		} 
+	} 
+	
+	private void loadRulesImpl(tsk) {
+		//def rulesets = ruleDB.getRulesets()*.name;
+		
+		//we retrieve rulesets based on the loaded folders so it will be pluggable.
+		final def rulesets = new HashSet();
+		def h = { m->
+			rulesets << m.filename;
+		} as ScanFileFilter;
+		appContext.scanFiles( "rulesets", h, null);
+
+		def readers = null;
+		def loadrules = { m->
+			try {
+				readers << new InputStreamReader(m.url.openStream());
+			}
+			catch(e) {println "error load " + e.message; }
+		} as ScanFileFilter;
+		
+		//loading rule sequence. file facts and rules. db rules
+		def rsets = []; 
+		rulesets.each{ rsets << it }
+		rsets.sort{ it }.each { rs->
+			println "loading rule " + rs;
+			readers = [];
+
+			/** load facts definition from file and db **/
+			appContext.scanFiles( "rulesets/"+rs+"/facts", loadrules, ".*\\.drl");
+
+			/** load rules from file and db **/
+			appContext.scanFiles( "rulesets/"+rs+"/rules", loadrules, ".*\\.drl");
+
+			ruleDB.getRulesForDeployment( [ruleset:rs] ).each{ r->
+				try {
+					String s = r.ruletext.toString().trim();
+					readers << new java.io.StringReader( s );
+				} catch(Throwable e) { 
+					e.printStackTrace(); 
+				} 
+			}
+
+			try { 
+				ruleSvc.buildRuleContext(rs, readers); 
+			} catch(Throwable e) {
+				e.printStackTrace();
+			} 		
+		}
+	}	
+}

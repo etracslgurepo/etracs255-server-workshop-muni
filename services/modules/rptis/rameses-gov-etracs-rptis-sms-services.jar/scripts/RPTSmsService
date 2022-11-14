@@ -1,0 +1,234 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.services.extended.*;
+
+public class RPTSmsService extends ActiveCrudListService 
+{
+
+	@ActiveDB("rpt_sms")
+	def em;
+
+    @DataContext('sys_org')
+    def em_org;
+
+	
+	@Service('SMSService')
+	def smsSvc;	
+
+	
+	@Service('DateService')
+	def dtSvc 
+
+	@Service('NumberService')
+	def numSvc
+
+	@Service('RPTBillingService')
+	def billSvc 
+
+	@Service('RPTBillingReportService')
+	def billReportSvc
+
+	@Service('ReportParameterService')
+	def paramSvc
+
+	
+	def SMS_COST = 2.0
+
+
+	@ProxyMethod
+	public def getColumns(o) {
+		return [
+			[name: 'traceid', caption: 'Trace ID' ],
+			[name: 'logdate', caption: 'Log Date' ],
+			[name: 'action', caption: 'Action' ],
+			[name: 'phoneno', caption: 'Phone No' ],
+			[name: 'message', caption: 'Message' ],
+		];
+	}
+
+	@ProxyMethod
+	public def send( msg ) {
+		smsSvc.send(msg)	
+	}
+
+
+	@Async
+	@ProxyMethod
+	public void notifyClient(faas){
+		try{
+			faas = em.findFaasInfo(faas)
+			if (faas.state != 'CURRENT')
+				throw new Exception('FAAS is not yet approved.')
+
+
+			println 'Notifying Client for FAAS No. ' + faas.tdno  
+			def phones = em.getPhones([refid:faas.objid])	
+			if (!phones) {
+                phones = em.getClientPhones([objid:faas.taxpayer.objid])
+            };	
+            if (!phones) return;
+
+            def office = getOffice()
+            
+            phones.each{ phone ->
+                String msg = 'Greetings!\n\n'
+                msg += 'This is to inform you that your property TD No. ' + faas.tdno 
+                msg += '  classified as ' + faas.classname 
+                if (faas.classname.toLowerCase().matches('.*agricultural.*'))
+                    msg += '  with an area of ' + numSvc.format('#,##0.0000', faas.totalareaha) + ' ha. '
+                else 
+                    msg += '  with an area of ' + numSvc.format('#,##0.00', faas.totalareasqm) + ' sq.m. '
+                msg += ' has already been approved. '
+
+                msg += '\n\n' + office.name
+                msg += '\n' + office.lgu
+                msg += '\n\nThis is a system generated message. Pls do not reply.' 
+                
+
+                def smstext = [
+                    objid 		: 'SMS' + new java.rmi.server.UID(),
+                    phoneno		: phone.phoneno,
+                    refid 		: faas.objid,
+                    message		: msg,
+                    keyword 	: 'NOTIFY',
+                    retcode 	: 'OK',
+                ]
+                send(smstext)
+            }
+		}
+		catch(e){
+			e.printStackTrace();
+		}
+		
+	}
+
+    def getOffice() {
+        def orgclasses = [
+            CITY: 'CITY',
+            PROVINCE: 'PROVINCIAL',
+            MUNICIPALITY: 'MUNICIPAL',
+        ]
+        def params = paramSvc.getStandardParameter();
+				def org = em_org.find([root: 1]).first();
+				def lgu = params.LGUFORMALNAME;
+				if (!lgu) lgu = org.name;
+				if (lgu.indexOf(org.orgclass) < 0) {
+					lgu = orgclasses[org.orgclass] + ' OF ' + lgu;
+				}
+
+				return [
+            name: orgclasses[org.orgclass] + " ASSESSOR'S OFFICE",
+            lgu: lgu,
+        ]
+    }
+
+	@ProxyMethod
+	public def enrollFaas( info ) {
+		def ledger = em.findLedgerByTdNo(info)		
+		if (!ledger)
+			throw new Exception('TD No. ' + info.refno + ' is invalid or not enrolled.')
+		if (ledger.state == 'CANCELLED')
+			throw new Exception('TD No. ' + info.refno + ' has already been cancelled.')
+		if (ledger.state != 'APPROVED')
+			throw new Exception('TD No. ' + info.refno + ' is not yet approved.')
+		
+		em.enroll([phoneno:info.phoneno, refid:ledger.objid, dtregistered:dtSvc.serverDate])
+		return 'TD No. ' + info.refno + ' has been successfully enrolled.'
+	}
+
+
+	@ProxyMethod
+	public def enrollTrackingNo( info ) {
+		def tracking = em.findTrackingInfo(info)		
+		if (!tracking)
+			throw new Exception('Tracking No. ' + info.refno + ' is invalid.')
+		try{
+			em.enroll([phoneno:info.phoneno, refid:tracking.objid, dtregistered:dtSvc.serverDate])
+		}
+		catch(e){
+			//
+		}
+		return 'Tracking No. ' + info.refno + ' has been successfully enrolled. Text RPTSTATUS <trackingno> to receive status information. '
+	}
+
+
+	@ProxyMethod
+	public def getTrackingStatus( info ) {
+		def tracking = em.findRegisteredTracking(info)
+
+		if (!tracking)
+			throw new Exception('Tracking No. ' + info.refno + ' is invalid.')
+		
+		String msg = ''
+		msg += 'Tracking No.  : ' + tracking.trackingno
+		msg += '  Document Type : ' + tracking.filetype.toUpperCase()
+		msg += '  Status        : ' + tracking.msg
+		return msg
+	}
+
+	@ProxyMethod
+	public def getInfo( info ) {
+		def list = []
+
+		if (info.refno ) {
+			def faas = em.findRegisteredLedgerByTdNo(info)
+			if (faas) 
+				list << faas 
+		}
+		else {
+			list = em.getRegisteredLedgersByPhoneNo(info)
+		}
+		
+		if (!list)
+			throw new Exception('There are no enrolled properties. Text RPTENROLL <tdno> to enroll a property.')
+
+		String msg = ''
+		list.each{
+			def s = 'TD No. ' + it.tdno + ' ('
+			s += 'Status: ' + it.state + ' '
+			if (it.cadastrallotno)
+			s += 'Lot No.: ' + it.cadastrallotno + '  '
+			s += 'MV: P' + numSvc.format('#,##0.00', it.totalmv)  + '  '
+			s += 'AV: P' + numSvc.format('#,##0.00', it.totalav)  + '  '
+			s += 'LastYearPaid: ' + it.lastyearpaid + '  '
+			s += 'LastQtrPaid: ' + it.lastqtrpaid 
+			s += ')\n'
+			msg += s 
+		}
+		return msg
+	}
+
+
+	@ProxyMethod
+	public def generateBillByTdNo(info) {
+		def ledger = em.findRegisteredLedgerByTdNo(info)		
+		if (!ledger)
+			throw new Exception('TD No. ' + info.refno + ' is invalid or not enrolled.')
+		if (ledger.state == 'CANCELLED')
+			throw new Exception('TD No. ' + info.refno + ' has already been cancelled.')
+
+		billSvc.generateBillByLedgerId(ledger.objid)
+		def bill = billReportSvc.generateReportByLedgerId( ledger.objid )
+		def msg = 'Current Balance for TD No. ' + info.refno + ' is P ' + numSvc.format('#,##0.00', bill.total) + '. '
+		msg += 'Balance is valid until ' + dtSvc.format('MMMM dd, yyyy', bill.validuntil) + '.'
+		return msg 
+	}
+	
+
+	@ProxyMethod
+	public def deleteRegisteredTdNo( info ) {
+		em.deleteRegisteredTdNo(info)
+		return 'TD No. ' + info.refno + ' has been successfully unregistered.'
+	}
+
+
+	@ProxyMethod
+	public def deleteAllRegistration( info ) {
+		em.deleteAllRegistration(info)
+		return 'All properties associated to phone no. ' + info.phoneno + ' has been successfully unregistered.'
+	}
+
+
+
+}

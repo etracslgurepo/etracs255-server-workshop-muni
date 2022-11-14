@@ -1,0 +1,29 @@
+<schema>
+
+	<element  tablename="collectionvoucher_fund">
+		<field name="objid" primary="true" prefix="CVF"/>
+		<field name="controlno" />
+		<field name="parentid" required="true"/>
+		<field name="fund_objid" required="true"/>
+		<field name="fund_title" required="true"/>
+		<field name="amount" type="decimal"/>
+
+		<field name="totalcash" type="decimal"/>
+		<field name="totalcheck" type="decimal"/>
+		<field name="totalcr" type="decimal"/>
+		
+		<complex name="cashbreakdown" serializer="default" type="list" />
+
+		<complex name="parent" ref="collectionvoucher" jointype="many-to-one" includefields="objid,controlno,controldate,state">
+			<key field="parentid" target="objid" />
+		</complex>	
+
+		<complex name="fund" ref="fund" jointype="many-to-one" includefields="objid,code,title">
+			<key field="fund_objid" target="objid" />
+		</complex>  
+
+		<field name="depositvoucherid" />
+
+	</element>
+
+</schema>	

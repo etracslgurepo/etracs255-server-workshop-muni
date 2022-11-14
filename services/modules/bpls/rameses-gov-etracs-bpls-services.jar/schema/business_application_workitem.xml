@@ -1,0 +1,19 @@
+<schema>
+
+	<element tablename="business_application_workitem">
+		<field name="objid" primary="true"/>
+		<field name="refid" required="true"/>
+		<field name="taskid" required="true"/>
+		<field name="workitemid" required="true"/>
+		<field name="startdate" required="true"/>
+		<field name="assignee_objid" required="true"/>
+		<field name="assignee_name" required="true"/>
+		<field name="enddate"/>
+		<field name="actor_objid"/>
+		<field name="actor_name"/>
+		<field name="remarks"/>
+		<field name="message"/>
+		<field name="action" required="true"/>
+	</element>	
+
+</schema>

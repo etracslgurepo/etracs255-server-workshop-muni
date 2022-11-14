@@ -1,0 +1,54 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class RPTCertificationFAASVerificationService 
+{
+    @ActiveDB('rptcertification_verification')
+    def em
+
+
+    @Service('RPTCertificationService')
+    def certSvc 
+
+
+    @ProxyMethod
+    public def getCurrentProperties(entity){
+        def params = [:]
+        params.objid = entity.taxpayer.objid 
+
+        def rputypes = []
+        if (entity.includeland == true) rputypes << "'land'"
+        if (entity.includebldg == true) rputypes << "'bldg'"
+        if (entity.includemach == true) rputypes << "'mach'"
+        if (entity.includeplanttree == true) rputypes << "'planttree'"
+        if (entity.includemisc == true) rputypes << "'misc'"
+
+        params.filter = ''
+        if (rputypes)
+            params.filter = " AND r.rputype in (" + rputypes.join(', ') + ')'
+        
+        return em.getCurrentProperties(params).each{ it.include = true}
+    }
+
+
+    @ProxyMethod
+    public def createCertification( cert ) {
+        certSvc.createCertification(cert)
+        cert.items.each{
+            certSvc.createItem([rptcertificationid:cert.objid, refid:it.objid])
+        }
+        return openCertification(cert.objid)
+    }
+
+
+    @ProxyMethod
+    public def openCertification(objid) {
+        def cert = certSvc.openCertification(objid)
+        if (! cert ) 
+            throw new Exception('Certification does not exist or has already been deleted.')
+        cert.items = em.getItems(cert)
+        return cert 
+    }
+
+}

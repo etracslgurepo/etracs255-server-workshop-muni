@@ -1,0 +1,95 @@
+import com.rameses.annotations.*;
+
+class RemittanceAFInterceptor {
+	
+	@DataContext('af_control') 
+	def afc_em;
+
+	@DataContext('af_control_detail') 
+	def afd_em;
+
+	@DataContext('remittance_af') 
+	def remaf_em;
+
+
+	@After( pattern="RemittanceService.importData" ) 
+	void afterImportData( evt ) { 
+		buildAF( evt.args[0] );  
+	} 
+
+	@After( pattern="RemittanceService.create" ) 
+	void afterCreate( evt ) {
+		buildAF( evt.result ); 
+	} 	
+
+	private void buildAF( result ) {
+		def p = [ remittanceid: result.objid ]; 
+		def afs = remaf_em.getBuildAFs( p ); 
+		afs.each{
+			it.qtycancelled = (it.qtycancelled == null ? 0 : it.qtycancelled);
+			it.qtyreceived = (it.qtyreceived == null ? 0 : it.qtyreceived);
+			it.qtybegin = (it.qtybegin == null ? 0 : it.qtybegin);
+			it.qtyissued = (it.qtyissued == null ? 0 : it.qtyissued);
+			it.qtyending = (it.qtyending == null ? 0 : it.qtyending);
+		}
+
+		// initiate locked to the affected af controls 
+		def lockid = new java.rmi.server.UID().toString(); 
+		afs.each{ 
+			afc_em.find([ objid: it.controlid ]).update([ lockid: lockid ]);  
+		} 
+
+		remaf_em.getCancelledSeries( p ).groupBy{ it.controlid }.each{ k,v-> 
+			def afc = afs.find{( it.controlid == k )} 
+			if ( afc ) { 
+				afc.qtycancelled = v.size(); 
+				afc.cancelledseries = v; 
+			} 
+		}  
+
+		afs.each{ 
+			it.qtycancelled = ( it.qtycancelled == null ? 0 : it.qtycancelled );
+			it.qtyreceived = ( it.qtyreceived == null ? 0 : it.qtyreceived );
+			it.qtybegin = ( it.qtybegin == null ? 0 : it.qtybegin );
+			it.qtyissued = ( it.qtyissued == null ? 0 : it.qtyissued );
+			it.qtyending = ( it.qtyending == null ? 0 : it.qtyending );
+
+			it.objid = (it.remittanceid + result.collector.objid + it.controlid); 
+			it.afcontrol = [ objid: it.controlid ]; 
+			remaf_em.create( it );  
+		} 
+
+		afs.findAll{( it.qtyissued > 0 )}.each{ 
+			insertAFControlDetail( result, it ); 
+		}
+	} 
+
+	@After( pattern="RemittanceService.submitForLiquidation" ) 
+	void afterSubmitForLiquidation( evt ) {
+		def result = evt.result; 
+		if ( result.objid ) { 
+			def m = [:]; 
+			if ( result.controlno ) m.refno = result.controlno; 
+			if ( result.dtposted ) m.txndate = result.dtposted; 
+			if ( m ) afd_em.find([ refid: result.objid ]).update( m ); 
+		} 
+	} 
+
+	private void insertAFControlDetail( rem, item ) { 
+		def afc = afc_em.find([ objid: item.controlid ]).select('objid,currentindexno,currentdetailid').first(); 
+		item.prevdetailid = afc.currentdetailid; 
+		item.indexno = afc.currentindexno; 
+		item.state = 1; 
+		item.refid = rem.objid; 
+		item.refno = rem.controlno; 
+		item.refdate = rem.controldate; 
+		item.txndate = rem.dtposted; 
+		item.reftype = item.txntype = item.remarks = 'REMITTANCE'; 
+		item.parent = [ controlid: item.controlid ];
+		item.issuedto = rem.collector; 
+		afd_em.create( item ); 
+
+		def afcupd = [ currentdetailid: item.objid, currentindexno: item.indexno+1 ]; 
+		afc_em.find([ objid: afc.objid ]).update( afcupd ); 
+	}
+} 

@@ -1,0 +1,12 @@
+<schema>
+	<!-- the primary key field must be a combination of the groupid and lobid-->	
+	<element tablename="lob_report_category_mapping">
+		<field name="objid" primary="true"/>
+		<complex name="lob" ref="lob" jointype="many-to-one" includefields="objid,name" required="false">
+			<key field="lobid" target="objid"/> 
+		</complex> 
+		<complex name="category" ref="lob_report_category" jointype="many-to-one" includefields="objid,title,groupid" required="false">
+			<key field="categoryid" target="objid"/> 
+		</complex>	
+	</element>
+</schema>

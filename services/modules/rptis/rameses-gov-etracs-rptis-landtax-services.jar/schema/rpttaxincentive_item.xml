@@ -1,0 +1,11 @@
+<schema>
+	<element tablename="rpttaxincentive_item">
+		<field name="objid" primary="true" />
+		<field name="rpttaxincentiveid" required="true" />
+		<field name="rptledgerid" required="true" />
+		<field name="fromyear" required="true" type="integer"/>
+		<field name="toyear" required="true" type="integer"/>
+		<field name="basicrate" required="true" type="decimal" />
+		<field name="sefrate" required="true" type="decimal" />
+	</element>
+</schema>

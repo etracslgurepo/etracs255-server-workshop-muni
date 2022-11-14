@@ -1,0 +1,98 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+
+class MunicipalityFAASService
+{   
+	@Env
+	def env
+
+    @ActiveDB('municipality_faas')
+    def em;
+
+    @ActiveDB('faas_task')
+    def taskEm
+
+    @Service('FAASService')
+    def faasSvc 
+
+
+
+    @ProxyMethod
+    public def resubmitToProvince( faas ) {
+        if (faas.objid )
+            faas = faasSvc.findFaasById(faas.objid)
+        else if (faas.tdno)
+            faas = faasSvc.getFaasByTdNo(faas.tdno)
+
+        if (!faas) 
+            throw new Exception('FAAS does not exist for the specified TD No. or objid.')
+        return faas 
+    }
+
+    @ProxyMethod
+    public def resendToProvince( faas ) {
+        faas.datacapture = faas.datacapture == 1
+        return faas
+    }
+
+    @ProxyMethod
+    public def resendRequirements( faas ) {
+        faas.datacapture = faas.datacapture == 1
+        return faas
+    }
+
+
+    @ProxyMethod
+    public def approveFaas(entity){
+        def currfaas = em.findFaasForApproval(entity.faas)
+        def currtask = em.findCurrentTask(currfaas)
+        validate(currfaas, currtask)
+
+        def faas = faasSvc.openFaas(entity.faas)    
+        faas.approver = entity.approver   
+        faasSvc.approveFaas(faas)
+
+        updateSignatory(faas)
+        closeCurrentTask(faas, currtask)
+    }
+
+
+    void updateSignatory(currfaas){
+        def sig = faasSvc.findSignatory(currfaas)
+        sig.approver = currfaas.approver
+        faasSvc.saveSignatory(sig)
+    }
+
+
+    void closeCurrentTask(faas, currtask){
+        currtask.enddate = faas.approver.dtsigned
+        currtask.actor = [
+            name : faas.approver.name,
+            title : faas.approver.title, 
+        ]
+        taskEm.save(currtask)
+    }
+
+    void validate(currfaas, currtask){
+        if (!currfaas)
+            throw new Exception('FAAS does not exist or has already been deleted.')
+
+        if (currfaas.state == 'CANCELLED')
+            throw new Exception('FAAS has already been cancelled.')
+
+        if (currfaas.state == 'CURRENT')
+            throw new Exception('FAAS is already current.')
+
+        if (currfaas.datacapture || currfaas.datacapture == 1)
+            throw new Exception('FAAS is invalid. Only online processed transaction is allowed.')
+
+        //check current task, must be approver
+        if (!currtask)
+            throw new Exception('Current Task does not exist or has been deleted.')
+
+        if (!currtask.state.matches('.*approver.*'))
+            throw new Exception('FAAS has not yet been submitted for approval. Current task is ' + currtask.state + '.')
+    }
+
+
+}

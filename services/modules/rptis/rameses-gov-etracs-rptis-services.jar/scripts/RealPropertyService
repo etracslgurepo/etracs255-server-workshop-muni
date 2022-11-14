@@ -1,0 +1,248 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import com.rameses.services.extended.*
+
+class RealPropertyService 
+{
+	@Service('RPTUtil')
+	def util
+
+	@Service('Var')
+	def var 
+
+	@DataContext('realproperty')
+	def em_realproperty 	
+
+	@DataContext('rysetting_land')
+	def em_landsetting 	
+
+	@DataContext('faas_list')
+	def em_faas_list
+
+    def SECTION_NEW_MAX  	= 3
+	def PARCEL_NEW_MAX  	= 2
+	def SECTION_OLD_MAX  	= 2
+	def PARCEL_OLD_MAX  	= 3
+
+
+	@ProxyMethod
+	public def initCapture(info ) {
+		if (info.rputype == 'land'){
+			info.remove('rp')
+			def rp = init()
+			rp.putAll(info)
+			if (info.barangay) 
+				rp.barangayid = info.barangay.objid
+			checkDuplicatePin(rp)
+			info.rp = rp;
+		}
+		info.realpropertyid = info.rp.objid
+		return info.rp
+	}
+
+
+	@ProxyMethod
+	public def init(  ) {
+		def setting = em_landsetting.where('1=1').orderBy('ry desc').first()
+		if (!setting) throw new Exception('Land Revision Setting does not exist.')
+
+		return [
+			objid		: 'RP' + new java.rmi.server.UID(),
+			state 		: 'INTERIM',
+			ry 			: setting.ry,
+			autonumber	: false,
+			isnew   	: true,
+			pintype 	: var.pin_type,
+		]	
+	}
+
+	@ProxyMethod
+	public def create( entity ) {
+		validate(entity)
+		updatePin(entity)
+		return em_realproperty.create(entity)	
+	}
+
+	@ProxyMethod
+	public def update( entity ) {
+		validate(entity)
+		updatePin(entity)
+		return em_realproperty.update(entity)	
+	}
+
+	@ProxyMethod
+	public def save( entity ) {
+		validate(entity)
+		updatePin(entity)
+		return em_realproperty.save(entity)	
+	}
+
+	@ProxyMethod
+	public def open( entity ) {
+		entity = em_realproperty.read(entity)	
+		if (!entity){
+			throw new Exception('Real Property does not exist or has been deleted.')
+		}
+		entity.isection = null
+		entity.iparcel = null
+		if (entity.section)
+			entity.isection = util.toInteger(entity.section)
+		if (entity.parcel)			
+			entity.iparcel = util.toInteger(entity.parcel)
+		return entity 
+	}
+
+	@ProxyMethod
+	public void delete( entity ) {
+		em_realproperty.delete(entity)	
+	}
+
+
+	@ProxyMethod
+	public def approve( entity ) {
+		entity.state = 'CURRENT'
+		em_realproperty.find([objid:entity.previd]).update([state:'CANCELLED'])
+		em_realproperty.find([objid:entity.objid]).update([state:entity.state])
+		return entity
+	}
+
+
+	@ProxyMethod
+    public def getRyList(  ) {
+    	return em_landsetting.where('1=1').orderBy('ry desc').list().ry 
+    }
+
+	@ProxyMethod
+	public def buildPin( rp, info ) {
+		if (! info.pintype ) {
+			info.pintype = var.pin_type 
+		}
+		util.required('Pin Type', info.pintype)
+		util.required('Barangay PIN', info.barangay.pin)
+		util.required('Section', info.section)
+		util.required('Parcel', info.parcel)
+		
+		def maxsectionlen = null
+		def maxparcellen = null
+		def pin = null
+		
+		if (info.pintype.toLowerCase() == 'new'){
+			maxsectionlen = SECTION_NEW_MAX
+			maxparcellen  = PARCEL_NEW_MAX
+			pin = info.barangay.pin
+		}
+		else {
+			maxsectionlen = SECTION_OLD_MAX
+			maxparcellen  = PARCEL_OLD_MAX
+			pin = info.barangay.oldpin
+		}
+		
+		validateLength('Section', info.section.toString().length(), maxsectionlen)
+		validateLength('Parcel', info.parcel.toString().length(), maxparcellen)
+
+		def section = info.section.toString().padLeft(maxsectionlen,'0')
+		def parcel  = info.parcel.toString().padLeft(maxparcellen,'0')
+		pin = pin + '-' + section + '-' + parcel 
+		rp.pintype = info.pintype 
+		rp.section = section 
+		rp.parcel  = parcel 
+		rp.pin     = pin 
+		return rp 
+	}
+
+	@ProxyMethod
+    public def checkDuplicatePin(params) {
+    	if (params.txntype && util.isTrue(params.txntype.newrealproperty)){
+    		return
+    	}
+
+    	def rp = em_realproperty.find([pin:params.pin, ry:params.ry]).first()
+    	if (!rp) {
+    		rp = em_realproperty.find([pin:params.pin.replaceAll('-',''), ry:params.ry]).first()
+    		if (!rp) {
+    			return
+    		}
+    	}
+    	if (params.claimno && rp.claimno != params.claimno){
+    		return
+    	}
+
+
+    	//check reuse pin option 
+    	def reusepin = util.toBoolean(var.get('assessor_reuse_cancelled_pin'), false)
+    	if (reusepin){
+	    	def currentpins = em_faas_list.select('tdno').find([realpropertyid: rp.objid, state: 'CURRENT', rputype: 'land']).list()
+	    	if (!currentpins) {
+	    		return 
+	    	} else {
+	    		def msg = 'PIN ' + params.pin + ' is currently referenced by '
+	    		msg += 'TD No(s). ' + currentpins.tdno.join(', ') + '.\n\n'
+	    		msg += 'Revise the PIN of these properties before reusing the new PIN'
+	    		throw new Exception(msg)
+	    	}
+    	}
+
+
+    	throw new Exception('PIN No. ' + params.pin + ' already exist.')
+    }
+
+
+	void validate(entity){
+		validateSectionParcelLength(entity)
+	}
+
+	void validateSectionParcelLength(entity){
+		if (entity.pintype == 'new' && entity.section?.length() > 3){
+			throw new Exception('Invalid section. Section must be less than or equal to 999.')
+		}
+        if (entity.pintype == 'old' && entity.section?.length() > 2){
+        	throw new Exception('Invalid section. Section must be less than or equal to 99.')
+        }
+
+        if (entity.pintype == 'new'){
+        	def allowedlength = util.toInteger(var.getProperty('assessor_allowed_new_parcel_length', 2))
+        	if (util.isTrue(var.assessor_allow_3_digit_parcel)) {
+        		allowedlength = 3
+        	}
+        	if (entity.parcel?.length() > allowedlength) {
+        		throw new Exception('Invalid parcel. Parcel must be less than or equal to ' + ('9'*allowedlength))
+        	}
+        }
+        if (entity.pintype == 'old'){
+        	def allowedlength = util.toInteger(var.getProperty('assessor_allowed_old_parcel_length', 3))
+        	if (entity.parcel?.length() > allowedlength) {
+        		throw new Exception('Invalid parcel. Parcel must be less than or equal to ' + ('9'*allowedlength) )
+        	}
+        }
+	}
+ 
+	void validateLength(type, value, maxvalue ){
+		if (value > maxvalue){
+			throw new Exception(type + ' must not exceed ' + maxvalue + '.')
+		}
+
+		if (value < 0){
+			throw new Exception(type + ' must not be zero.')
+		}
+	}
+
+	@ProxyMethod
+	public void updateBoundaries( entity ) {
+		em_realproperty.update(entity)
+	}
+
+	@ProxyMethod 
+	public void checkDuplicateStewardPin(info){
+		def params = [pin:info.fullpin, ry:info.ry]
+		def rp = em_realproperty.select('objid, state').find(params).first();
+		if(rp && !'CANCELLED'.equalsIgnoreCase(rp.state))
+			throw new Exception('PIN ' + info.fullpin + ' already exist.')
+	}
+
+	void updatePin(entity){
+		if (entity.claimno) {
+			entity.pin = entity.pin.replace('-' + entity.claimno, '')  
+		}
+	}
+
+}

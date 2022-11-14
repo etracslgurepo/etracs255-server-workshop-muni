@@ -1,0 +1,11 @@
+<schema>
+	<element tablename="sys_ruleset_fact">
+		<field name="ruleset" primary="true"/>
+		<field name="rulefact" primary="true"/>
+
+		<complex name="fact" ref="sys_rule_fact" jointype="many-to-one" includefields="name,title,factclass" required="false"> 
+			<key field="rulefact" target="objid" />
+		</complex>
+	</element>	
+</schema>	
+

@@ -1,0 +1,153 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.services.extended.*
+
+public class BusinessCashReceiptService  {
+
+	@ActiveDB("business_receivable")
+	def receivable;
+
+	@Service("BusinessBillingService")
+	def billingSvc;
+	
+	@Service("BusinessLobService")
+	def lobSvc;
+	
+	@Service("BusinessTaxCreditService")
+	def taxCreditSvc;
+
+	@ActiveDB("business")
+	def business;
+
+	@ActiveDB("business_application")
+	def app;
+
+	@Service("NumberService")
+	def numSvc;
+
+	@Service("DateService")
+	def dateSvc;
+
+
+	@ProxyMethod
+	public def getBusinessList(o) {
+		if(!o.bin && !o.businessname && !o.ownername) return [];
+
+		def sb = new StringBuilder();
+		if( o.bin ) {
+			o.bin += "%";
+			sb.append( ''' AND b.bin LIKE $P{bin} ''' );
+		}	
+		if( o.businessname ) {
+			o.businessname += "%";
+			sb.append( ''' AND b.businessname LIKE $P{businessname} ''' );
+		}
+		if( o.ownername ) {
+			o.ownername += "%";
+			sb.append( ''' AND b.owner_name LIKE $P{ownername} ''' );
+		}
+		o.filter = sb.toString();
+		return receivable.getBusinessListForBilling( o );
+	}
+
+	@ProxyMethod
+	public def getAppList( params ) { 
+		if ( !params.businessid ) throw new Exception("businessid must not be null"); 
+
+		return receivable.getAppListForBilling( params ); 
+	} 
+
+	@ProxyMethod 
+	public def findInfo( param ) { 
+		def info = null; 
+		if ( param.appno ) { 
+
+			def sappno = param.appno;
+			if ( sappno.indexOf(':') > 0 ) { 
+				param.appno = sappno.substring( sappno.indexOf(':')+1); 
+				sappno = param.appno;
+			}
+			if ( sappno.contains('-')) { 
+				info = app.findInfoByAppno( param ); 
+			} else { 
+				info = app.findInfoByBIN([ bin: sappno ]); 
+			} 
+
+			if ( !info ) throw new Exception("Business record not found with refno " + sappno);
+
+		} else if ( param.applicationid ) {
+			info = app.findInfoByAppid( param ); 
+			if ( !info ) throw new Exception("Business record not found with applicationid " + param.applicationid);
+		} 
+
+
+		if (!info.state.toLowerCase().matches('payment|release|completed')) 
+			throw new Exception('This application is not available for payment. Current state is ' + info.state);  
+
+		def m = [:];
+		m.payer = info.owner;
+        m.paidby = info.owner.name + ' ('+info.businessname+')';
+        m.paidbyaddress = info.address?.text;
+        m.businessid = info.business?.objid;
+        m.applicationid = info.objid;
+        m.apptype = info.apptype;
+        m.appyear = info.appyear;
+        m.appno = info.appno; 
+        m.dtfiled = info.dtfiled;
+        m.bin = info.bin;
+
+        if(m.apptype!='ADDITIONAL') {
+	        def list = app.getDelinquentApplications([ businessid: m.businessid, appyear: m.appyear ]); 
+	        if ( list ) {
+	        	def dapp = list.first(); 
+	        	throw new Exception('This business is delinquent in '+ dapp.iyear +'. Please verify.'); 
+	        }
+        }
+        return m; 
+	}
+
+
+	@ProxyMethod 
+	public def getBillingForPayment( param ) { 
+		if (!param.applicationid) throw new Exception('applicationid is required');
+
+		def r = [applicationid: param.applicationid];
+		r.filter = ''' ba.objid =$P{applicationid} ''';
+		r.show_paid = false;
+		r.taxfees = receivable.getBilling(r);
+		if ( !r.taxfees ) {  
+			String errmsg = "No unpaid items found"; 
+			if ( param._silent == true ) {
+				return [ errcode:'NO_UNPAID', errmsg: errmsg ]; 
+			} 
+
+			throw new Exception( errmsg );
+		} 
+
+		r.app = param.app; 
+		r.billdate = param.billdate; 		
+		r.payment = param.payment; 
+		if (!r.payment) r.payment = [option:'FULLYEAR']; 
+
+		def z = billingSvc.getBillingForPayment( r );
+		def m = [:];		
+		m.expirydate = z.expirydate;
+		m.nextbilldate = z.expirydate; 
+
+		if ( param._with_taxfees == false ) {
+			//do nothing 
+		} else {
+			m.taxfees = z.taxfees.sort{ it.sortorder } 
+		}
+		if ( param._with_items == false ) {
+			//do nothing 
+		} else {
+			m.items = z.items.sort{ it.sortorder };
+		}
+		
+		m.totals = z.totals;
+		m.excess = z.excess;
+		return m;
+	} 
+}

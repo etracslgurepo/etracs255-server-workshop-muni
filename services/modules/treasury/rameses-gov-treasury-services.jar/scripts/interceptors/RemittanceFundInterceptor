@@ -1,0 +1,10 @@
+import com.rameses.annotations.*;
+
+class RemittanceFundInterceptor {
+
+	@After(pattern="QueryService.getList", eval="#{ args[0]._schemaname == 'remittance_fund' }")
+	public void afterGetList( evt ) { 
+		def result = evt.result;
+		result.sort{ it.fund?.code.toString() } 
+	}
+}

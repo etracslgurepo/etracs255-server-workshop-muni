@@ -1,0 +1,41 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.services.extended.*;
+
+class RISReportService  {
+
+	@ActiveDB("ris")
+	def em;
+
+
+	@ProxyMethod
+	public def getRISData( objid ) {
+		def info = em.getRISInfo( [objid:objid] );
+		if( !info) 
+			throw new Exception("Could not open request with objid " +  objid);
+	}
+
+	@ProxyMethod
+	public def getRIVData( objid ) {
+		def info = em.getRISInfo( [objid:objid] );
+		if( !info) 
+			throw new Exception("Could not open request with objid " +  objid);
+		info.items = em.getRISReceiptItem( [objid:objid ] );	
+	}
+
+	
+	@ProxyMethod
+	public def getReportData( objid ) {
+		
+		def type = info.reqtype;
+		def itemclass = info.itemclass;	
+
+		if('AF:PURCHASE'.equals(ris.txntype))
+			ris.items = em.sqlContext.createNamedQuery("ris:getRISReceiptItem").setParameter('risid', risid).resultList
+		else 
+			ris.items = em.sqlContext.createNamedQuery("ris:getRISAFIssueItem").setParameter('risid', risid).resultList
+		return ris;
+	}
+		
+}

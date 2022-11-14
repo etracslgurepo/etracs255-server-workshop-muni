@@ -1,0 +1,55 @@
+import com.rameses.annotations.*;
+import java.rmi.server.*;
+import com.rameses.rules.common.*;
+import com.rameses.util.*;
+import com.rameses.services.extended.*;
+
+
+public class RPTBillingReportService
+{
+	@ActiveDB('rptbilling_report')
+	def em 
+
+	@Service('RPTUtil')
+	def util
+
+
+	@ProxyMethod
+	public def getBilledLedger( bill ) {
+		def ledger = em.findLedgerbyId(bill)
+		if (!ledger) 
+			throw new Exception('Ledger does not exist or has already been deleted.')
+		
+		ledger.items = em.getBilledItems(bill)
+		if (!ledger.items) 
+			throw new Exception('Realty Tax Ledger for TD No. ' + ledger.tdno + ' has been fully paid.')
+
+		ledger.items.each{
+			it.flag = ''
+			if (it.taxdifference == 1 || 
+				it.firecode > 0.0 ||
+				it.basicidle > 0.0 ||
+				it.sh > 0.0 )
+				 	it.flag += '*'
+		}
+		ledger.hastaxdifference = ledger.items.findAll{it.taxdifference == 1}.size() > 0
+		ledger.hasidle = ledger.items.findAll{it.basicidle > 0}.size() > 0
+		ledger.hasfirecode = ledger.items.findAll{it.firecode > 0}.size() > 0
+		ledger.hassh = ledger.items.findAll{it.sh > 0}.size() > 0
+		summarizeLedgerInfo(ledger)
+		return ledger 
+	}
+
+	void summarizeLedgerInfo(ledger){
+		ledger.basic		= util.sum(ledger.items, 'basic')
+		ledger.basicdp		= util.sum(ledger.items, 'basicdp')
+		ledger.basicnet		= util.sum(ledger.items, 'basicnet')
+		ledger.sef			= util.sum(ledger.items, 'sef')
+		ledger.sefdp		= util.sum(ledger.items, 'sefdp')
+		ledger.sefnet		= util.sum(ledger.items, 'sefnet')
+		ledger.firecode		= util.sum(ledger.items, 'firecode')
+		ledger.basicidle	= util.sum(ledger.items, 'basicidle')
+		ledger.total		= util.sum(ledger.items, 'total') 
+	}
+
+}	

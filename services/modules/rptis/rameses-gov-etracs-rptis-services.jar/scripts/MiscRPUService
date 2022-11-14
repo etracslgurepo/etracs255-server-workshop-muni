@@ -1,0 +1,227 @@
+import com.rameses.annotations.*
+import com.rameses.util.*
+import com.rameses.services.extended.*
+
+class MiscRPUService
+{
+    @ActiveDB('miscrpu')
+    def em
+
+    @DataContext('miscrpu')
+    def em_rpu
+
+    @Env
+    def env
+    
+    @Service('RPTUtil')
+    def util
+
+    @Service('DateService')
+    def dateSvc
+
+    @Service('NumberService')
+    def numberSvc
+    
+    @Service('LandRPUService')
+    def rpuSvc
+
+    @Service('MiscRYSettingLookupService')
+    def miscSettingSvc 
+
+
+    @Service('MiscAssessmentRuleService')
+    def ruleSvc
+
+
+    @Service('Var')
+    def var
+
+    
+    def SCHEMA_ITEM    = 'item'
+    def SCHEMA_PARAM   = 'param'
+    
+
+    @ProxyMethod
+    public def initMiscRpu(rpu) {
+        def landrpu = rpuSvc.getLandRpuByRealPropertyId(rpu.realpropertyid)
+        if (!landrpu) throw new Exception('Land RPU Reference does not exists.')
+
+        rpu.landrpuid   = landrpu.objid 
+        rpu.items       = []
+        return rpu 
+    }
+
+    @ProxyMethod
+    public def createMiscRpu( rpu ) {
+        em.create(rpu)
+        saveItems(rpu.items)
+        return rpu
+    }
+
+
+    @ProxyMethod
+    public def updateMiscRpu(rpu) { 
+        if (em_rpu.find([objid: rpu.objid]).first() == null) {
+            return createMiscRpu(rpu);
+        } else {
+            em.updateImmediate(rpu)
+            saveItems(rpu.items)
+            removeDeletedItems(rpu)
+            return rpu
+        }
+    }
+
+
+    @ProxyMethod
+    public def openMiscRpu( objid ) {
+        def rpu = em.read([objid:objid])
+        if (rpu) {
+            rpu.actualuse = miscSettingSvc.lookupAssessLevelById(rpu.actualuse.objid)
+            rpu.items  = getMiscRpuItems(rpu)
+            rpu.assessments = em.getAssessments(rpu)
+        } else {
+            rpu = [objid: objid, actualuse: [:]]
+            rpu.items = []
+            rpu.assessments = []
+        }
+        return rpu 
+    }
+
+
+    @ProxyMethod
+    public def deleteMiscRpu(rpu){
+        deleteItems(rpu)
+        em.delete(rpu)
+    }
+
+    @ProxyMethod
+	public def deleteItems(rpu) {
+		removeDeletedItems(rpu)
+        em.deleteAllParams(rpu)
+        em.deleteAllMiscRpuItems(rpu)
+	}    
+
+    @ProxyMethod
+    public void generateNewIds( rpu ) {
+        rpu.items.each{ item ->
+            item.objid     = util.generateId('MI')
+            item.miscrpuid = rpu.objid 
+            
+            item.params.each{ p ->
+                p.objid = util.generateId('P')
+                p.miscrpuitemid = item.objid 
+                p.miscrpuid = rpu.objid 
+            }
+        }
+    }
+
+
+    @ProxyMethod
+    public def getClassifications(  ) {
+        return rpuSvc.getClassifications()
+    }
+
+
+    @ProxyMethod
+    public def getExemptionTypes(){
+        return rpuSvc.getExemptionTypes()
+    }
+
+
+    @ProxyMethod
+    public def getMiscRySetting(objid){
+        return miscSettingSvc.getMiscRySettingById(objid)
+    }
+
+
+    @ProxyMethod
+    public def getMiscAssessLevels(params) {
+        return miscSettingSvc.lookupAssessLevels(params)
+    }
+
+
+
+
+    /*-------------------------------------------------------------------
+    *
+    * COMPUTATION METHODS
+    *
+    -------------------------------------------------------------------*/
+    @ProxyMethod
+    public def calculateAssessment( rpu ) {
+        validate(rpu)
+        return ruleSvc.execute(rpu)
+    }
+
+
+    @ProxyMethod
+    public def calculateExpression( miscitem ) {
+        def binding     = util.buildSystemFieldBindings( miscitem );
+        binding        += util.buildParamBindings( miscitem );
+        return numberSvc.round( util.evaluateExpr( miscitem.expr, binding ) );
+    }
+
+
+    void validate(rpu){
+        util.required('Actual Use', rpu.actualuse)
+        rpu.items.each{
+            validateMiscItemInfo(it)
+        }
+    }
+
+    void validateMiscItemInfo(miscitem) {
+        util.required('Depreciation Rate', miscitem.depreciation)
+        if (miscitem.depreciation < 0.0) 
+            throw new Exception('Depreciation Rate must be greater than or equal to zero.')
+    }
+
+
+    /*-------------------------------------------------------------------
+    *
+    * HELPER METHODS
+    *
+    -------------------------------------------------------------------*/
+    
+    void saveItems(items){
+        items.each{ item -> 
+            item.taxable = item.taxable == null ? true : item.taxable;
+            em.save(item, SCHEMA_ITEM)
+
+            item.params.each{param ->
+                if (param.intvalue == null) param.intvalue = 0
+                if (param.decimalvalue == null) param.decimalvalue = 0.0
+                try{
+                    em.create(param, SCHEMA_PARAM)
+                }
+                catch(e){
+                    em.updateImmediate(param, SCHEMA_PARAM)
+                }
+            }
+        }
+    }
+
+
+    def getMiscRpuItems(rpu){
+        def items = em.getMiscRpuItems(rpu)
+
+        items.each{ item ->
+            item.params = em.getMiscRpuItemParams([miscrpuitemid:item.objid])
+        }
+
+        return items 
+    }
+
+
+    void removeDeletedItems(rpu){
+        rpu._params?.each{ 
+            em.delete(it, SCHEMA_PARAM)
+        }
+
+        rpu._items?.each{ item -> 
+            em.deleteItemParams(item);
+            em.delete(item, SCHEMA_ITEM);
+        }
+    }
+
+}
+ 

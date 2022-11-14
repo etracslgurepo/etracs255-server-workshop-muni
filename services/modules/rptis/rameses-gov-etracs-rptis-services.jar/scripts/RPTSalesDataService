@@ -1,0 +1,34 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+
+class RPTSalesDataService extends ActiveCrudService
+{
+	@ActiveDB('rpt_sales_data')
+	def em
+
+	@Service('DateService')
+	def dtSvc 
+
+
+	void beforeCreate(entity){
+		entity.faas = [objid: entity.objid]
+		validate(entity);
+	}
+
+	void beforeUpdate(entity){
+		entity.faas = [objid: entity.objid]
+		validate(entity)
+	}
+
+	void validate(entity){
+		if (!entity.saledate) 
+			throw new Exception('Date of Sale is required.')
+
+		def saledate = dtSvc.parse('yyyy-MM-dd', entity.saledate)
+		if (saledate > dtSvc.serverDate)
+			throw new Exception('Date of Sale must be less than or equal to current date.');
+	}
+}
+

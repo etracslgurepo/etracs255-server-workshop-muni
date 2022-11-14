@@ -1,0 +1,124 @@
+import com.rameses.annotations.*;
+import com.rameses.util.DateBean;
+
+class AFInventorySummaryReportService {
+	
+	@DataContext('sys_org')
+	def em_org; 
+
+	@ActiveDB('monitoring/af_inventory_summary')
+	def em_report; 
+
+	@Env
+	def env; 
+
+	@Service('DateService')
+	def dateSvc; 
+
+	@Service('Var')
+	def var; 	
+
+	@Service( dynamic=true )
+	def dynaSvc; 
+
+	@ProxyMethod 
+	public def initReport( param ) { 
+		def resp = [:];
+		resp.year = dateSvc.getServerYear(); 
+		resp.domains = [];
+
+		def orgs = var.treasury_remote_orgs;
+		if ( orgs ) {
+			orgs.split(",").each{
+				def o = em_org.find([ objid: it.trim() ]).first();
+				if ( o ) resp.domains << o; 
+			} 
+			resp.domains.sort{ it.name } 
+		}
+		return resp; 
+	} 
+
+	@ProxyMethod 
+	public def getReport( params ) { 
+		if ( !params.template?.objid ) throw new Exception("params.template.objid  parameter is required");  
+
+		def result = [:]; 
+		if ( params.domain?.objid ) { 
+			def remoteSvc = dynaSvc.lookup('RemoteCoordinatorService', 'coordinator-script-service'); 
+
+			def mm = [:];
+			mm.reftype = 'treasury-monitoring';
+			mm.reportConnection = 'treasury';
+			mm.reportService = 'monitoring/AFInventorySummaryReportService';
+			mm.reportMethod = 'getReport';
+
+			def mmm = [:]; 
+			mmm.putAll( params ); 
+			mmm.remove('domain'); 
+			mm.reportParam = mmm; 
+
+			def remoteConfig = [
+				orgcode   : params.domain.objid,
+				connection: mm.reportConnection,
+				module    : "etracs25"
+			];  
+
+			mm = remoteSvc.onMessage( mm, remoteConfig ); 
+			result.reportdata = mm.reportdata; 
+			result.header = mm.header; 
+			result.header.DOMAIN_TITLE = params.domain?.name; 
+
+		} 
+		else {
+			buildParams( params ); 
+			result.reportdata = [ templateid: params.template?.objid ]; 
+
+			boolean allow_summaries = true; 
+
+			if ( params.template?.objid == 'templateB' ) {
+				result.reportdata.items = em_report.getReportB( params.filter ); 
+				allow_summaries = false; 
+			}
+			else {
+				result.reportdata.items = em_report.getReportA( params.filter ); 
+				result.reportdata.afitems = em_report.getReportA_Items( params.filter ); 
+				allow_summaries = false; 
+			}
+
+			if ( !result.reportdata.items ) 
+				throw new Exception("No available stocks in AF inventory");  
+
+			if ( allow_summaries ) {
+				def groups = result.reportdata.items.groupBy{ it.particulars }
+
+				result.reportdata.summaries = [];
+				result.reportdata.items.collect{[ particulars: it.particulars ]}.unique().each{ k-> 
+					def v = groups.get( k.particulars ); 
+					if ( v instanceof java.util.Collection ) {
+						k.amount = v.sum{( it.amount ? it.amount : 0.0 )} 
+						result.reportdata.summaries << k; 
+					}
+				}
+			}
+			
+			result.header = params.header; 
+		}
+
+		if ( !result.reportdata ) 
+			throw new Exception("No available record(s) that matches your criteria");  
+
+		return result; 
+	}
+
+	void buildParams( params ) { 
+		def header = [:]; 
+		def filter = [:];
+		def rundate = dateSvc.getServerDate();
+
+		def MDY = new java.text.SimpleDateFormat('MMMMM dd, yyyy'); 
+		header.PERIOD_TITLE = 'AS OF '+ new java.text.SimpleDateFormat('MMMMM dd, yyyy').format( rundate ).toUpperCase(); 
+		header.REPORT_TITLE = 'AF INVENTORY SUMMARY'; 
+		params.header = header; 
+		params.filter = filter; 
+	}
+}

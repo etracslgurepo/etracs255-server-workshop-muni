@@ -1,0 +1,53 @@
+<!-- 
+DROP VIEW IF EXISTS vw_entity_relation;
+CREATE VIEW vw_entity_relation AS  
+SELECT  
+    er.objid,
+    er.entity_objid AS ownerid,
+    ei.objid AS entityid,
+    ei.entityno,
+    ei.name,
+    ei.firstname,
+    ei.lastname,
+    ei.middlename,
+    ei.birthdate,
+    ei.gender,
+    er.relation_objid AS relationship 
+FROM entity_relation er
+INNER JOIN vw_entityindividual ei ON er.relateto_objid = ei.objid 
+UNION ALL
+SELECT  
+    er.objid,
+    er.relateto_objid AS ownerid,
+    ei.objid AS entityid,
+    ei.entityno,
+    ei.name,
+    ei.firstname,
+    ei.lastname,
+    ei.middlename,
+    ei.birthdate,
+    ei.gender,
+    CASE WHEN ei.gender = 'M' THEN et.inverse_male 
+    	 WHEN ei.gender = 'F' THEN et.inverse_female 
+    	 ELSE et.inverse_any END AS relationship
+FROM entity_relation er
+INNER JOIN vw_entityindividual ei ON er.entity_objid = ei.objid
+INNER JOIN entity_relation_type et ON er.relation_objid = et.objid 
+--> 
+<schema>
+	
+	<element tablename="vw_entity_relation">
+		<field name="objid" primary="true"/>
+		<field name="ownerid" />
+		<field name="entityid" />
+		<field name="entityno" caption="Entity No"/>
+		<field name="name" caption="Name"/>
+		<field name="firstname" caption="First Name"/>
+		<field name="lastname" caption="Last Name"/>
+		<field name="middlename" caption="Middle Name"/>
+		<field name="birthdate" caption="Birth Date"/>
+		<field name="gender" caption="Gender"/>
+		<field name="relationship" caption="Relationship"/>
+	</element>	
+	
+</schema>

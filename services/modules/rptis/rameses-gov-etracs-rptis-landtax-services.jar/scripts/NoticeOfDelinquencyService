@@ -1,0 +1,232 @@
+import com.rameses.annotations.*
+import java.rmi.server.UID
+import com.rameses.eserver.*;
+import com.rameses.common.*;
+
+public class NoticeOfDelinquencyService
+{
+	@PersistenceContext('main')
+	def em 
+	
+	@Service('LogService')
+    def logSvc
+	
+	@Service( 'RPTLedgerService' )
+	def rptledgerSvc 
+	
+	@Service( 'DateService' )
+	def dtSvc
+	
+	@Service( 'NumberService' )
+	def numSvc 
+	
+	def SETTING_SCHEMA = 'noticeofdelinquency:noticeofdelinquencysetting';
+	def SETTING_OBJID = 'NOTICEOFDELINQUENCYSETTING'
+	
+	def demandletters = [
+		noticeofdelinquency: [ index:1, code:'NOD', description:"Notice OF Delinquency" ],
+		secondtracer: [index:2, code: 'ST', description:'Second Tracer'], 
+		finaldemand: [index:3, code: 'FD', description:'Final Demand'], 
+		warrantoflevy: [index:4, code: 'WOL', description:'Warrant of Levy'], 
+		noticeofpublication: [index:5, code: 'NOPAS', description:'Notice of Publication and Auction Sale'], 
+		certofsaleofproperty: [index:6, code: 'CSDRP', description:'Certificate of Sale of Delinquent Real Property'], 
+		noticeofredemption: [index:7, code: 'NOR', description:'Notice of Redemption']
+	]
+	
+	@ProxyMethod
+	public def saveSettings(def entity) {
+		def data = em.read(SETTING_SCHEMA,  [objid:SETTING_OBJID] );
+		if(data) {
+			data.putAll( entity);
+			em.update( SETTING_SCHEMA, data );
+		} else {
+			entity.objid=SETTING_OBJID;
+			em.validate( SETTING_SCHEMA, entity );
+			em.create( SETTING_SCHEMA, entity )
+			logSvc.log('CREATE', 'NoticeOfDelinquencySetting', entity.objid )
+		}
+		return entity;
+	}	
+	
+	@ProxyMethod
+	public def loadSetting( ) {
+		def data = em.read(SETTING_SCHEMA, [objid:SETTING_OBJID] );
+		if(! data) return [:];
+
+		return data;
+	} 
+	 
+	  
+	@ProxyMethod 
+	public def getDoctypes(){
+		def data =  em.read(SETTING_SCHEMA, [objid:SETTING_OBJID] )
+		if( !data ) return [];
+		def list = [];
+		def isValOne = { val ->
+			return val == 1 ? true : false 
+		}
+		
+		if( isValOne( data.noticeofdelinquency ) ) 	list << demandletters.noticeofdelinquency
+		if( isValOne( data.secondtracer ) ) 		list << demandletters.secondtracer
+		if( isValOne( data.finaldemand )) 			list << demandletters.finaldemand 
+		if( isValOne( data.warrantoflevy ) ) 		list << demandletters.warrantoflevy
+		if( isValOne( data.noticeofpublication ) ) 	list << demandletters.noticeofpublication
+		if( isValOne( data.certofsaleofproperty ) ) list << demandletters.certofsaleofproperty
+		if( isValOne( data.noticeofredemption ) ) 	list << demandletters.noticeofredemption
+		
+		return list.sort{ it.index };
+	}
+	
+	def populateFullDoctype = { doctype ->
+		def doctypelist = []
+		demandletters.each{ doctypelist << it.getValue() }
+		
+		return doctypelist.find{ it.code == doctype }?.description
+	}
+	
+	private def getListByDoctype( doctype ){
+		return em.sqlContext.createNamedQuery( 'noticeofdelinquency:getList' )
+					.setParameter( 'doctype', doctype )
+					.setFirstResult( 0 )
+					.setMaxResults( 25 )
+					.resultList
+	}
+	
+	@ProxyMethod
+	public List getList( doctype ){
+		doctype = ( doctype ? doctype.code : '%' )
+		def list = getListByDoctype( doctype )
+		list.each{ map -> map.fdoctype = populateFullDoctype( map.doctype ) }
+
+		return list
+	}
+	
+	private def populateDoctypeToCreate( params ){
+		def doctypelist = []
+		demandletters.each{ doctypelist << it.getValue() }
+		def doctype = doctypelist.find{ it.index == params.doctype.index-1 }
+		return doctype.code
+	}
+	
+	private void populateNODList( params ){
+		def value = null
+		def nodlist = []
+		def billdate = params.billdate ? params.billdate : dtSvc.serverDate
+			
+		if( params.filter.equals('NOY') )
+			value = dtSvc.getServerYear() - params.value
+		else
+			println 'TODO: amount filter'
+
+		def rptledgerlist = em.sqlContext.createNamedQuery( 'noticeofdelinquency:getLedgerForNoticeOfDeliquency' )
+								.setParameter( 'value', value ).resultList
+		rptledgerlist.each{ 
+			it.ledgerids            = [it.objid]
+			it.advancepayment       = false
+			it.billdate             = billdate
+			it.billtoyear           = null
+			it.billtoqtr            = 4
+			it.fullpayment          = true
+			it.qtrlypaymentavailed  = false
+			it.advancepayment       = false
+			it.items                = []
+			
+			def bill = it 
+			try{ 
+				nodlist << rptledgerSvc.generateNoticeOfDelinquency( bill )
+			}catch( e ){;}
+		}
+		
+		params.list = nodlist
+	}
+	
+	@ProxyMethod
+	public List getDemandLettersList( params ){
+		if( params.doctype.code.equals('NOD') )
+			populateNODList( params )
+		else{
+			def doctype = populateDoctypeToCreate( params )
+			params.list = getListByDoctype( doctype )
+		}
+
+		params.list.each{ map -> map.fdoctype = params.doctype.description }
+		return params.list
+	}
+	
+	private def fQtr = { n ->
+		n = n.toString()
+		if( n.matches('01|1|21|31') )
+			return n + 'st';
+		else if( n.matches('02|2|22') )
+			return n + 'nd';
+		else if(n.matches('03|3|23')) 
+			return n + 'rd';
+		else return n + 'th';
+	}
+	
+	@ProxyMethod
+	public Map populateReportData( reportdata ){
+		def extended = em.serializer.read( reportdata.extended )
+		def faas = em.sqlContext.createNamedQuery( 'noticeofdelinquency:getFaasListByLedgerid' ).setParameter( 'ledgerid', reportdata.ledgerid ).singleResult
+		//def rpu = em.read( 'faas', [objid:faas.objid] ).rpu
+		def pclassification = em.read( 'propertyclassification', [objid:faas.classid])
+		 
+		reportdata.pin = faas.fullpin
+		reportdata.rputype = "$faas.rputype Property".toString().toUpperCase()
+		reportdata.titleno = faas.titleno
+		
+		def NULL_TO_EMPTY = { o -> return o == null ? '' : o }
+		if( faas.cadastrallotno ) reportdata.lotblocksurveyno = NULL_TO_EMPTY(faas.cadastrallotno)
+		if( faas.blockno ) reportdata.lotblocksurveyno += "/$NULL_TO_EMPTY(faas.blockno)".toString() 
+		if( faas.surveyno ) reportdata.lotblocksurveyno += "/$NULL_TO_EMPTY(faas.surveyno)".toString()
+		
+		reportdata.dytocy = "$reportdata.delinquentyr - $dtSvc.serverYear"
+		reportdata.fdelinquentqtr = fNum(reportdata.delinquentqtr)
+		reportdata.fcurrentqtr = fNum(reportdata.currentqtr)
+		reportdata.classification = pclassification.propertydesc
+		reportdata.area = faas.totalareasqm
+		reportdata.marketvalue = faas.totalmv
+		reportdata.assessedvalue = faas.totalav
+		
+		//reportdata.assessmentlevel
+		reportdata.basicnet = reportdata.basic + reportdata.basicint
+		reportdata.sefnet = reportdata.sef + reportdata.sefint
+		reportdata.totaltaxdue = reportdata.basic + reportdata.sef
+		reportdata.totalintdue = reportdata.basicint + reportdata.sefint
+		reportdata.totalnet = reportdata.basicnet + reportdata.sefnet
+		
+		reportdata.administrator = faas.administrator
+		reportdata.amountinwords = numSvc.doubleToWords( reportdata.delinquentamount )
+		reportdata.billno = extended.billno    
+		
+		return reportdata
+	}
+	
+	
+	/****************************
+	* update and save support
+	*****************************/
+	 
+	private def updateDemandLettersType( params ){
+		return params.list.each{ 
+				em.sqlContext.createNamedExecutor( 'noticeofdelinquency:updateNODByType' )
+						.setParameters( [objid:it.objid, doctype:params.doctype.code] ).execute()
+		}
+	} 
+	  
+	private def createNoticeOfDelinquency( params ){
+		return params.list.each{ notice ->
+				rptledgerSvc.createNoticeOfDelinquency( notice )
+		}
+	} 
+	
+	@ProxyMethod
+	public def saveUpdate( params ){
+		if( params.doctype.code.equals('NOD') ) 
+			return createNoticeOfDelinquency( params ) 
+		else 	
+			return updateDemandLettersType( params ) 
+	}
+	
+}
+

@@ -1,0 +1,113 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.services.extended.*;
+
+public class BusinessApplicationListService extends ActiveCrudListService {
+
+	@ActiveDB("business_application")
+	def em;
+
+	@Service("BusinessApplicationWorkflowService")
+	def wfSvc;
+
+	@Service("DateService")
+	def dateSvc;
+
+	@Env
+	def env;
+
+	@ProxyMethod
+	public def getNodes(o) {
+		def list = wfSvc.getStates();
+		def nodes = [];
+		nodes << [name:'mytask', caption: 'My Tasks', leaf:true, allowSearch:true, icon:'images/task.png'];
+		nodes << [name:'online', caption: 'Online Applications', leaf:true, allowSearch:true, folder:true];
+		list.each {
+			nodes << [name:it.name, caption:it.title, leaf:true, folder:true, allowSearch: true ];
+		}
+
+		//def icount =  em.findMyTaskListCount([assigneeid: env.USERID])?.icount;
+		//String taskTitle="<html>My Tasks <font bgcolor=red color=white>&nbsp;"+icount+"&nbsp;</font></html>";
+		
+		nodes <<   [name:'completed', caption:'Completed', leaf:true, folder:true, allowSearch:true];
+		nodes <<   [name:'cancelled', caption:'Cancelled', leaf:true, folder:true, allowSearch:true, icon:'images/trash.png'];
+		return nodes;
+	}	
+
+	@ProxyMethod
+	public def getColumns(o) {
+		def cols = [];
+		cols <<	[name:'appno', caption:'App No', width:130, resizable:true];
+		cols <<	[name:'apptype', caption:'App Type', width:130, resizable:true];
+		cols <<	[name:'business.businessname', caption:'Business Name'];
+		cols <<	[name:'business.address.text', caption:'Business Address'];
+		cols <<	[name:'business.owner.name', caption:'Owner'];
+		if ( o.name == 'cancelled' ) {
+			//do nothing 
+		} else { 
+			cols <<	[name:'assignee.name', caption:'Assigned To', width:80, resizable:false];
+			cols <<	[name:'statedesc', caption:'Status']; 
+		} 
+		return cols;
+	}
+
+	void beforeList(o) {
+		def activeYear = dateSvc.serverYear;
+		o._pagingKeys = "b.objid";
+		o.state = o.name;
+
+		def filter = new StringBuilder();
+		switch(o.name) {
+			case 'search':
+				if( !o.searchtext || o.searchtext == '%' ) o.searchtext = "?";
+
+				filter.append(' AND tsk.enddate IS NULL '); 
+				if ( o.appyear ) filter.append(''' AND ba.appyear=$P{appyear} ''');
+
+				o._pagingKeys = "ba.objid";				
+				break;
+				
+			case 'mytask':
+				o._listMethod = "getMyTaskList"; 
+				o._pagingKeys = "ba.objid"; 
+				o.assigneeid = env.USERID; 
+				break;
+
+			case 'completed':
+				filter.append(" AND ba.state='COMPLETED' "); 
+				if ( o.appyear ) filter.append(''' AND ba.appyear=$P{appyear} ''');
+
+				o._listMethod = 'getCompletedList';
+				break;
+
+			case 'cancelled':	
+				filter.append(" AND b.state='CANCELLED' ");
+				if ( o.appyear ) filter.append(''' AND ba.appyear=$P{appyear} ''');
+
+				o._listMethod = 'getClosedTaskList';
+				break;
+
+			default:
+				filter.append(''' AND tsk.enddate IS NULL AND tsk.state=$P{state} '''); 
+				if ( o.appyear ) filter.append(''' AND ba.appyear=$P{appyear} ''');
+
+				o._pagingKeys = "ba.objid";
+				break;
+		} 
+		o.filter = filter.toString(); 
+	} 
+
+	void afterList(o, list) {
+		list.each {
+			if (o.name == 'workitem') { 
+				it._filetype = 'business:workitem:'+it.workitemname; 
+			} 
+			if (it.state.toString().toLowerCase().matches('payment|release')) {
+				it.statedesc = 'for-'+it.state; 
+			} else { 
+				it.statedesc = it.state; 
+			} 
+		} 
+	} 
+}

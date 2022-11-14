@@ -1,0 +1,25 @@
+<schema>
+	<element tablename="resection_item">
+		<field name="objid" primary="true" prefix="RI" />
+		<field name="parent_objid" required="true" />
+		<field name="faas_objid" required="true" />
+		<field name="faas_rputype" required="true" />
+		<field name="faas_pin" required="true" />
+		<field name="faas_claimno" />
+		<field name="faas_suffix" required="true" type="integer" />
+		<field name="newfaas_objid"  />
+		<field name="newfaas_rpuid"  />
+		<field name="newfaas_rpid"  />
+		<field name="newfaas_section"  />
+		<field name="newfaas_parcel"  />
+		<field name="newfaas_claimno" type="integer"  />
+		<field name="newfaas_suffix"  type="integer"  />
+		<field name="newfaas_tdno"  searchable="true" />
+		<field name="newfaas_fullpin" searchable="true" indexed="true"  />
+
+		<complex name="faas" ref="faas" jointype="many-to-one"
+			includefields="tdno,fullpin,owner.name">
+			<key field="faas_objid" target="objid" />
+		</complex>
+	</element>
+</schema>

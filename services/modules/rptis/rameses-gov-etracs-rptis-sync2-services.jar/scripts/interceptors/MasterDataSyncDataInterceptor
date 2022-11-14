@@ -1,0 +1,88 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import com.rameses.services.extended.*
+
+
+/*----------------------------------------------------------------
+* Master Data Synchronization support shared 
+* from province to municipalities 
+-----------------------------------------------------------------*/
+class MasterDataSyncDataInterceptor
+{
+    @Env
+    def env
+
+    @Service('RPTMainSyncDataService')
+    def mainSyncSvc    
+
+    @Service('RPTSyncDataService')
+    def syncSvc
+
+    @Service('RPTMasterSyncDataService')
+    def masterSyncSvc
+
+    @DataContext('sys_org')
+    def em_org
+
+
+    /*---------------------------------------------------------
+    *
+    * SCHEDULING SUPPORT
+    *
+    ---------------------------------------------------------*/
+    @After(pattern="ProvinceMasterDataSyncService.sendToMunicipality") 
+    public void scheduleSubmitToMunicipality( evt ) {
+        def params = evt.result 
+        def municipalities = em_org
+                .select('orgid:{objid}, orgcode:{code}, orgclass')
+                .find([orgclass: 'MUNICIPALITY'])
+                .list()
+
+        municipalities.each{
+            def data = getDataForSync(it, 'RPT-MASTER-SYNC')
+            data.info = params;
+            mainSyncSvc.createDataForSync(data)
+        }
+    }
+
+    /* scheduler */
+    @After(pattern="RPTMainSyncDataService.scheduleSync", eval="#{result.action.matches('RPT-MASTER-SYNC')}", index=50000) 
+    public void scheduleForSync( evt ) {
+        def data = evt.result 
+        masterSyncSvc.schedule(data)
+    }   
+
+
+    /*---------------------------------------------------------
+    *
+    * SEND/RECEIVE HANDLERS
+    *
+    ---------------------------------------------------------*/
+    @After(pattern="RPTMainSyncDataService.asyncSend", eval="#{result.action.matches('RPT-MASTER-SYNC')}") 
+    public void send( evt ) {
+        def syncdata = evt.result 
+        masterSyncSvc.send(syncdata)
+    }   
+
+    @After(pattern="RPTMainSyncDataService.receive", eval="#{args[0].action.matches('RPT-MASTER-SYNC')}") 
+    public void receiveData(evt){
+        def syncdata = evt.args[0]
+        masterSyncSvc.receive(syncdata)
+    }
+
+
+
+    def getDataForSync(municipality, action) {
+        def reftype = 'rpt-master-data'
+        def data = [:]
+        data.objid = 'SM' + new java.rmi.server.UID()
+        data.reftype = reftype
+        data.refno = reftype
+        data.orgid = em_org.select('objid').find([root: 1]).val()
+        data.remote = municipality
+        data.action = action
+        data.info = [:]
+        return data
+    }
+}
+

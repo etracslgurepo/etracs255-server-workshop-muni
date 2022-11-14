@@ -1,0 +1,207 @@
+import com.rameses.annotations.*;
+import java.io.File;
+import com.rameses.fileupload.*;
+import org.apache.commons.lang.exception.ExceptionUtils;
+import java.util.concurrent.*;
+
+class DownloadTask {
+    @XConnection('fileupload')
+    def fu;
+
+    @Service('RPTMainSyncDataService')
+    def svc
+
+    @Service('RPTSyncDataManagementService')
+    def mgmtSvc
+
+    @DataContext('rpt_syncdata_completed')
+    def em_sync_completed
+
+    @DataContext('rpt_syncdata_item_completed')
+    def em_sync_item_completed
+
+    @DataContext('rpt_syncdata_error')
+    def em_sync_error
+
+    @DataContext('rpt_syncdata_fordownload')
+    def em_sync_fordownload
+
+    @DataContext('rpt_syncdata_downloaded')
+    def em_sync_downloaded
+
+    @Service('Var')
+    def var;
+
+    @Service('DateService')
+    def dtSvc;
+
+    @DataContext('sys_org')
+    def sys_org
+
+    def DOWNLOAD_FLAG = "fileserver_download_task_active"
+
+    @Schedule(interval=20)
+    public void fetchFilesForDownloadFromAws( evt ) {
+        if (!downloaderActive()) return
+        if (hasFileForDownload()) return;
+
+        try {
+            def list = fu.getList()
+            list.each {
+                try {
+                    def fordownload = [:];
+                    fordownload.objid = it.Key;
+                    fordownload.etag = it.ETag;
+                    fordownload.error = false;
+                    fordownload.state = 'FORDOWNLOAD';
+                    em_sync_fordownload.save(fordownload);
+                } catch(err) {
+                    err.printStackTrace();
+                    //ignore possible duplicate error
+                }
+            }
+            if (list) println 'DownloadTask [INFO] Files for download: ' + list.size()
+        } catch ( e ) {
+            println "DownlaodTask [ERROR] " + e.message;
+        }
+    }
+
+    @Schedule(interval=1)
+    public void downloadFiles( evt ) {
+        if (!downloaderActive()) {
+            waitTimeout(10);
+            return
+        }
+
+        def fordownloadfiles = em_sync_fordownload.where("state = 'FORDOWNLOAD' AND error = 0 ").orderBy('objid').list(0, 5)
+        if (!fordownloadfiles) {
+            waitTimeout(10);
+            return;
+        }
+
+        fordownloadfiles.each {
+            try {
+                fu.download(it.objid);
+                fu.delete(it.objid);
+                em_sync_downloaded.save(it);
+                em_sync_fordownload.find([objid: it.objid]).delete();
+            } catch(err) {
+                err.printStackTrace();
+                if (err.message.startsWith("ERROR 500")) {
+                    em_sync_fordownload.find([objid: it.objid]).delete();
+                    try { 
+                        fu.delete(it.objid); 
+                    } catch(xx) {
+                        //ignore
+                    }
+                } else {
+                    try {
+                        def reader = fu.readObject(it.objid);
+                        em_sync_downloaded.save([objid: it.objid]);
+                        em_sync_fordownload.find([objid: it.objid]).delete();
+                    } catch(retryerror) {
+                        retryerror.printStackTrace();
+                        em_sync_fordownload.find([objid: it.objid]).update([error: 1]);
+                    }
+                }
+            } 
+        }
+    }
+
+    @Schedule(interval=1)
+    public void syncDownloadedFile( evt ) {
+        def downloadfile = em_sync_downloaded.where('error = 0').orderBy('objid').first()
+        if (!downloadfile) {
+            waitTimeout(10);
+            return;
+        }
+
+        def reader = null;
+        def syncdata = null;
+        try {
+            reader = fu.readObject(downloadfile.objid);
+            syncdata = reader.read();
+            if (syncdata == null) {
+              em_sync_downloaded.find([objid: downloadfile.objid]).delete();
+              em_sync_error.find([objid: syncdata.objid]).delete();
+              reader.deleteFile();
+            } else if (syncdata instanceof String) {
+                em_sync_downloaded.find([objid: downloadfile.objid]).delete();
+                reader.deleteFile();
+                log('ERROR', 'Deleted invalid file: ' + downloadfile.objid);
+            } else {
+                syncdata.data = reader.read(); 
+                def orgid = syncdata.parent.remote.orgid;
+                syncdata.parent.remote = getRemoteOrg(syncdata);
+                syncdata.parent.orgid = orgid;
+                syncdata.parent.parent = syncdata.parent.remote
+                syncdata.remote = syncdata.parent.remote;
+
+                svc.receive(syncdata);
+
+                //save syncdata and item
+                syncdata.dtcreated = dtSvc.serverDate;
+                syncdata.parent.state = syncdata.state;
+                em_sync_completed.save(syncdata.parent);
+                em_sync_item_completed.save(syncdata);
+                em_sync_downloaded.find([objid: downloadfile.objid]).delete();
+                em_sync_error.find([objid: syncdata.objid]).delete();
+                reader.deleteFile();
+            }
+        } catch(java.io.FileNotFoundException iox) {
+            log('ERROR', 'Downloaded file not exists: ' + downloadfile.objid);
+            em_sync_downloaded.find([objid: downloadfile.objid]).delete();
+        } catch (e) {
+            log('INFO', e.message)
+            e.printStackTrace()
+            if (syncdata) {
+                syncdata.filekey = downloadfile.objid;
+                syncdata.error = ExceptionUtils.getStackTrace(e);
+                syncdata.info = syncdata.info ? syncdata.info : [:]
+                em_sync_error.save(syncdata);
+                em_sync_downloaded.find([objid: downloadfile.objid]).update([error: 1]);
+            }
+            if (reader) reader.close();
+        }
+    }
+
+    def downloaderActive() {
+        def status = var.getProperty(DOWNLOAD_FLAG, 0).toString();
+        if (status.matches("1|y|yes|t|true")) {
+            return true;
+        }
+        println 'DownloadTask [INFO] inactive' ;
+        return false;
+    }
+
+    def hasFileForDownload() {
+        def downloadfile = em_sync_fordownload.where('error = 0').first()
+        return downloadfile != null
+    }
+
+    void waitTimeout(secs) {
+        def queue = new LinkedBlockingQueue();
+        queue.poll(secs, TimeUnit.SECONDS);
+    }
+
+    void log(type, msg) {
+        println 'DownloadTask [' + type + '] ' + msg;
+    }
+
+    def getRemoteOrg(syncdata) {
+        def remoteorg = [
+            orgid: '-',
+            orgcode: '-',
+            orgclass: '-',
+        ]
+        
+        def org = sys_org.find([objid: syncdata.parent.orgid]).first();
+        if (!org) return remoteorg;
+
+        remoteorg.orgid = org.objid;
+        remoteorg.orgcode = org.code.replaceAll('-', '');
+        remoteorg.orgclass = org.orgclass;
+        return remoteorg;
+    }    
+
+}

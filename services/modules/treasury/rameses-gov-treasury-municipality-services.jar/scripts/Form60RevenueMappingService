@@ -1,0 +1,37 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.common.*
+
+class Form60RevenueMappingService {
+
+	@ActiveDB("form60setup")
+	def em;
+
+
+	@ProxyMethod 
+	public def getRevenueItemList(o) {
+		if(!o.searchtext) 
+			o.searchtext = '%';
+		else
+			o.searchtext += "%";	
+		def list  = em.getRevenueItemList( o );
+		if(! list ) list = em.getRevenueItemListByCode(o)
+		return list;
+	}
+
+	@ProxyMethod
+	public void removeEntity(o) {
+		em.delete( o, "form60account");
+	}
+
+	public def create( o ) {
+		em.delete( [objid: o.revenueitemid], "form60account" );
+		
+		o.objid = o.revenueitemid;
+		o.revenueitemid = o.revenueitemid;
+		o.parentid = o.account?.objid;
+		return em.create(o, "form60account");
+	}
+
+}

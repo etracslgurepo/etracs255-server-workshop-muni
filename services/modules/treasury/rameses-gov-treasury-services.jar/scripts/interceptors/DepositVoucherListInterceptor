@@ -1,0 +1,40 @@
+import com.rameses.annotations.*;
+
+class DepositVoucherListInterceptor {
+
+	@After(pattern="QueryService.getNodeList", eval="#{ args[0]._schemaname == 'depositvoucher' }")
+	public void getNodes( evt ) { 
+		def x = evt.args[0];
+		def result = evt.result;
+		result << [  title: 'Open', state:'OPEN' ];
+		result << [  title: 'Posted', state:'POSTED' ];
+		result << [  title: 'Cancelled', state:'CANCELLED' ];
+	}
+
+	@Before(pattern="QueryService.getList", eval="#{ args[0]._schemaname == 'depositvoucher' }")
+	public void beforeGetList( evt ) {
+		def o = evt.args[0];
+		if ( !o.node?.state ) return;
+
+		def str = "state = :state";
+		def m = [ state: o.node.state ]; 
+
+		if ( o.where ) {
+			o.where[0] = str + " AND " + o.where[0];	
+			o.where[1].putAll( m );
+		}
+		else {
+			o.where = [str, m];
+		} 
+
+		def orderbys = [];
+		if ( o.node.state == 'OPEN' ) {
+			orderbys << "controldate, dtcreated";
+		} else {
+			orderbys << "controldate desc, dtcreated desc"; 
+		}
+
+		if ( o.orderBy ) orderbys << o.orderBy; 
+		if ( orderbys ) o.orderBy = orderbys.join(', '); 
+	}	
+}

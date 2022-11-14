@@ -1,0 +1,40 @@
+<schema>
+	
+	<element tablename="business_payment">
+		<field name="objid" primary="true"/>
+		<field name="businessid" required="true"/>
+		<field name="applicationid" />
+		<field name="appyear" required="true"/>
+		<field name="refno" required="true"/>
+		<field name="refdate" required="true"/>
+		<field name="reftype" required="true"/>
+		<field name="refid" />
+		<field name="amount" required="true"/>
+		<field name="remarks" />
+		<field name="voided" required="true"/>
+		<field name="paymentmode" />
+		<field name="taxcredit" required="true"/>
+	</element>	
+
+	<!-- txntype : refers to surcharge,interest or taxcredit used in posting receivable -->
+	<element name="item" tablename="business_payment_item">
+		<field name="objid" primary="true"/>
+		<field name="parentid" required="true"/>
+		<field name="receivableid" />
+		<field name="amount" required="true"/>
+		<field name="surcharge" required="true"/>
+		<field name="interest" required="true"/>
+		<field name="discount" required="true"/>
+		<field name="account_objid" required="true"/>
+		<field name="account_code" required="true"/>
+		<field name="account_title" required="true"/>
+		<field name="lob_objid" />
+		<field name="lob_name" />
+		<field name="remarks" />
+		<field name="sortorder" required="true"/>
+		<field name="qtr" required="true"/>
+		<!-- partial is 1 or 0. if 0 it is full payment for qtr-->
+		<field name="partial" required="true"/>
+	</element>	
+
+</schema>

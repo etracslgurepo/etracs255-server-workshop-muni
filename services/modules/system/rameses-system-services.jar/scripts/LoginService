@@ -1,0 +1,36 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+
+
+class LoginService 
+{	
+    @Service('AuthenticationService')
+    def authSvc;
+
+    @Service('SessionService')
+    def sessSvc;
+
+    @Env
+    def env;
+	
+    @ProxyMethod
+    public def login( params ) {
+        try { 
+        	if (!params.username) throw new Exception('please specify username');
+        	if (!params.password) throw new Exception('please specify password');
+
+            def auth = authSvc.authenticate(params.username, params.password);
+            def handler = auth.remove('HANDLER');
+            if (!handler) throw new Exception('No authentication service handler found'); 
+
+            def sessinfo = sessSvc.createSession(auth);
+            def userinfo = sessSvc.getUserInfo( sessinfo.sessionid );
+            userinfo.AUTH_OPTIONS = auth; 
+        	return userinfo; 
+        } catch(e) {
+            e.printStackTrace();
+            throw e;
+        }
+    }
+	
+}

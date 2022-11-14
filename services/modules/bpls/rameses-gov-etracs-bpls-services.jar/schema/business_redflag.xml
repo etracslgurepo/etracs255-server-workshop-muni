@@ -1,0 +1,26 @@
+<schema>
+	
+	<element tablename="business_redflag">
+		<field name="objid" primary="true"/>
+		<field name="caseno" required="true" caption="Case No"/>
+		<field name="businessid" required="true"/>
+		<field name="message" required="true" caption="Message" visible="false"/>
+		<field name="blockaction" required="true"/>
+		<field name="dtfiled" required="true" caption="Date Filed"/>
+		<field name="filedby_objid" required="true" visible="false"/>
+		<field name="filedby_name" required="true" caption="Filed By"/>
+
+		<field name="effectivedate" />
+		<field name="resolved" required="true"/>
+		<field name="resolvedby_objid"/>
+		<field name="resolvedby_name" caption="Resolved By"/>
+		<field name="remarks" caption="Remarks"/>
+
+		<complex name="business" ref="business" jointype="many-to-one" required="false" 
+			includefields="bin,owner_name,businessname">
+			<key field="businessid" target="objid"/>		
+		</complex>	
+
+	</element>	
+
+</schema>

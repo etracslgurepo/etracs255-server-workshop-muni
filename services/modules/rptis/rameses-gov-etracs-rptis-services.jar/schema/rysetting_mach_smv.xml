@@ -1,0 +1,12 @@
+<schema>
+	<element tablename="machine_smv">
+		<field name="objid" primary="true" prefix="MS" />
+		<field name="parent_objid" required="true" />
+		<field name="machine_objid" required="true" />
+		<field name="expr" required="true" caption="Computation" />
+		<field name="previd" />
+		<complex name="machine" ref="machine" jointype="many-to-one">
+			<key field="machine_objid" target="objid" />
+		</complex>
+	</element>
+</schema>

@@ -1,0 +1,11 @@
+<schema>
+	<element tablename="creditmemoitem" >
+		<field name="objid" primary="true" />
+		<field name="parentid" required="true" />
+		<field name="item_objid" required="true" />
+		<field name="amount" required="true" type="decimal"/>
+		<complex name="item" ref="itemaccount" jointype="many-to-one" includefields="code,title,objid,fund.*">
+			<key field="item_objid" target="objid"/>
+		</complex>	
+	</element>
+</schema>

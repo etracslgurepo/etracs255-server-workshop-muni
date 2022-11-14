@@ -1,0 +1,157 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class RPTReportComparativeAVService
+{
+	@Env 
+	def env 
+
+	@ActiveDB('rptreport_comparative_rpa')
+    def em
+
+    @Service('RPTUtil')
+    def util
+
+    @Service('NumberService')
+    def numSvc
+
+    @DataContext('propertyclassification')
+    def em_classification
+
+    @DataContext('exemptiontype')
+    def em_exemption
+
+    
+    @Async
+	@ProxyMethod
+	public Map getReport(params) {
+		params.month = null
+
+		def filter = []
+		if (params.ry) {
+			filter << ' rp.ry =  $P{ry} ' 
+		}
+
+		if (params.lgu){
+			filter << ' f.lguid =  $P{lguid} ' 
+			params.lguid = params.lgu.objid 
+		}
+
+		params.filter = ''
+		if (filter) {
+			params.filter = ' AND ' + filter.join(' AND ')
+		}
+
+		util.buildReportFormalTitlePeriod('COMPARATIVE REPORT ON REAL PROPERTY ASSESSMENT', params)
+
+		def reportdata = []
+		if ('TAXABLE'.equalsIgnoreCase(params.taxability)) {
+			reportdata = getTaxableComparativeData(params)
+		} else {
+			reportdata = getExemptComparativeData(params)
+		}
+
+		def forlguname = env.ORGCLASS +  ' OF ' + env.ORGNAME 
+		if (params.lgu){
+			forlguname = params.lgu.lgutype.toUpperCase() + ' OF ' + params.lgu.name
+		}
+
+		def p = [
+			TAXABILITY 	: params.taxability + ' PROPERTIES',
+			PERIODTYPE 	: params.periodtype,
+			TITLE 		: params.title,
+			FORLGUNAME  : forlguname,
+		]
+		return [
+			parameters  : p,
+			reportdata  : reportdata ,
+		]
+	}
+
+	def getTaxableComparativeData(params) {
+		params.qtr = params.qtr1		
+		util.buildStartEndDateFilter(params)
+		def items1 = em.getTaxableSummary(params)
+
+		params.qtr = params.qtr2	
+		util.buildStartEndDateFilter(params)
+		def items2 = em.getTaxableSummary(params)
+
+		return buildSummary(params, getClassifications(), items1, items2)
+	}
+
+	def getExemptComparativeData(params) {
+		params.qtr = params.qtr1		
+		util.buildStartEndDateFilter(params)
+		def items1 = em.getExemptSummary(params)
+
+		params.qtr = params.qtr2	
+		util.buildStartEndDateFilter(params)
+		def items2 = em.getExemptSummary(params)
+
+		return buildSummary(params, getExemptionTypes(), items1, items2)
+	}
+
+	def buildSummary(params, reportitems, items1, items2) {
+		reportitems.each { cls ->
+			def item1 = items1.find{it.classid == cls.objid}
+			if (item1) {
+				cls.mv1 += item1.mv
+				cls.av1 += item1.av
+			}
+			def item2 = items2.find{it.classid == cls.objid}
+			if (item2) {
+				cls.mv2 += item2.mv
+				cls.av2 += item2.av
+			}
+			cls.valuetype = params.valuetype
+			cls.qtr1 = toQtrString(params.qtr1)
+			cls.qtr2 = toQtrString(params.qtr2)
+			
+			cls.mvdiff = 0
+			cls.avdiff = 0
+			cls.mvdiffpercent = 0
+			cls.avdiffpercent = 0
+
+			if (cls.mv2 > 0) {
+				cls.mvdiff = cls.mv2 - cls.mv1
+				cls.mvdiffpercent = numSvc.roundA(cls.mvdiff / cls.mv1, 4)
+			}
+			if (cls.av2 > 0) {
+				cls.avdiff = cls.av2 - cls.av1 
+				cls.avdiffpercent = numSvc.roundA(cls.avdiff / cls.av1, 4)
+			}
+		}
+		return reportitems
+	}
+
+	def getClassifications() {
+		return em_classification
+				.select('objid, classification:{name}, mv1:{0}, av1:{0}, mv2:{0}, av2:{0}')
+				.where("STATE = 'APPROVED'")
+				.orderBy('orderno')
+				.list()
+
+	}
+
+	def getExemptionTypes() {
+		return em_exemption
+				.select('objid, classification:{name}, mv1:{0}, av1:{0}, mv2:{0}, av2:{0}')
+				.where("STATE = 'APPROVED'")
+				.orderBy('orderno')
+				.list()
+
+	}
+
+	def toQtrString(qtr) {
+		def prefix = ''
+		if (qtr == 1) prefix = '1ST'
+		else if (qtr == 2) prefix = '2ND'
+		else if (qtr == 3) prefix = '3RD'
+		else if (qtr == 4) prefix = '4TH'
+		return prefix + ' QUARTER'
+	}
+
+
+}

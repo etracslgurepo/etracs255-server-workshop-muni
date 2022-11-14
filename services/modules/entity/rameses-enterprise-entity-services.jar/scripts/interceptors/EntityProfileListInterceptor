@@ -1,0 +1,40 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import java.rmi.server.UID;
+import com.rameses.util.*;
+import com.rameses.io.*;
+
+class EntityProfileListInterceptor  {
+
+	@Service("OrgService")
+	def orgSvc;
+
+	@After(pattern="QueryService.getNodeList", eval="#{ args[0]._schemaname == 'entityprofile' }")
+	public void getNodes( evt ) { 
+		def x = evt.args[0];
+		def result = evt.result;
+		result << [ name:'online', title:'Pending Online Applicants' ];
+		result << [ name:'registered', title:'Registered Applicants' ];		
+	}
+
+	@Before(pattern="QueryService.getList", eval="#{ args[0]._schemaname == 'entityprofile' }")
+	public void loadFilters(def evt) {
+		def o = evt.args[0];
+		if( o.node?.name == 'online') {
+			//make it a negatve filter so it wont return anything
+			if( o.where ) {
+				o._where = o.remove("where");
+			}
+			o.where = [ "1=0" ];
+		}
+		else {
+			//do nothing
+		}
+	}	
+
+	@After(pattern="QueryService.getList", eval="#{ args[0]._schemaname == 'entityprofile' }")
+	public void loadList(def evt) {
+
+	}
+
+}

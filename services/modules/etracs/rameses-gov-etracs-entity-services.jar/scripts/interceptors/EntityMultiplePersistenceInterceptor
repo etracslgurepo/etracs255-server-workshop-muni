@@ -1,0 +1,79 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import java.rmi.server.UID;
+import com.rameses.util.*;
+import com.rameses.io.*;
+import com.rameses.services.extended.*;
+
+class EntityMultiplePersistenceInterceptor  {
+
+	@Service('DateService')
+	def dtSvc;
+
+	@Service('SequenceService')
+    def seqSvc;
+
+	@DataContext("entity_address")
+	def addressEm;
+
+	@DataContext("entitymultiple")
+	def entityEm;
+
+	@DataContext("entitymember")
+	def memberEm;
+
+	def INDEX_CHAR_COUNT = 300;
+
+	@Before(pattern="PersistenceService.(create|update)", eval="#{args[0]._schemaname == 'entitymultiple'}", index=100)
+	public void beforeSave(def evt ) {
+		def o = evt.args[0];
+		if ( o.name ) {
+			o.entityname = (o.name.length() > INDEX_CHAR_COUNT ? o.name.substring(0, INDEX_CHAR_COUNT) : o.name ); 	
+			o.fullname = o.name;
+		}
+	}
+
+	@Before(pattern="PersistenceService.create", eval="#{args[0]._schemaname == 'entitymultiple'}", index=101)
+	public void beforeCreate(def evt ) {
+		def o = evt.args[0];
+		if(!o.address?.text) throw new Exception("Address is required");
+
+		if ( !o.objid ) o.objid = "MUL"+new UID();
+        if ( !o.entityno ) { 
+        	def stype = 'M';
+            def seqno = seqSvc.getNextFormattedSeriesA( "MULTIPLE_ENTITY", 6 );
+            if ( o.prefix ) { 
+                o.entityno = ''+ o.prefix +'-'+ seqno + stype; 
+            } else { 
+                o.entityno = ''+ stype + seqno; 
+            }             
+        }
+		o.type = 'MULTIPLE';
+		//create the address first
+		def addr = addressEm.create( o.address );
+		o.address.objid = addr.objid;
+		o.state = 'ACTIVE';	
+	}
+
+	@After(pattern="PersistenceService.create", eval="#{args[0]._schemaname == 'entitymultiple'}")
+	public void afterCreate(def evt ) {
+		def o = evt.args[0];
+		addressEm.find([objid: o.address.objid]).update([parentid: o.objid]);
+	}
+
+
+	@After(pattern="PersistenceService.read", eval="#{args[0]._schemaname == 'entitymultiple'}")
+	public void afterOpen(def evt) {
+		def o = evt.result;
+		if( !o.members ) {
+			o.members = memberEm.find([entityid:o.objid]).list(); 	
+		}
+	}
+
+	@After( pattern="ListService.getList", eval="#{args[0].name == 'entitytype'}", index=10 )
+	public void getEntityTypeList(def evt) {
+		def list = evt.result;
+		list << 'MULTIPLE'
+	}
+
+}

@@ -1,0 +1,132 @@
+package bpbilling;
+
+import java.util.*;
+import bpls.facts.*;
+import com.rameses.rules.common.*;
+import java.math.*;
+
+global RuleAction action;
+
+rule "set-deadline"
+	agenda-group "initial"
+	salience -40
+	no-loop
+	when
+		BillDate( $date: date )
+		QtrDeadline( $qtr:qtr, $deadline: deadline!=null)
+		TF: BillItem( qtr == $qtr )
+	then
+		TF.setDeadline( $deadline );
+		if( $date.after($deadline) ) {
+			TF.setExpired(true);
+		}
+end
+
+rule "set-deadline-year"
+	agenda-group "initial"
+	salience -40
+	no-loop
+	when
+		BillDate( $date: date )
+		QtrDeadline( $qtr:qtr == 1, $deadline: deadline)
+		TF: BillItem( qtr == 0 )
+	then
+		TF.setDeadline( $deadline );
+		if( $date.after($deadline) ) {
+			TF.setExpired(true);
+		}
+end
+
+rule "distribute-no-payment"
+	agenda-group "apply-payment"
+	when
+		not Payment()
+		TF: BillItem()
+	then
+		action.execute( "collect_item", TF, drools );
+		retract( TF );
+end
+
+#######################################
+# FULL PAYMENT AND QTR PAYMENT
+# if payment not specified
+#######################################
+rule "distribute-full-payment"
+	agenda-group "apply-payment"
+	when
+		Payment( option == "FULLYEAR" )
+		TF: BillItem()
+	then
+		action.execute( "collect_item", TF, drools );
+		retract( TF );
+end
+
+rule "distribute-qtr-payment"
+	agenda-group "apply-payment"
+	when
+		Payment( option == "FULLQTR", $qtr: qtr )
+		TF: BillItem( $p: paypriority, qtr <= $qtr )
+	then
+		action.execute( "collect_item", TF, drools );
+		retract( TF );
+end
+
+
+#######################################
+# PARTIAL PAYMENT (PARTIAL COMPLETE)
+# if payment is specified
+# full if payment not consumed
+# under if payment is less
+# excess if payment is more
+#######################################
+rule "distribute-partial-payment"
+	salience 100
+	agenda-group "apply-payment"
+	when
+		TF: BillItem( $d: paypriority, $total:total )
+		not BillItem( paypriority < $d )
+		P: Payment( $bal:balance >= $total, option=='SPECIFY-AMOUNT' )
+	then
+		action.execute( "collect_item", TF, drools );
+		retract( TF );
+		P.setBalance( $bal - $total );
+		update(P);
+end
+
+rule "distribute-under-payment"
+	salience 50
+	agenda-group "apply-payment"
+	when
+		TF: BillItem( $d: paypriority, $total:total )
+		not BillItem( paypriority < $d )
+		P: Payment( $bal:balance < $total, balance > 0, option=='SPECIFY-AMOUNT' )
+	then
+		Map m = new HashMap();
+		m.put("billitem",TF);
+		m.put("amtpaid", new BigDecimal($bal+"").doubleValue() );
+		action.execute( "collect_partial", m, drools );
+		retract( TF );
+		P.setBalance( 0 );
+		update(P);
+end
+
+rule "distribute-excess"
+	salience 0
+	agenda-group "apply-payment"
+	when
+		not BillItem()
+		P: Payment( $excess:balance > 0,  option=='SPECIFY-AMOUNT' )
+	then
+		Map m = new HashMap();
+		m.put("excess",$excess);
+		action.execute( "collect_excess", m, drools );
+		retract( P );
+end
+
+rule "assert-variables"
+	salience -100
+	no-loop
+	when
+	then
+		action.execute( "assert_sysvars", null, drools);
+end

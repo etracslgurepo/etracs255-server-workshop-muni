@@ -1,0 +1,35 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+
+class EntityRelationService {
+	
+	@DataContext('entity_relation') 
+	def entity_relation;
+
+	@Service('QueryService') 
+	def querySvc; 
+
+	@ProxyMethod 
+	public def getList( params ) { 
+		if ( !params.entity?.objid ) throw new Exception('entity.objid parameter is required'); 
+
+		def findBy = ['entity.objid': params.entity.objid]; 
+		params.findBy = findBy; 
+		params._schemaname = 'vw_entityrelation_lookup'; 
+		return querySvc.getList( params ); 
+	} 
+
+	@ProxyMethod 
+	public def create( params ) { 
+		if ( !params.objid ) params.objid = 'REL'+ new java.rmi.server.UID(); 
+
+		entity_relation.create( params ); 
+		return params; 
+	}
+
+	@ProxyMethod 
+	public def update( params ) {
+		return entity_relation.update( params ); 
+	}
+
+} 

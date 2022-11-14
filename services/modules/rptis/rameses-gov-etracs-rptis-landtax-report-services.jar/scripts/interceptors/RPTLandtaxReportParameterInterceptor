@@ -1,0 +1,32 @@
+import com.rameses.annotations.*
+import com.rameses.eserver.*;
+import com.rameses.common.*;
+
+class RPTLandtaxReportParameterInterceptor
+{
+	@PersistenceContext("system")
+    def em;	
+
+	@Service('Var')
+	def var
+
+	@Context
+    def AppContext 
+
+	@After(pattern="ReportParameterService.getStandardParameter") 
+	public void addParameters( evt ) {
+		def params = evt.result 
+		var.getList([category:'LANDTAX']).each{
+			params[it.name.toUpperCase()] = convertValue(it)
+		}
+	}
+
+	def convertValue(val){
+		if( val.type == "object" )
+			return em.serializer.read( val.value );
+		else	
+			return com.rameses.util.ExprUtil.substituteValues(val.value, AppContext.getProperties()); 
+	}
+
+}
+

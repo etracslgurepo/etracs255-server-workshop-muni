@@ -1,0 +1,195 @@
+import com.rameses.annotations.*
+import com.rameses.eserver.*;
+import com.rameses.common.*;
+
+class FAASSupportInterceptor
+{
+	@Env 
+	def env 
+
+	@ActiveDB('faas_support')
+	def em 
+
+	@ActiveDB('planttree')
+	def plantTreeEm	
+
+	@DataContext('machine')
+    def em_machine 
+
+    @Service('SequenceService')
+    def seqSvc 	
+
+
+	@DataContext('landspecificclass')
+    def em_landspecificclass
+
+    @DataContext('rysetting_land_specificclass')
+    def em_rysetting_land_specificclass
+
+    @DataContext('rysetting_land_subclass')
+    def em_rysetting_land_subclass
+
+	@DataContext('rysetting_land_adjustmenttype')
+    def em_rysetting_land_adjustmenttype
+
+    @DataContext('rysetting_planttree_unitvalue')
+    def em_rysetting_planttree_unitvalue
+
+	
+	@Before(pattern="FAASSupportService.saveFaasData") 
+	public void resolveMissingData( evt ) {
+		def faas = evt.args[0]
+
+		if (faas.tdno != faas.utdno)
+			faas.utdno = faas.tdno 
+			
+		if (faas.rpu.rputype == 'land'){
+			faas.rpu.landdetails.each{ld ->
+				resolveSpecificClass(faas, ld)
+				resolveSubClass(faas, ld)
+			}
+			faas.rpu.planttrees.each{pt ->
+				resolvePlantTree(faas, pt)
+				resolvePlantTreeUnitValue(faas, pt)
+			}
+			faas.rpu.landadjustments.each{adj->
+				resolveLandAdjustmentType(faas, adj)
+			}
+		}
+		else if (faas.rpu.rputype == 'bldg'){
+			resolveLandRpu(faas)
+		}
+		else if (faas.rpu.rputype == 'mach'){
+			resolveMachine(faas)
+		}
+		else if (faas.rpu.rputype == 'planttree'){
+			faas.rpu.planttrees.each{pt ->
+				resolvePlantTree(faas, pt)
+				resolvePlantTreeUnitValue(faas, pt)
+			}
+		}
+	}
+
+	void resolveMachine(faas){
+		faas.rpu.machuses.each{ mu ->
+            mu.machines.each{md ->
+            	def m = em_machine.find([objid:md.machine.objid]).first()
+		        if(!m){
+		            md.machine.code = seqSvc.getNextSeries('MACHINE')
+		            md.machine.name = md.machine.code
+		            md.machine.state = 'DRAFT'
+		            em_machine.create(md.machine)
+		        }
+            }
+        }
+	}
+
+	void resolveSpecificClass(faas, ld){
+		ld.specificclass.ry = faas.rpu.ry 
+		ld.specificclass.lguid = faas.lguid
+		ld.specificclass.classcode = ld.specificclass.classification.code
+		def spc = em.findSpecificClassById(ld.specificclass)
+		if (!spc){
+			def landrysetting = em.findLandRySetting(ld.specificclass)
+			try{
+				ld.specificclass.landrysettingid = landrysetting.objid
+				ld.specificclass.classification.objid = landrysetting.classid
+				ld.specificclass.classification.objid = landrysetting.classid
+				ld.specificclass.classification.objid = landrysetting.classid
+				em_rysetting_land_specificclass.create(ld.specificclass)
+			}
+			catch(e){
+				ld.specificclass.code += '-'
+				ld.specificclass.name += '-'
+				em_rysetting_land_specificclass.create(ld.specificclass)
+			}
+		}
+		else{
+			ld.specificclass = spc 
+		}
+	}
+	
+	void resolveSubClass(faas, ld){
+		ld.subclass.ry = faas.rpu.ry 
+		ld.subclass.lguid = faas.lguid
+
+		def sub = em.findSubClassById(ld.subclass)
+		if (!sub){
+			try{
+				ld.subclass.landrysettingid = ld.specificclass.landrysettingid 
+				ld.subclass.specificclass = ld.specificclass
+				em_rysetting_land_subclass.create(ld.subclass)
+			}
+			catch(e){
+				ld.subclass.code += '-'
+				ld.subclass.name += '-'
+				em_rysetting_land_subclass.create(ld.subclass)
+			}
+		}
+	}
+
+	void resolveLandAdjustmentType(faas, adj){
+		def adjtype = em.findLandAdjustmentTypeById(adj.adjustmenttype)
+		if (!adjtype){
+			def rysetting = em.findLandRySettingByAdjustmentType([ry:faas.rpu.ry, lguid:faas.lguid])
+			adj.adjustmenttype.landrysettingid = rysetting.objid 
+			adj.adjustmenttype.appliedto = faas.rpu.classification.name
+			try{
+				em_rysetting_land_adjustmenttype.create(adj.adjustmenttype)
+			}
+			catch(e){
+				adj.adjustmenttype.code += '-'
+				adj.adjustmenttype.name += '-'
+				em_rysetting_land_adjustmenttype.create(adj.adjustmenttype)
+			}
+		}
+	}
+
+
+	void resolvePlantTree(faas, pt){
+		def planttree = em.findPlantTreeById(pt.planttree)
+		if (!planttree){
+			try{
+				pt.planttree.state = 'DRAFT'
+				plantTreeEm.create(pt.planttree)
+			}
+			catch(e){
+				pt.planttree.code += '-'
+				pt.planttree.name += '-'
+				plantTreeEm.create(pt.planttree)	
+			}
+		}
+		else {
+			pt.planttree = planttree
+		}
+	}
+
+
+	void resolvePlantTreeUnitValue(faas, pt){
+		def ptuv = em.findPlantTreeUnitValue(pt.planttreeunitvalue)
+		if (!ptuv){
+			try{
+				def rysetting = em.findPlantTreeRySetting([ry:faas.rpu.ry, lguid:faas.lguid])
+				pt.planttreeunitvalue.planttree = pt.planttree
+				pt.planttreeunitvalue.planttreerysettingid = rysetting.objid
+				em_rysetting_planttree_unitvalue.create(pt.planttreeunitvalue)
+			}
+			catch(e){
+				pt.planttreeunitvalue.code += '-'
+				pt.planttreeunitvalue.name += '-'
+				em_rysetting_planttree_unitvalue.create(pt.planttreeunitvalue)
+			}
+		}
+	}
+
+
+	void resolveLandRpu(faas){
+		def landrpu = em.findLandRpuById([objid:faas.rpu.landrpuid])
+		if (!landrpu){
+			landrpu = em.findLandRpuByPin(faas.rp)
+		}
+		if (landrpu)
+			faas.rpu.landrpuid = landrpu.objid 
+	}
+}
+

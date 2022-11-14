@@ -1,0 +1,18 @@
+<schema adapter="queue">
+    <element tablename="queue_number_archive">
+		<field name="objid" primary="true"/> 
+		<field name="dtfiled" required="true"/> 
+		<field name="state" required="true"/> 
+		<field name="ticketno" required="true"/> 
+		<field name="group_objid" required="true"/> 
+		<field name="group_title" required="true"/> 
+		<field name="section_objid" required="true"/> 
+		<field name="section_title" required="true"/> 
+		<field name="startdate" /> 
+		<field name="enddate" /> 
+		<field name="servedby_objid" /> 
+		<field name="servedby_name" /> 
+		<field name="counter_objid" /> 
+		<field name="counter_code" /> 
+    </element> 
+</schema>

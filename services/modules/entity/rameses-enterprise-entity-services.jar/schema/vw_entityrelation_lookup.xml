@@ -1,0 +1,34 @@
+<!-- 
+
+create view vw_entityrelation_lookup 
+as
+select er.*, 
+	e.entityno, e.name, e.address_text as addresstext, e.type, 
+	ei.lastname, ei.firstname, ei.middlename, ei.gender, ei.birthdate, 
+	e.mobileno, e.phoneno 
+from entity_relation er  
+  inner join entityindividual ei on ei.objid=er.relateto_objid 
+	inner join entity e on e.objid=ei.objid 
+
+--> 
+<schema>
+	
+	<element tablename="vw_entityrelation_lookup">
+		<field name="objid" primary="true"/>
+		<field name="entity_objid"/>
+		<field name="relateto_objid"/>
+		<field name="relation" caption="Address"  />
+		<field name="entityno" caption="EntityNo" />
+		<field name="name" caption="Name" />
+		<field name="addresstext" caption="Address" />
+		<field name="type" caption="Type" />
+		<field name="lastname" caption="LastName" hidden="true" visible="false" selectable="false" indexed="true" searchable="true"/>
+		<field name="firstname" caption="FirstName" hidden="true" visible="false" selectable="false" indexed="true" searchable="true"/>
+		<field name="middlename" caption="MiddleName" hidden="true" visible="false" selectable="false" />
+		<field name="birthdate" caption="BirthDate" hidden="true" visible="false" selectable="false" />
+		<field name="gender" caption="Gender" hidden="true" visible="false" selectable="false" />
+		<field name="mobileno" caption="MobileNo" hidden="true" visible="false" selectable="false" />
+		<field name="phoneno" caption="PhoneNo" hidden="true" visible="false" selectable="false" />
+	</element>	
+	
+</schema>

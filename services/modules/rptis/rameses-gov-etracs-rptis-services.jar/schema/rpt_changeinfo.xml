@@ -1,0 +1,21 @@
+<schema adapter="main">
+	<element name="rpt_changeinfo" tablename="rpt_changeinfo">
+		<field name="objid" primary="true" />
+		<field name="refid" />
+		<field name="faasid"  />
+		<field name="rpid"  />
+		<field name="rpuid"  />
+		<field name="redflagid"  />
+		<field name="action" required="true" />
+		<field name="reason" required="true" />
+		<field name="newinfo" required="true"/>
+		<field name="previnfo" required="true"/>
+		<field name="dtposted" required="true" />
+		<field name="postedbyid" />
+		<field name="postedby" required="true"/>
+		<field name="postedbytitle" required="true"/>
+	</element>
+</schema>
+
+
+

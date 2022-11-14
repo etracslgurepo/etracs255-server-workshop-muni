@@ -1,0 +1,25 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.util.*
+import com.rameses.services.extended.*
+
+
+class RemoteTesterService
+{
+    @Env
+    def env
+
+    @Service(dynamic=true)
+    def dynSvc 
+
+    
+    @ProxyMethod
+    public void ping(params) {
+        println 'params -> ' + params 
+        def svc =  dynSvc.lookup(params.orgcode + ':' + params.servicename, 'remote-script-service')
+        println svc.ping([from:params.orgcode])
+    }
+
+}
+
+

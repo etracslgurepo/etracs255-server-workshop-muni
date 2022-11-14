@@ -1,0 +1,6 @@
+<schema>	
+	<element tablename="business">
+		<field name="objid" primary="true"/>
+		<field name="lockid" />
+	</element> 
+</schema>

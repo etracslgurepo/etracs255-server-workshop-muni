@@ -1,0 +1,16 @@
+import com.rameses.annotations.*;
+
+class UserGroupPersistenceInterceptor  {
+
+	@DataContext("sys_domain")
+	def domainEm;
+
+	@Before(pattern="PersistenceService.(create|update)", eval="#{ args[0]._schemaname == 'sys_usergroup' }" )
+	public void loadAuth(evt) {
+		def o = evt.args[0];
+
+		def d = domainEm.find( [name: o.domain]).first();
+		if( d ) throw new Exception("You cannot add this role because the domain is registered. Select the specific domain instead");
+	}
+
+}

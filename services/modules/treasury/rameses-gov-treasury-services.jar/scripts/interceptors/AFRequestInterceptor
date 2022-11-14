@@ -1,0 +1,141 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.common.*
+import com.rameses.services.extended.*
+
+class AFRequestInterceptor { 
+	
+	@DataContext('txnlog') 
+	def txnlog_db;
+
+	@Service("PersistenceService") 
+	def persistenceSvc;
+
+	@Service("SequenceService") 
+	def seqSvc;
+
+	@Service("DateService") 
+	def dateSvc;
+
+	@Service("Var")
+	def var;
+
+	@Env
+	def env;
+
+	@Before(pattern="PersistenceService.create", eval="#{ args[0]._schemaname == 'afrequest' }")
+	public void beforeCreate( evt ) { 
+		def risformat = var.ris_format; 
+		risformat = (risformat ? translateFormat( risformat ) : ''); 
+
+		def seqkey = (risformat ? risformat : 'RIS'); 
+
+		def o = evt.args[0];
+		o.requester = [objid:env.USERID, name:env.FULLNAME, title:env.JOBTITLE];
+		o.org = [objid:env.ORGID, name:env.ORGNAME];
+		o.reqno = ''+ seqkey + seqSvc.getNextFormattedSeriesA( seqkey, 4 );
+		o.dtfiled = dateSvc.serverDate; 
+		o.state = "OPEN"; 
+
+		boolean requires_approval = var.ris_requires_approval.toString().equals('true'); 
+		if ( requires_approval ) o.state = 'FOR_APPROVAL'; 
+	}
+
+	@After(pattern="PersistenceService.update", eval="#{ args[0]._schemaname == 'afrequest' }")
+	public void afterUpdate( evt ) { 
+		def p = evt.args[0]; 
+		if ( p._action ) { 
+			def m = [ 
+				txndate: dateSvc.getServerDate(), 
+				ref: 'afrequest', refid: p.objid, 
+				userid: env.USERID, username: env.FULLNAME, 
+				action: p._action, remarks: p.remarks  
+			]; 
+			
+			def u = [_schemaname: p._schemaname, objid: p.objid]; 
+			if ( p._action == 'approve') { 
+				m.remarks = 'RIS Approved'; 
+				u.dtapproved = m.txndate;
+				u.approvedby = [objid: env.USERID, name: env.FULLNAME]; 
+				persistenceSvc.update( u ); 
+			} 
+			else if ( p._action == 'disapprove') {
+				u.dtapproved = '{NULL}';
+				u.approvedby = [objid:'{NULL}', name:'{NULL}'];
+				persistenceSvc.update( u ); 
+			} 
+
+			log( m ); 
+		}
+	}
+
+	@After(pattern="QueryService.getNodeList", eval="#{ args[0]._schemaname == 'afrequest' }")
+	public void getNodes( evt ) { 
+		def x = evt.args[0];
+		def result = evt.result; 
+		result << [ id:'forapproval', title: 'For Approval', state:'FOR_APPROVAL' ];
+		result << [ id:'open', title: 'For Issuance', state:'OPEN' ];
+		result << [ id:'closed', title: 'Closed', state:'CLOSED' ];
+		result << [ id:'cancelled', title: 'Cancelled', state:'CANCELLED' ];
+	}
+
+	@Before(pattern="QueryService.getList", eval="#{ args[0]._schemaname == 'afrequest' }")
+	public void beforeGetList( evt ) {
+		def o = evt.args[0];
+
+		//o.debug = true;
+		if( !o.node?.id ) return;
+
+		def str = " state = :state ";
+		def m = [ state: o.node.state ]; 
+
+		if( o.where ) {
+			o.where[0] = str + " AND " + o.where[0];	
+			o.where[1].putAll( m );
+		}
+		else {
+			o.where = [str, m];
+		} 
+
+		def orderbys = []; 
+		if ( o.node.id.toString().matches('closed|cancelled')) { 
+			orderbys << 'dtfiled desc'; 
+		} else {
+			orderbys << 'dtfiled'; 
+		} 
+
+		if ( o.orderBy ) orderbys << o.orderBy; 
+
+		o.orderBy = orderbys.join(', '); 
+	}	
+
+	private void log( param ) { 
+		param.objid = 'TLOG'+ new java.rmi.server.UID(); 
+		txnlog_db.create( param ); 
+	} 
+
+	private def translateFormat( pattern ) {
+		if ( !pattern ) return ''; 
+
+		def arrs = dateSvc.getBasicServerDate().toString().split("-"); 
+		def formats = []; 
+		formats << [key: 'YYYY', value: arrs[0]];
+		formats << [key: 'MM', value: arrs[1]];  
+		formats << [key: 'DD', value: arrs[2]];  
+		return translateFormat( pattern, formats ); 
+	}
+	private def translateFormat( pattern, formats ) { 
+		boolean haschanges = false; 
+		formats.each{
+			def newvalue = pattern.replaceAll( it.key, it.value.toString()); 
+			if ( newvalue != pattern ) haschanges = true; 
+
+			pattern = newvalue; 
+		} 
+		if ( haschanges ) {
+			pattern = translateFormat( pattern, formats ); 
+		}
+		return pattern; 
+	}
+}

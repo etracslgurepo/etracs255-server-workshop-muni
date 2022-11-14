@@ -1,0 +1,27 @@
+<schema>
+	<element tablename="faasannotation">
+		<field name="objid" primary="true" prefix="FA"/>
+        <field name="state" required="true"/>
+		<field name="annotationtype_objid" required="true"/>
+		<field name="faasid" required="true" />
+		<field name="txnno" />
+		<field name="txndate" />
+		<field name="fileno" required="true" />
+		<field name="orno"/>
+		<field name="ordate" />
+		<field name="oramount" type="decimal"  />
+		<field name="memoranda" required="true" />
+		<complex name="faas" ref="faas" jointype="many-to-one" required="false" includefields="tdno,fullpin,lguid">
+			<key field="faasid" target="objid" />
+		</complex>
+		<complex name="annotationtype" ref="faasannotationtype" jointype="many-to-one" required="false">
+			<key field="annotationtype_objid" target="objid" />
+		</complex>
+		<complex name="items" ref="faasannotation_faas" jointype="one-to-many" required="false" orderBy="tdno desc">
+			<key field="objid" target="parent_objid" />
+		</complex>
+	</element>
+</schema>
+
+
+

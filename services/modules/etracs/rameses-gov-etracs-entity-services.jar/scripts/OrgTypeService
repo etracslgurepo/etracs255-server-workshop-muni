@@ -1,0 +1,16 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import java.rmi.server.UID;
+import com.rameses.util.*;
+import com.rameses.io.*;
+
+class OrgTypeService {
+
+	@Service('LOVService')
+	def lovSvc
+
+	@ProxyMethod
+	public def getList() {		
+		return lovSvc.getKeyValues('ORG_TYPES')
+	} 
+} 

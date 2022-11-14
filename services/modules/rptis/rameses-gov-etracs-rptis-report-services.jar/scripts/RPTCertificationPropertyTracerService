@@ -1,0 +1,120 @@
+import com.rameses.annotations.*
+import com.rameses.services.extended.*
+
+class RPTCertificationPropertyTracerService 
+{
+    @Service('RPTCertificationService')
+    def certSvc 
+
+		@DataContext('faas_previous')
+		def em_faas_previous
+
+	
+	@ProxyMethod
+	public def createCertification( cert ) {
+		certSvc.buildFilter(cert)
+		certSvc.createCertification(cert)
+		return openCertification(cert.objid)
+	}
+
+	@ProxyMethod
+	public def openCertification(objid) {
+		def cert = certSvc.openCertification(objid)
+		cert.items = getHistories([objid: cert.faasid])
+		loadFaasInfo(cert)
+		certSvc.makeHtmlSafe(cert)
+		return cert 
+	}
+
+	void buildPreviousHistories(faases, histories) {
+		if (!faases) return;
+		def prevfaases = []
+		def tdnos = []
+		def owners = []
+		def areas = []
+		def lotnos = []
+		def ry = null
+		def areatype = null
+
+		faases.each{
+			def pf = getFaasInfo(it.prevfaasid)
+			if (pf) {
+				ry = pf.ry
+				areatype = pf.areatype
+				tdnos << pf.tdno
+				owners << pf.owner.name + (pf.administrator?.name ? ' / ' + pf.administrator.name : '')
+				areas << (pf.areatype == 'ha' ? pf.totalareaha : pf.totalareasqm)
+				lotnos << pf.cadastrallotno 
+				prevfaases += em_faas_previous.find([faasid: it.prevfaasid]).list()
+			} else if (it.prevtdno) {
+				tdnos << it.prevtdno
+				owners << it.prevowner + (it.prevadministrator ? ' / ' + it.prevadministrator : '')
+				areas << it.prevareaha
+			}
+		}
+
+	  if (tdnos) {
+			def history = [:]
+			history.areatype = areatype
+			history.tdno = tdnos.join(' / ') + (ry ? ' (' + ry + ')' : '')
+			history.owner = owners.unique().join(' / ')
+			history.area = areas.join(' / ')
+			history.cadastrallotno = (lotnos ?  lotnos.join(' / ') : null)
+			histories << history
+		}
+
+		buildPreviousHistories(prevfaases, histories)
+	}
+
+	def getHistories(faas) {
+		def histories = []
+
+		def faasinfo = getFaasInfo(faas.objid)
+		
+		def history = [:]
+		history.tdno = faasinfo.tdno + ' (' + faasinfo.ry + ')'
+		history.owner = faasinfo.owner.name
+		if (faasinfo.administrator?.name) {
+			history.owner += ' / ' + faasinfo.administrator.name
+		}
+		history.areatype = faasinfo.areatype
+		history.area = faasinfo.areatype == 'ha' ? faasinfo.totalareaha : faasinfo.totalareasqm
+		history.cadastrallotno = faasinfo.cadastrallotno
+		histories << history
+
+		def prevfaases = em_faas_previous.select('prevfaasid').find([faasid: faas.objid]).list()
+		buildPreviousHistories(prevfaases, histories)
+
+		histories.findAll{!it.areatype}.each{it.areatype = 'ha'}
+		histories = histories.reverse()
+		histories.last().lastitem = true
+
+		return histories
+	}
+
+	def getFaasInfo(faasid){
+		def faas = certSvc.getFaasInfo(faasid)
+		if (faas) {
+			faas.street = (faas.street ? faas.street : faas.barangay.name)
+			
+			def locations = [];
+			locations << faas.barangay.name
+			locations << faas.lgu.name
+			if (faas.parentlgu?.name) locations << faas.parentlgu.name
+			faas.location = locations.join(', ')
+
+			faas.areatype = faas.classcode.matches('A|AGR') ? 'ha' : 'sqm'
+		}
+		return faas
+	}
+
+	void loadFaasInfo(cert){
+		def faas = getFaasInfo(cert.faasid)
+		if (faas) {
+			def certid = cert.objid 
+			cert.putAll( faas )
+			cert.objid = certid 
+		}
+		certSvc.makeHtmlSafe(cert)
+	}
+}

@@ -1,0 +1,52 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.services.extended.*;
+import bpls.facts.*;
+import bpls.util.*;
+import com.rameses.rules.common.*;
+
+/***********************************************************************************************
+* This is an interceptor for building all rule facts for infos, assessment and billing
+************************************************************************************************/
+public class BPRuleInterceptor {
+
+	@Env
+	def env;
+
+	@Service("BusinessApplicationFactBuilder")
+	def factBuilder;
+
+	@Service("NumberService")
+	def numberSvc;
+
+	@Service("DateService")
+	def dateSvc;
+
+	@Before(pattern="(BPInfoRuleService|BPRequirementRuleService).execute")
+	public void buildBPAssessmentFacts(def evt) { 
+		def o = evt.args[0];
+		if(!o.lobs)
+			throw new Exception("Please provide at least one line of business");
+		def facts = [];
+		def currDate = dateSvc.getServerDate();
+		def dt = currDate;
+		if(o.dtfiled && !(o.dtfiled instanceof java.util.Date)) {
+			dt = dateSvc.parse('yyyy-MM-dd', o.dtfiled );
+		}
+		facts << new EffectiveDate( dt );
+		facts << new CurrentDate(currDate);
+
+		//this is so we will not process derived infos.	
+		o.infos?.removeAll( o.infos.findAll{it.phase==null || it.phase > 1} );	
+		
+		factBuilder.build(o, facts );
+		
+		env.facts = facts;	
+
+	}
+
+
+
+
+}

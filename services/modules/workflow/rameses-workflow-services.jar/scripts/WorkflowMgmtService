@@ -1,0 +1,48 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.services.extended.*;
+
+class WorkflowMgmtService extends ActiveCrudListService {		
+
+	@ActiveDB("wf")
+	def em;
+
+	String pagingKeys = 'name';
+
+	@ProxyMethod
+	public def getColumns(o) {
+		return [
+			[name:'name', caption:'Name', maxWidth:300,width:200],
+			[name:'title', caption:'Title'],
+		];
+	}
+
+	public void afterOpen( o ) {
+		if (!o.processname) o.processname = o.name; 
+		
+		o.nodes = em.getNodes(o);
+		o.nodes.each{
+			it.transitions = em.getNodeTransitions(it);
+		}
+	}
+
+	@ProxyMethod 
+	public void importData(o) {
+		em.removeTransitions([processname: o.name]); 
+		em.removeNodes([processname: o.name]); 
+		em.delete(o); 
+
+		em.create(o); 
+		o.nodes?.each {node-> 
+			node.processname = o.name;
+			em.create(node, 'node');
+
+			node.transitions?.each{
+				it.parentid = node.name;
+				it.processname = o.name;
+				em.create(it, 'transition');
+			}
+		}
+	}
+}

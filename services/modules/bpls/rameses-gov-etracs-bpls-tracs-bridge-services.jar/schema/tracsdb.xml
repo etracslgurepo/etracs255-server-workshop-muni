@@ -1,0 +1,22 @@
+<schema>
+
+	<element name="business" tablename="etracs25_capture_business">
+		<field name="oldbusinessid" primary="true"/>
+		<field name="businessid" required="true"/>
+	</element>
+
+	<element name="lob" tablename="etracs25_capture_lob">
+		<field name="oldlob_objid" primary="true"/>
+		<field name="oldlob_name"/>
+		<field name="lob_objid" required="true"/>
+		<field name="lob_name" required="true"/>
+	</element>
+
+	<element name="account" tablename="etracs25_capture_account">
+		<field name="oldaccount_objid" primary="true"/>
+		<field name="oldaccount_title"/>
+		<field name="account_objid" required="true"/>
+		<field name="account_title" required="true"/>
+	</element>
+
+</schema>

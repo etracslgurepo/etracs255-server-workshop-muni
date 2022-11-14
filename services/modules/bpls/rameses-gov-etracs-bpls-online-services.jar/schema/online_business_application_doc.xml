@@ -1,0 +1,15 @@
+<schema adapter="main">
+	<element tablename="online_business_application_doc">
+		<field name="objid" primary="true" /> 
+		<field name="parentid" required="true"/> 
+		<field name="doc_type" required="true"/> 
+		<field name="doc_title" required="true"/> 
+		<field name="attachment_objid" required="true"/> 
+		<field name="attachment_name" required="true"/> 
+		<field name="attachment_path" required="true"/> 
+		<field name="fs_state" required="true"/> 
+		<field name="fs_filetype" required="true"/> 
+		<field name="fs_filelocid" /> 
+		<field name="fs_fileid" /> 
+	</element> 
+</schema> 

@@ -1,0 +1,24 @@
+<schema>
+    <element tablename="rptpayment_item">
+        <field name="objid" primary="true" prefix="RPI" />
+        <field name="parentid" required="true" />
+        <field name="rptledgerfaasid" />
+        <field name="year" required="true" type="integer" />
+        <field name="qtr"  type="integer" />
+        <field name="revtype" required="true" />
+        <field name="revperiod" required="true" />
+        <field name="amount" required="true" type="decimal"/>
+        <field name="interest" required="true" type="decimal"/>
+        <field name="discount" required="true" type="decimal"/>
+        <field name="partialled" required="true" type="boolean"/>
+        <field name="priority" required="true" type="integer"/>
+        <field name="total" expr="amount+interest-discount" type="decimal"/>
+        <complex name="parent" ref="rptpayment" jointype="many-to-one" includefields="refid,reftype,receiptid,receiptno,receiptdate" required="false">
+            <key field="parentid" target="objid"/>
+        </complex>
+        <complex name="rptledgerfaas" ref="rptledger_faas" jointype="many-to-one" 
+            includefields="assessedvalue" required="false">
+            <key field="rptledgerfaasid" target="objid"/>
+        </complex>
+    </element>  
+</schema>

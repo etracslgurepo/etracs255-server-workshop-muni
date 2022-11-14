@@ -1,0 +1,27 @@
+import com.rameses.annotations.*;
+import com.rameses.fileupload.*;
+
+class RPTSyncDataDownloadTest {
+    @XConnection('fileupload')
+    def fu;
+
+    public def downloadFile( param ) {
+        def reader = null;
+        def syncdata = null;
+        try {
+            reader = fu.getObject(param.fileid);
+            syncdata = reader.read();
+            syncdata.data = reader.read(); 
+            reader.close();
+            return syncdata;
+            println '\n\ndownloadFile [INFO]===================== '
+            println syncdata
+            println 'downloadFile [INFO]===================== '
+        } catch (e) {
+            e.printStackTrace();
+            if (reader) reader.close();
+            return {error: e.message}
+        }
+    }
+
+}

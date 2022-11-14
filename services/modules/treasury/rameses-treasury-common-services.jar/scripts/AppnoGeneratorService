@@ -1,0 +1,69 @@
+import com.rameses.annotations.*;
+
+import treasury.utils.*;
+import treasury.facts.*;
+import enterprise.utils.*;
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import java.util.*;
+import com.rameses.rules.common.RuleExecutionContext;
+import java.util.regex.*;
+
+public class AppnoGeneratorService {
+	
+	@DataContext(dynamic=true)
+	def em;
+
+	@Service("DateService")
+	def dateSvc;
+
+	@Env
+	def env;
+
+	def pattern = Pattern.compile("\\[.*?\\]");
+
+	public def formatNumber( def d, def handler, int num ) {
+	    def m = pattern.matcher( d );
+	    def sb = new StringBuilder();
+	    int start = 0;
+	    
+	    while(m.find()) {
+	        int end = m.start();
+	        sb.append( d.substring(start, end)  );
+	        String mg = m.group();
+	        mg = mg.substring(1, mg.length()-1);
+	        sb.append( handler(mg, num) );
+	        start = m.end();
+	    }
+	    if( start < d.length() ) sb.append(d.substring(start));
+	    return sb.toString();
+	}
+
+	//res is the resource where you will base the 
+	@ProxyMethod
+	public def generate( def ptn, int nx ) {
+		def dt = dateSvc.getServerDate();
+
+		def handler = { pttn, num ->
+			if( pttn == "org") {
+				return env.ORGCODE;
+			}
+			else if( pttn == "cluster") {
+				return cluster.code;
+			}
+			else if(pttn.startsWith("%")) {
+				return String.format( pttn, num );
+			}
+			else {
+				def df = new java.text.SimpleDateFormat( pttn );
+				return df.format( dt );
+			}
+			return ret;
+		}
+		
+		return formatNumber( ptn, handler, nx );
+	}
+
+
+}

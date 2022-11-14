@@ -1,0 +1,48 @@
+import com.rameses.annotations.*;
+
+class BillingProcessService {
+
+	@Service('BillingInfoHandler')
+	def handler;
+
+	@Service("BillingRuleService")
+	def ruleSvc;	
+
+	@ProxyMethod
+	public def process( pp ) { 
+		if ( pp.options == null ) pp.options = [:];
+		if( !pp.rulename ) throw new Exception("BillingCashReceiptService error. rulename is required");
+		if( !pp.params ) throw new Exception("BillingCashReceiptService error. params is required");
+
+		if ( !pp.options.request_action ) { 
+			pp.options.request_action = "billing"; 
+		} 
+
+		pp.headerinfo = handler.getHeaderInfo( pp ); 
+		pp.billitems = handler.getBillItems( pp ); 
+
+		if ( !pp.options.include_credit.toString().equals('false') ) {
+			def citems = handler.getCreditItems( pp ); 
+			if ( citems ) { 
+				citems.each{ it.txntype = 'creditpayment' } 
+				pp.billitems.addAll( citems ); 
+			} 
+		}
+
+		def m = [:]; 
+		m.putAll( pp.params ); 
+		m.putAll( pp.headerinfo ); 
+		m.billitems = pp.billitems; 
+
+		def ruleParam = [ rulename: pp.rulename ]; 
+		ruleParam.putAll( pp.options ); 
+		ruleParam.params = m; 
+
+		def ruleRes = ruleSvc.execute( ruleParam ); 
+		m = [:];
+		m.putAll( pp.headerinfo );  
+		m.putAll( ruleRes );  
+		return m;  
+	} 	
+
+} 

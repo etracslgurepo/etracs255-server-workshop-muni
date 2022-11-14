@@ -1,0 +1,75 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*
+import com.rameses.util.*;
+
+class AccountingStandardReportService  {
+
+	@Service('DateService')
+	def dateSvc;
+
+	@DataContext('income_ledger') 
+	def reportDb; 
+
+	@ProxyMethod 
+	public def init() {
+		def p = [ fields: []];  
+		p.fields << [name:'year', caption:'Year', type:'integer']; 
+		p.fields << [name:'month', caption:'Month', type:'integer']; 
+		p.fields << [name:'fundid', caption:'Fund', type:'list', schemaname:'fund', lookupkey:'objid', lookupvalue:'title']; 
+		p.fields << [name:'itemid', caption:'Item Account', type:'list', schemaname:'itemaccount', lookupkey:'objid', lookupvalue:'title']; 
+		return p; 
+	}
+
+	@ProxyMethod 
+	public def getReport( params ) { 
+		if ( !params.criteriaList ) 
+			throw new Exception('Please provide at least one filter'); 
+
+		def yearinfos = params.criteriaList.findAll{( it.field.name == 'year')} 
+		if ( !yearinfos ) throw new Exception('Please provide a Year filter'); 
+		if ( yearinfos.size() > 1 ) throw new Exception('Please provide at least one filter for Year'); 
+
+		def qtrinfos = params.criteriaList.findAll{( it.field.name == 'qtr')} 
+		if ( qtrinfos && qtrinfos.size() > 1 ) throw new Exception('Please provide at least one filter for Qtr'); 
+
+		def monthinfos = params.criteriaList.findAll{( it.field.name == 'month')} 
+		if ( monthinfos && monthinfos.size() > 1 ) throw new Exception('Please provide at least one filter for Month'); 
+
+		def qry = [ maingroupid: params.maingroup?.objid ];
+		def arr = [' 1=1 ']; 
+		params.criteriaList?.each { 
+			if( it.field.lookupkey ) {
+				arr << it.field.name + " " + it.operator + " ('" + it.value*.key.join("','") + "')";
+			}
+			else {			
+				def val = it.value;
+				if( it.value2 ) val += " AND " + it.value2;
+				arr << it.field.name + " " + it.operator + " " + val;
+			}
+		} 
+
+		if ( params.type.toString().matches('details|itemaccount')) { 
+			arr << "a.type IN ('root','group','item','detail')"; 
+		} 
+		else { 
+			arr << "a.type IN ('root','group','item')"; 
+		} 
+
+		qry.filter = ' AND ' + arr.join(' AND ');
+		qry.itemacctfilter = ' AND ' + ( params.type == "itemaccount" ? " 1=1 " : " 1=0 "); 
+
+		def list = reportDb.getReport( qry );
+		if ( !list ) throw new Exception("No records found");
+
+		list.findAll{ it.type.toString().matches('root|group')}.each{ g-> 
+			def amt = list.findAll{( it.leftindex >= g.leftindex && it.leftindex < g.rightindex && it.type.toString().matches('item|detail'))}.sum{( it.amount ? it.amount: 0.0)} 
+			g.amount = (amt ? amt : 0.0); 
+		}
+		if ( params.hidenoactualvalue.toString() == 'true') {
+			def zeros = list.findAll{( it.amount == 0 )} 
+			list.removeAll( zeros ); 
+		} 
+		return list; 
+	} 
+
+}

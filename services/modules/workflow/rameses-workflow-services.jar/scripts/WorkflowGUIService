@@ -1,0 +1,170 @@
+import com.rameses.annotations.*;
+
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.services.extended.*;
+
+class WorkflowGUIService {		
+
+    @DataContext("sys_wf")
+    def wf;
+
+	@DataContext("sys_wf_node")
+	def wfNode;
+
+	@DataContext("sys_wf_transition")
+	def wfTransition;
+
+    @ProxyMethod
+    public def create( def m ) {
+        return wf.create( m );
+    }
+
+	@ProxyMethod
+	public def getData( def processname ) {
+        def data = [:];
+        data.info = wf.find( [name: processname ]).first();
+        data.processname = processname;
+        data.figures = [];
+        data.connectors = [];
+
+		def states = wfNode.find( [processname: processname ] ).list();
+        states.each { 
+            def f = [id: it.name];
+            f.caption = it.title;
+            f.ui = it.remove("ui");
+            f.index = it.idx;
+            f.info = it;
+            if( f.ui == null ) {
+                def nui = [text: it.title, type: it.nodetype ];
+                nui.pos =  [0,0];
+                nui.size =  [100,50];
+                f.ui = nui;
+            };
+            data.figures << f;
+        }
+
+		def transitions = wfTransition.find( [processname: processname ] ).list();
+        transitions.each {
+            def c = [:];
+            c.startFigureId = it.parentid;
+            c.endFigureId = it.to;
+            c.caption = it.action;
+            c.ui = it.remove("ui");
+            c.info = it;
+            if(c.ui == null ) {
+                def tui = [type: "arrow"];
+                c.ui = tui;
+            };
+            data.connectors << c;
+        }
+        return data;	
+	}
+
+	@ProxyMethod
+	public void save( def data ) {
+        if(data._deletedfigures ) {
+            data._deletedfigures.each {
+                def p = [processname:data.processname, name: it.id];
+                wfNode.find( p ).delete();
+            }
+        };
+
+        if(data._deletedconnectors ) {
+            data._deletedconnectors.each {
+                if(!it.info) {
+                    it.info = [parentid:it.startFigureId, to: it.endFigureId ];
+                }  
+                def p = [parentid: it.info.parentid, to: it.info.to, processname: data.processname ];
+                wfTransition.find( p ).delete();
+            }
+        };
+        
+		data.figures.each {
+            def p = [processname:data.processname, name: it.id];
+            def vb = null;
+            if(it.id != it.info.name ) {
+                wfNode.find( p ).delete();
+            }    
+            else {
+                vb = wfNode.find( p ).first();
+            }
+
+            def u = it.info;
+            u.ui = it.ui;
+            u.idx = it.index;
+
+            if(!u.properties) u.properties = [:];
+            if( !u.title ) u.title = u.name;
+            
+
+            if(vb) {
+                wfNode.find( p ).update( u );
+            }
+            else {
+                if( !u.nodetype ) u.nodetype = u.ui.type;
+                if(!u.title) u.title = u.nodetype;
+
+                u.processname = data.processname;
+                wfNode.create( u );
+            }
+		}
+        
+        //push connectors
+        data.connectors.each {
+            def p = [parentid: it.startFigureId, to: it.endFigureId, processname: data.processname ];
+            def wt = null;
+
+
+            if( it.startFigureId != it.info.parentid || it.endFigureId != it.info.to ) {
+                wfTransition.find( p ).delete();    
+            }
+            else {
+                wt = wfTransition.find( p ).first();
+            }
+
+            def u = it.info;
+            u.ui = it.ui;
+            if(!u.properties) u.properties = [:];
+
+            if( wt ) {
+                wfTransition.find( p ).update( u );
+            }
+            else {
+                u.processname = data.processname;
+                u.parentid = it.startFigureId;
+                u.to = it.endFigureId;
+                wfTransition.create( u );    
+            }
+		}
+	}
+
+
+    @ProxyMethod 
+    public def openDataForExport(o) {
+        def obj = wf.find( [name: o.name ]).first();
+        obj.nodes = wfNode.find( [processname: o.name ]).list();
+        obj.transitions = wfTransition.find( [processname: o.name ]).list();
+        return obj;
+    }    
+
+    @ProxyMethod 
+    public void importData(o) {
+        //cleanup first
+        def v = [processname: o.name];    
+        wfTransition.find( v).delete();
+        wfNode.find( v).delete();
+        wf.delete(o); 
+
+        def nodes = o.remove("nodes");
+        def transitions = o.remove("transitions");
+
+        wf.create(o);
+        nodes.each {
+            wfNode.create( it );
+        }
+        transitions.each {
+            wfTransition.create(it);
+        }
+    }
+}

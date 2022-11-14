@@ -1,0 +1,44 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class LandTaxReportCertifiedCollectibleService
+{
+	@Env 
+	def env
+
+	@ActiveDB('landtaxreport_certified_collectible')
+	def em
+
+	@Service('NumberService')
+	def numSvc 
+
+	@Service('DateService')
+	def dtSvc 
+
+
+	@Async
+    @ProxyMethod
+	public def buildReport(params){
+		def cy = dtSvc.serverYear
+		if (params.year < 1930 || params.year > cy) {
+			throw new Exception('Year should be between 1930 and ' + cy + '.' )
+		}
+
+		params.barangayid = (params.barangay ? params.barangay.objid : '%')
+
+		def list = em.getList(params)
+
+		if (!list) throw new Exception('Results not found.')
+
+		list.each{
+			if (it.totalav == null) it.totalav = 0.0 
+			it.basic = numSvc.round( it.totalav * params.basicrate / 100.0 )
+			it.sef = numSvc.round( it.totalav * params.sefrate / 100.0 )
+			it.total = it.basic + it.sef 
+		}
+		return [reportdata:list, parameters:params]
+	}
+
+}
+

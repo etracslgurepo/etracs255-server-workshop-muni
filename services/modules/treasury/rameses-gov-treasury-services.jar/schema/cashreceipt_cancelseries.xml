@@ -1,0 +1,12 @@
+<schema>
+	<element tablename="cashreceipt_cancelseries">
+		<field name="objid" primary="true"/>
+		<field name="receiptid" required="true" />
+		<field name="controlid" required="true" />
+		<field name="txndate" required="true" />
+		<field name="postedby_objid" required="true" />
+		<field name="postedby_name" required="true" />
+		<field name="reason" required="true"/>
+	</element>
+</schema>
+

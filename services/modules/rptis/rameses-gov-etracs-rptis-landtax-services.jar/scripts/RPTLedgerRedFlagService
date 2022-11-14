@@ -1,0 +1,89 @@
+import com.rameses.common.*
+import com.rameses.annotations.*
+import com.rameses.services.extended.*
+
+class RPTLedgerRedFlagService {
+
+	@Env 
+	def env
+
+	@Service('DateService')
+	def dtSvc
+
+	@Service('SequenceService')
+	def seqSvc
+
+	@DataContext('rptledger_redflag')
+	def em
+
+	def STATE_DRAFT = 'DRAFT'
+	def STATE_OPEN = 'OPEN'
+	def STATE_RESOLVED = 'RESOLVED'
+
+	@ProxyMethod
+	public def beforeCreate(entity) {
+		entity.state = STATE_DRAFT
+		entity.filedby = [
+			objid: env.USERID,
+			name: env.USER,
+			title: env.JOBTITLE,
+		]
+	}
+
+	@ProxyMethod
+	public def approve(param) {
+		def entity = em.read(param)
+		if (!entity) throw new Exception('Record does not exist or has been delete.')
+		if (entity.state == STATE_OPEN) throw new Exception('Record has already been approved.')
+		if (entity.state == STATE_RESOLVED) throw new Exception('Record has already been resolved.')
+
+		entity.state = STATE_OPEN
+		entity.caseno = getNextSeries()
+		entity.dtfiled = dtSvc.serverDate
+		em.update(entity)
+		return entity
+	}
+
+	@ProxyMethod
+	public def resolve(param) {
+		def entity = em.read(param)
+		if (!entity) throw new Exception('Record does not exist or has been delete.')
+		if (entity.state == STATE_DRAFT) throw new Exception('Record is not yet approved.')
+		if (entity.state == STATE_RESOLVED) throw new Exception('Record has already been resolved.')
+
+		entity.state = STATE_RESOLVED
+		entity.dtresolved = dtSvc.serverDate
+		entity.remarks = param.remarks
+		entity.resolvedby = [
+			objid: env.USERID,
+			name: env.USER,
+			title: env.JOBTITLE,
+		]
+		em.update(entity)
+		return entity
+	}
+
+
+	@ProxyMethod
+	public def getRedFlagTypes() {
+		return [
+			'under_auction'
+		]
+	}
+
+	@ProxyMethod
+	public def getBlockActions() {
+		return [
+			'block_bill',
+			'block_collection',
+			'block_clearance',
+		]
+	}
+
+	def getNextSeries() {
+		def orgid = env.ORGID.replaceAll('-', '')
+		def key = 'RPTLEDGER-REDFLAG-' + orgid
+		return orgid + seqSvc.getNextFormattedSeries(key)
+	}
+
+}

@@ -1,0 +1,141 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import com.rameses.util.*
+import com.rameses.services.extended.*
+
+
+class FAASChangeInfoService
+{
+	@Env 
+	def env
+
+	@ActiveDB('rpt_changeinfo')
+	def em
+
+	@DataContext('rpt_changeinfo')
+	def em_changeinfo
+
+	@Service('DateService')
+	def dtSvc
+
+	@Service('LogService')
+	def logSvc 
+
+	@Service('FAASService')
+	def faasSvc 
+
+    @Service('EntityService')
+    def entitySvc 
+
+	@Service('FAASSupportService')
+    def supportSvc 
+
+    @Service('RPTRequirementService')
+	def reqSvc
+
+	@Service('DBImageService')
+	def imageSvc 
+
+	@Service('RPTRedFlagService')
+	def redFlagSvc
+
+
+
+	@ProxyMethod
+	public def open(info) {
+		def changeinfo = em_changeinfo.find([objid:info.objid]).first()
+		if (!changeinfo) throw new Exception('Record does not exist or has already been deleted.')
+
+		changeinfo.newinfo = em.serializer.read(changeinfo.newinfo)
+		changeinfo.previnfo = em.serializer.read(changeinfo.previnfo)
+
+        if (changeinfo.action == 'change_owner_info'){
+            changeinfo.taxpayer = entitySvc.open(changeinfo.newinfo.taxpayer)
+        }
+        else if (changeinfo.action == 'add_faas_requirement_document'){
+        	changeinfo.requirementtypeid = changeinfo.newinfo.requirementtype?.objid 
+        }
+        else if (changeinfo.action == 'change_faas_sketch'){
+            changeinfo.sketch = faasSvc.openSketch([objid: changeinfo.refid])
+        }
+        return changeinfo
+	}
+
+
+	@ProxyMethod
+	public def openByRedFlag(redflag) {
+		def changeinfo = em_changeinfo.find([redflagid:redflag.objid]).first()
+		if (!changeinfo) throw new Exception('Record does not exist or has already been deleted.')
+
+		changeinfo.newinfo = em.serializer.read(changeinfo.newinfo)
+		changeinfo.previnfo = em.serializer.read(changeinfo.previnfo)
+
+        if (changeinfo.action == 'change_owner_info'){
+            changeinfo.taxpayer = entitySvc.open(changeinfo.newinfo.taxpayer)
+        }
+        else if (changeinfo.action == 'add_faas_requirement_document'){
+        	redflag.requirementtypeid = redflag.info.requirementtype.objid 
+        	def imageids = em.getImageIds(redflag)
+        	if (imageids){
+	            changeinfo.requirement = reqSvc.open(imageids[0])
+        	}
+        }
+        else if (changeinfo.action == 'change_faas_sketch'){
+            changeinfo.image = supportSvc.getImageByIds([changeinfo.refid])
+            changeinfo.sketch = faasSvc.openSketch([objid: changeinfo.refid])
+        }
+
+        return changeinfo
+	}
+	
+
+	@ProxyMethod
+	public def updateInfo(changeinfo){
+		changeinfo.dtposted = dtSvc.serverDate
+		if (!changeinfo.postedbyid)
+			changeinfo.postedbyid = env.USERID
+		if (!changeinfo.postedby)
+			changeinfo.postedby = env.FULLNAME
+		if (!changeinfo.postedbytitle)
+			changeinfo.postedbytitle = env.JOBTITLE
+
+		def newinfo = [:]
+		newinfo.putAll(changeinfo.newinfo)
+		newinfo.refid    = changeinfo.refid 
+		newinfo.faasid 	= changeinfo.faasid
+		newinfo.rpid   	= changeinfo.rpid
+		newinfo.rpuid  	= changeinfo.rpuid
+
+		changeinfo.newinfo  = em.serializer.write(changeinfo.newinfo)
+		changeinfo.previnfo = em.serializer.write(changeinfo.previnfo)
+
+		def exist = em.read(changeinfo)
+		if (exist)
+			em.update(changeinfo)
+		else 
+			em.create(changeinfo)
+		changeinfo.newinfo = newinfo
+
+		changeinfo.previnfo = em.serializer.read(changeinfo.previnfo)
+
+		logSvc.logA(changeinfo.action, 'faas', changeinfo.refid, changeinfo.reason)
+		return changeinfo
+	}
+
+
+	@ProxyMethod
+	public def getTxnTypes(  ) {
+		return faasSvc.getTxnTypes()
+	}
+
+	@ProxyMethod
+	public void checkAndUpdateLgu(changeinfo) {
+		if (!changeinfo.lguid) {
+			def lgu = em.findLgu(changeinfo)
+			if (lgu) {
+				changeinfo.lguid = lgu.lguid
+			}
+		}
+	}
+}
+

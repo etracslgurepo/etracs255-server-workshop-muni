@@ -1,0 +1,82 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import com.rameses.services.extended.*
+
+class RealPropertyListService extends ActiveListService
+{
+	@ActiveDB('realproperty')
+	def em 
+
+	String pagingKeys = 't.objid'
+
+
+    @ProxyMethod
+    public def getNodes(o) {
+        return [
+           [name:'interim', caption:'Interim', leaf:true, folder:true, allowSearch:true],
+           [name:'forapproval', caption:'For Approval', leaf:true, folder:true, allowSearch:true],
+           [name:'current', caption:'Current', leaf:true, folder:true, allowSearch:true],
+           [name:'cancelled', caption:'Cancelled', leaf:true, folder:true, allowSearch:true],
+        ];
+    }   
+
+
+    @ProxyMethod
+    public def getColumns(params) {
+        return [
+            [name:"ry", caption:"RY", width:50, type:'integer', format:'0000'],
+            [name:"pin", caption:"PIN", width:150],
+            [name:"tdno", caption:"TD No.", width:150],
+            [name:"barangay.name", caption:"Barangay", width:200],
+            [name:"claimno", caption:"Claim No.", width:50],
+            [name:"cadastrallotno", caption:"Lot No.", width:150],
+            [name:"surveyno", caption:"Survey No.", width:100],
+            [name:"pintype", caption:"PIN Type", width:80], 
+            [name:"state", caption:"State", width:100],
+        ]
+    }
+
+
+	void beforeList(params){
+        params.filters = ''
+        if (params.ry != null) {
+            params.filters = ' AND rp.ry = $P{ry} '
+        }
+
+        params.cadastrallotno = params.searchtext 
+        params.surveyno = params.searchtext
+        params.barangay = params.searchtext 
+		params.searchtext = (params.searchtext ? params.searchtext :'') + '%'
+
+        switch(params.name) {
+            case 'search':
+                if ( ! params.searchtext ) params.searchtext = '%'
+                break
+
+            case 'interim':
+                params.state    = 'INTERIM'
+                params.filters  += ' AND rp.state = $P{state} '
+                break
+
+            case 'forapproval':
+                params.state    = 'FORAPPROVAL'
+                params.filters  += ' AND rp.state = $P{state} '
+                break            
+
+            case 'current':
+                params.state    = 'CURRENT'
+                params.filters  += ' AND rp.state = $P{state} '
+                break
+
+            case 'cancelled':
+                params.state    = 'CANCELLED'
+                params.filters  += ' AND rp.state = $P{state} '
+                break
+
+            default :
+                break
+        }
+	}
+	
+    
+}

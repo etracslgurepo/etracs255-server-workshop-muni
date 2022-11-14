@@ -1,0 +1,73 @@
+import com.rameses.annotations.*;
+
+class AFControlListInterceptor {
+
+	/*****************************************************************************************
+	//collector
+	*****************************************************************************************/
+	@After(pattern="QueryService.getNodeList", eval="#{ args[0]._schemaname == 'af_control' }")
+	public void getNodes( evt ) { 
+		def x = evt.args[0];
+		def result = evt.result;
+		if( x._tag.toString().matches("AFO|SHARED")) {
+			result << [  title: 'Open', state:'OPEN' ];
+			result << [  title: 'Issued', state:'ISSUED' ];
+			result << [  title: 'Sold', state:'SOLD' ];
+			result << [  title: 'Consumed', state:'CONSUMED' ];
+			result << [  title: 'Cancelled', state:'CANCELLED' ];
+			result << [  title: 'Processing', state:'PROCESSING' ];
+			result << [  title: 'On Hold', state:'HOLD' ];
+		} 
+		else if( x._tag == 'COLLECTION' ) {
+			result << [  title: 'Open', state:'ISSUED', _filter: "txnmode <> 'REMOTE'" ];
+			result << [  title: 'Consumed', state:'CONSUMED' ];
+			result << [  title: 'Cancelled', state:'CANCELLED' ];
+			result << [  title: 'Exported', state:'EXPORTED', _filter: "txnmode = 'REMOTE'" ];
+		}
+		else if( x._tag == "SUBCOLLECTION") {
+			result << [  title: 'Open', state:'ISSUED' ];
+			result << [  title: 'Consumed', state:'CONSUMED' ];
+			result << [  title: 'Cancelled', state:'CANCELLED' ];
+		}
+	}
+
+	@Before(pattern="QueryService.getList", eval="#{ args[0]._schemaname == 'af_control' }")
+	public void loadList(def evt) {
+		def o = evt.args[0];
+		if( !o.node?.state ) return;
+
+
+		//o.debug = true;
+		def m = [:]; 
+		def str = new StringBuilder();
+
+		if ( o.node.state == 'EXPORTED') {
+			//do nothing 
+		}
+		else if( o.node.state == 'ISSUED' ) {
+			str.append( " state='ISSUED' AND currentseries <= endseries " );
+		}
+		else if( o.node.state == 'CONSUMED' ) {
+			str.append(" state='ISSUED' AND currentseries > endseries ");
+		}
+		else if ( o.node.state ) { 
+			str.append(" state = :state ");
+			m.state = o.node.state;
+		}
+		
+		def filter2 = o.node._filter; 
+		if ( filter2 ) { 
+			if ( str.length() > 0 ) str.append(" AND "); 
+
+			str.append( filter2 ); 
+		} 
+
+		if ( o.where ) {
+			o.where[0] = str + " AND " + o.where[0];	
+			o.where[1].putAll( m );
+		}
+		else {
+			o.where = [str.toString(), m];
+		} 
+	} 
+}

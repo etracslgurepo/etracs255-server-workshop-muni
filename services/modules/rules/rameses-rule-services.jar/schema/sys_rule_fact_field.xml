@@ -1,0 +1,22 @@
+<schema>
+
+	<element tablename="sys_rule_fact_field">
+		<field name="objid" primary="true" prefix="RULFACTFLD"/>
+		<field name="parentid" required="true"/>
+		<field name="name" required="true"/>
+		<field name="title" required="true"/>
+		<field name="datatype" />
+		<field name="sortorder" />
+		<field name="handler" visible="false"/>
+		<field name="lookuphandler" visible="false"/>
+		<field name="lookupkey" visible="false"/>
+		<field name="lookupvalue" visible="false"/>
+		<field name="lookupdatatype" visible="false"/>
+		<field name="lovname" visible="false"/>
+		<field name="required" visible="false"/>
+		<field name="vardatatype" visible="false"/>
+		<field name="multivalued" visible="false"/>
+	</element>	
+
+</schema>	
+

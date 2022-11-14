@@ -1,0 +1,104 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.services.extended.*;
+import com.rameses.rules.common.*;
+import bpls.facts.*;
+import bpls.actions.*;
+
+public class BPBillingRuleService  {
+
+	@Resource("RuleService")
+	def ruleSvc;
+
+	@ActiveDB("rule")
+	def ruleDB;
+
+	@Service("DateService")
+	def dateSvc;
+
+	@Service("NumberService")
+	def numberSvc;
+
+	@ActiveDB("revenueitem")
+	def ba;
+
+	@Env
+	def env;
+
+	String RULESET = "bpbilling";
+
+	def comparator = { agg, oldvalue, newvalue ->
+		switch(agg) {
+			case "COUNT":
+				return (oldvalue + 1);
+
+			case "SUM":
+				return oldvalue + newvalue;
+
+			case "MIN":
+				if( oldvalue <= newvalue  )		
+					return oldvalue;
+				else
+					return newvalue;
+			case "MAX":
+				if( oldvalue >= newvalue  )		
+					return oldvalue;
+				else
+					return newvalue;
+		}
+		return 0;
+	}
+
+	def buildActions(def req) {
+		def actions = new RuleAction();
+		actions.addCommand( "split_by_qtr", new SplitByQtr( request:req, NS:numberSvc ));
+		actions.addCommand( "calc_surcharge", new CalcSurcharge( request:req, NS:numberSvc, BA: ba ));
+		actions.addCommand( "calc_interest",  new CalcInterest( request:req, NS:numberSvc, BA:ba ));
+		actions.addCommand( "calc_discount",  new CalcDiscount( request:req, NS:numberSvc ));
+		actions.addCommand( "collect_item",  new CollectItem( request:req ));
+		actions.addCommand( "collect_unpaid",  new CollectUnpaid( request:req ));
+		actions.addCommand( "set_deleted_billitem",  new SetBillItemAsDeleted( request:req ));
+		actions.addCommand( "set_billexpirydate",  new SetBillExpiryDate( request:req ));
+		actions.addCommand( "collect_partial",  new CollectPartialPayment( request:req, NS:numberSvc ));
+		actions.addCommand( "collect_excess",  new CollectExcess( request:req, NS:numberSvc ));	
+
+		//for payment mode.
+		//actions.addCommand( "set_basic_account",  new SetupBasicAccount( request:req, BA:ba ));
+		//actions.addCommand( "set_surcharge_account",  new SetupSurchargeAccount( request:req, BA:ba ));
+		//actions.addCommand( "set_interest_account",  new SetupInterestAccount( request:req, BA:ba ));
+		actions.addCommand( "set_taxcredit_account",  new SetupTaxCreditAccount( request:req, BA:ba ));
+
+		actions.addCommand( "add_sysvar", new AddSysVar(request:req, comparator: comparator));
+		actions.addCommand( "assert_sysvars", new AssertSysVars(request:req));
+		actions.addCommand( "print_test", new PrintTest());
+		actions.addCommand( "select_one_surcharge", new SelectOneSurcharge(request:req));
+		return actions;
+	}
+
+	@ProxyMethod
+	public def execute( def facts ) {
+		def request = [vars:[:], items: [], receivables:[]];
+		request.facts = facts;
+		request.actions = buildActions( request );
+		def grps = ruleDB.getRulegroups( [ruleset: RULESET] );
+		for( g in grps ) { 
+			ruleSvc.execute( RULESET, request.facts, request.actions, g.name );
+		}
+		//build the result
+		def items = request.items?.sort{ it.sortorder };
+		items.each {
+			it.total = it.amtdue + it.surcharge + it.interest - it.discount;
+		}
+		def result = [:];	
+		result.items = items;
+		result.validUntil = request.billexpirydate;
+
+		if(request.excess) {
+			result.excess = request.excess.toItem();
+		}	
+
+		return result;		
+	}
+
+}	

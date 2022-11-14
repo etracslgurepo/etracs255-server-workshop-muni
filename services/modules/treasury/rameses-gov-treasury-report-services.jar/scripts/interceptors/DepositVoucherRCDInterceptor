@@ -1,0 +1,14 @@
+import com.rameses.annotations.*;
+
+class DepositVoucherRCDInterceptor {
+
+	@Service('DepositVoucherRCDReportService') 
+	def reportSvc; 
+
+	@After(pattern="DepositVoucherService.getReportData")
+	void getReportData( evt ) { 
+		def result = evt.result; 
+		def data = reportSvc.getRCDByFund( result ); 
+		if ( data ) result.putAll( data ); 
+	} 
+} 

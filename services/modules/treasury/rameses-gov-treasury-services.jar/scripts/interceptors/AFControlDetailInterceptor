@@ -1,0 +1,35 @@
+import com.rameses.annotations.*;
+
+class AFControlDetailInterceptor { 
+	
+	@DataContext("af_control")
+	def afc_db;
+
+	@DataContext("af_control_detail")
+	def afcd_db;
+
+	@Before(pattern="PersistenceService.removeEntity", eval="#{ args[0]._schemaname == 'af_control_detail' }")
+	public void beforeRemoveAfDetail( evt ) { 
+		def param = evt.args[0]; 
+		if ( param?.objid ) {
+			def o = afcd_db.find([ objid: param.objid ]).select('controlid').first(); 
+			if ( o ) {
+				param.controlid = o.controlid; 
+				afc_db.find([ objid: param.controlid ]).update([ currentdetailid: '{NULL}' ]);
+			} 
+		} 
+	} 
+
+	@After(pattern="PersistenceService.removeEntity", eval="#{ args[0]._schemaname == 'af_control_detail' }")
+	public void afterRemoveAfDetail( evt ) { 
+		def param = evt.args[0]; 
+		if ( param?.controlid ) { 
+			def o = afcd_db.find([ controlid: param.controlid ]).select('objid').orderBy(' refdate desc, txndate desc ').first(); 
+			if ( o ) {
+				afc_db.find([ objid: param.controlid ]).update([ currentdetailid: o.objid ]); 
+			} else {
+				afc_db.find([ objid: param.controlid ]).update([ currentdetailid: "{NULL}" ]); 
+			} 
+		} 
+	} 
+}

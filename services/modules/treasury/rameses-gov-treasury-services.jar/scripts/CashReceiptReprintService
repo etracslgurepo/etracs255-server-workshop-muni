@@ -1,0 +1,39 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.services.extended.*;
+
+class CashReceiptReprintService {
+
+	@DataContext("cashreceipt_reprint_log")
+	def logEm;
+
+
+	@Service("ActionPermissionService")
+	def actionPermissionSvc;
+
+	@Service("DateService")
+	def dateSvc;
+
+	@Env
+	def env;
+
+	@ProxyMethod
+	public void verifyReprint(def p) {
+		def usr = null;
+		if(p.applysecurity == true ) {
+			usr = actionPermissionSvc.checkAllowedAction( [username:p.username, password: p.password, action: 'cashreceipt.approve_reprint' ] );
+			usr.name = usr.firstname + " " + usr.lastname;
+		}
+		else {
+			usr = [objid:env.USERID, name: env.FULLNAME];
+		}
+		def m = [:];
+		m.dtapproved = dateSvc.getServerDate();
+		m.approvedby = usr;
+		m.reason = p.reason;
+		m.receiptid = p.receiptid;
+		logEm.create( m );
+	}
+
+}

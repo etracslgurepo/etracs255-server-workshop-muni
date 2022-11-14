@@ -1,0 +1,22 @@
+<schema>
+	<element name="rpt_redflag" tablename="rpt_redflag">
+		<field name="objid" primary="true"/>
+		<field name="parentid" required="true"/>
+		<field name="state" required="true" caption="state" searchable="true" indexed="true" />
+		<field name="refid" required="true" />
+		<field name="refno" required="true" caption="Ref No." searchable="true" />
+		<field name="caseno" required="true" caption="Case No." searchable="true" />
+		<field name="message" required="true" />
+		<field name="action" required="true" caption="Action" />
+		<field name="filedby_date" required="true" />
+		<field name="filedby_objid" required="true" />
+		<field name="filedby_name" required="true"  caption="Filed By" />
+		<field name="resolvedby_objid" />
+		<field name="resolvedby_name"  caption="Resolved By"  />
+		<field name="resolvedby_date" />
+		<field name="dtclosed"  caption="Date Closed" />
+		<field name="lguid" required="true" />
+		<field name="info"/>
+		<field name="remarks"/>
+	</element>
+</schema>

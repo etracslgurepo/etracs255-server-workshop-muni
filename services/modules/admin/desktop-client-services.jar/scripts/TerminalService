@@ -1,0 +1,99 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+
+class TerminalService 
+{
+	@ActiveDB(value='terminal', em='system')
+    def em; 		
+
+    @Service("DateService")
+    def dateSvc;	
+
+    //allocates terminal sizes	
+    @ProxyMethod	
+    public void allocate( x ) {
+		assert x.size > 0; 
+		
+		int sz = x.remove("size");
+		for( int i=0; i< sz; i++) {
+			x.terminalid = KeyGen.generateAlphanumKey( null, 10 );
+			x.state = 0;
+			em.create(x); 
+		}
+    }
+
+	@ProxyMethod
+    public def getList( params ) {
+    	param._pagingKeys = 'terminalid'; 
+    	return em.getList(params); 
+    }
+
+    @ProxyMethod	
+	public def register( def o ) {
+		//search first if terminal exists
+		def terminal = em.read(o);
+		if (!terminal) throw new Exception("Terminal id does not exist");
+		
+		if (terminal.macaddress) {
+			if( terminal.macaddress == o.macaddress) 
+				throw new Exception("This Terminal ID already exists. Please choose the recover option instead"); 
+			else 	
+				throw new Exception("This Terminal ID is already assigned"); 
+		}
+		
+		def test = em.findMacAddress([macaddress: o.macaddress]); 
+		if (test) throw new Exception("This machine is already assigned to " + test.parentcode + ". Use terminal recovery instead" );
+
+		terminal.macaddress = o.macaddress;
+		terminal.registeredby = o.registeredby;
+		terminal.dtregistered = dateSvc.serverDate;
+		return em.update(terminal);
+	}
+
+    @ProxyMethod	
+	public def recover( def o ) {
+		if (!o.macaddress) throw new Exception('Please specify macaddress'); 
+
+		def terminal = em.findMacAddress([macaddress: o.macaddress]);
+		if (!terminal) throw new Exception('Terminal is not registered');
+
+		return terminal; 
+	}
+	
+	/**
+	* checks first client terminal id
+	* if verified, returns the parentid 
+ 	*/
+	@ProxyMethod
+	public def verifyClient( String terminalid, String clientcode ) {
+		if (!terminalid) throw new Exception('Terminal ID must be provided');
+
+		def terminal = em.read([terminalid: terminalid]);
+		if (!terminal) 
+			throw new Exception("Terminal does not exist");
+		if (terminal.parentcode != clientcode) 
+			throw new Exception("Terminal is not registered with " + clientcode );
+
+		return terminal;		
+	}
+	
+	@ProxyMethod	
+	public def unregister( def o ) { 
+		em.unregisterTerminal(o);
+	}
+	
+	@ProxyMethod	
+    public def getGroupTerminals( params ) { 
+    	def list = em.getList(params); 
+		if (params.excludes) { 
+			return list.findAll{ !param.excludes.contains( it.terminalid )  }
+		} else { 
+			return list; 
+		} 	
+	}
+
+	@ProxyMethod 
+	public def findTerminal( params ) {
+		return em.findTerminal (params); 
+	}
+}

@@ -1,0 +1,18 @@
+<schema>
+	<element tablename="report_rptdelinquency_barangay">
+		<field name="objid" primary="true" prefix="RP" />
+		<field name="parentid" required="true"/>
+		<field name="barangayid" required="true" prefix="RP" />
+		<field name="count" required="true" type="integer"/>
+		<field name="processed" required="true" type="integer"/>
+		<field name="errors" required="true" type="integer"/>
+		<field name="ignored" required="true" type="integer"/>
+		<field name="idx" type="integer"/>
+		<field name="completed" expr="case when count = processed + ignored then 1 else 0 end" />
+
+		<complex name="barangay" ref="barangay" jointype="many-to-one" includefields="name">
+			<key field="barangayid" target="objid" />
+		</complex>
+	</element>
+
+</schema>

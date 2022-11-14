@@ -1,0 +1,47 @@
+<schema>
+	
+	<element name="batchcapturereceipt" tablename="cashreceipt_batchcapture" >
+		<field name="objid" primary="true"/>
+		<field name="receiptdate" required="true"/>
+		<field name="txnmode" required="true"/>
+		<field name="amount" required="true"/>
+		<field name="collector_objid" required="true"/>
+		<field name="collector_name" required="true"/>
+		<field name="collector_title" required="true"/>
+		<field name="totalcash" required="true"/>
+		<field name="totalnoncash" required="true"/>
+		<field name="org_objid" required="true"/>
+		<field name="org_name" required="true"/>
+		<field name="formno" required="true"/>
+		<field name="controlid" required="true"/>
+		<field name="collectiontype_objid" required="true"/>
+		<field name="collectiontype_name" required="true"/>
+		<field name="user_objid" required="true"/>
+		<field name="user_name" required="true"/>
+		<field name="subcollector_objid" xrequired="true"/>
+		<field name="subcollector_name" xrequired="true"/>
+		<field name="subcollector_title" xrequired="true"/>
+	</element>
+
+	<element name="entry" tablename="cashreceipt_batchcapture_entry" >
+		<field name="objid" primary="true"/>
+		<field name="parentid" required="true"/>
+		<field name="txndate" required="true"/>
+		<field name="receiptno" required="true"/>
+		<field name="receiptdate" required="true"/>
+		<field name="payer_objid" required="true"/>
+		<field name="payer_name" required="true"/>
+		<field name="paidby" required="true"/>
+		<field name="paidbyaddress" required="true"/>
+		<field name="amount" required="true"/>
+		<field name="totalcash" required="true"/>
+		<field name="totalnoncash" required="true"/>
+		<field name="series" required="true"/>
+		<field name="collectiontype_objid" required="true"/>
+		<field name="collectiontype_name" required="true"/>
+		<field name="remarks" />
+		<complex name="items" required="true" type="list" serializer="default"/>
+	</element>
+	
+
+</schema>

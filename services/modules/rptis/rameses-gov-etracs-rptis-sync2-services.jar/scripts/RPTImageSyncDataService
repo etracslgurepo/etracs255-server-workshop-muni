@@ -1,0 +1,43 @@
+import com.rameses.annotations.*
+import com.rameses.util.*
+import com.rameses.services.extended.*
+
+class RPTImageSyncDataService
+{
+	@Env
+	def env 
+
+	@Service('RPTMainSyncDataService')
+	def syncSvc 
+
+    @Service('RPTSyncDataService')
+    def rptSync
+
+
+	def getActions(){
+		return  [
+	    	'RPT-IMAGE-RESEND': [send: {}, receive: {}, schedule: scheduleImage],
+	    ]
+	}
+
+	/*---------------------------------------------------------
+	*
+	* SCHEDULING SYNC SUPPORT 
+	*
+	---------------------------------------------------------*/
+	@ProxyMethod
+	public void schedule(data) {
+		def action= getActions()[data.action]
+		if (!action) throw new Exception('Scheduler not found for action ' + data.action)
+
+		data.remote = rptSync.getRemoteOrg(data.info)
+        def syncdata = syncSvc.create(data)
+		action.schedule(syncdata, data)
+	}
+
+	def scheduleImage = {syncdata, data ->
+		rptSync.scheduleImagesByRefId(syncdata, data.objid)
+	}
+
+}
+ 

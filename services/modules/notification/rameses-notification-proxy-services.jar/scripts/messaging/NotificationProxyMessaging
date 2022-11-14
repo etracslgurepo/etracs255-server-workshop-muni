@@ -1,0 +1,29 @@
+
+import com.rameses.annotations.*;
+
+class NotificationProxyMessaging {
+
+	@Service 
+	def self; 
+
+	@Service('NotificationChannelService') 
+	def channelSvc; 
+
+	@OnMessage('ws_user_listener') 
+	public def receiveUserNotification( data ) { 
+		self.send([ channel:'user', data:data ]);
+	} 	
+
+	@OnMessage('ws_group_listener') 
+	public def receiveGroupNotification( data ) { 
+		self.send([ channel:'group', data:data ]); 
+	} 
+
+	@Async 
+	@ProxyMethod 
+	public void send( params ) { 
+		if ( channelSvc ) { 
+			channelSvc.send( params ); 
+		} 
+	} 
+} 

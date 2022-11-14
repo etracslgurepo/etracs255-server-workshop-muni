@@ -1,0 +1,38 @@
+import com.rameses.common.*
+import com.rameses.annotations.*
+
+class MCSettlementListService 
+{
+	@PersistenceContext('main')
+	def em 
+	
+	@Service('RPTUtil')
+	def util
+
+
+	@ProxyMethod
+    public def getList( params ) {
+    	params.searchtext = (params.searchtext ? params.searchtext : '') + '%'
+        def filters = [
+            ' and m.txnno LIKE $P{searchtext}',
+            ' and f.tdno LIKE $P{searchtext}',
+            ' and rpu.pin LIKE $P{searchtext}',
+        ]
+        return util.getListFromQuery( 'mcsettlement:getList' , filters, params, 'm.objid' )
+    }
+
+
+    @ProxyMethod
+	public def getColumns( params ) {
+		return [ 
+			[name:'state', caption:'State'],
+			[name:'txnno', caption:'Txn No.'],
+			[name:'prevfaas.tdno', caption:'TD No.'],
+			[name:'prevfaas.claimno', caption:'Claim No.'],
+			[name:'prevfaas.pin', caption:'PIN'],
+			[name:'prevfaas.taxpayer.name', caption:'Taxpayer Name'],
+			[name:'prevfaas.taxpayer.address', caption:'Address'],
+			[name:'prevfaas.cadastrallotno', caption:'Cadastral Lot NO.'],
+		]	
+	}
+}

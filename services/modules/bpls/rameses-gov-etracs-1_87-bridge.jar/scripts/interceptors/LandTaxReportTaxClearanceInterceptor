@@ -1,0 +1,30 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import java.rmi.server.UID;
+import com.rameses.util.*;
+
+class LandTaxReportTaxClearanceInterceptor {
+	
+	@ActiveDB(value="etracs18", em="etracs18")
+	def em;
+
+	@Service("DateService")
+	def dateSvc;
+
+	@After(pattern="LandTaxReportTaxClearanceService.(openClearance|createClearance)")
+	public def ad(def evt) {
+		def cert = evt.result 
+		cert.items.each{item ->
+        	if(! item.payments) {
+	            def p = [
+	                rptledgerid : item.refid,
+	                year : cert.year,
+	                qtr : cert.qtr,
+	            ]
+	            item.payments = em.getLandTaxPaymentInfo(p)
+	        }
+        }	
+	}
+
+	
+} 

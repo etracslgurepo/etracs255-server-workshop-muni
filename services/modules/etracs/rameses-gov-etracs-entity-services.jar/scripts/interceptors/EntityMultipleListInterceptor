@@ -1,0 +1,58 @@
+import com.rameses.annotations.*;
+
+class EntityMultipleListInterceptor  {
+
+	@Env
+	def env;
+
+	@After(pattern="QueryService.getNodeList", eval="#{args[0]._schemaname == 'entitymultiple'}") 
+	public void afterGetNodes( evt ) {
+		def nodes = evt.result;
+		nodes << [state: 'ACTIVE', title: 'ACTIVE' ];
+		nodes << [state: 'INACTIVE', title: 'INACTIVE' ];		
+	}	
+
+	@Before(pattern="QueryService.getList", eval="#{args[0]._schemaname == 'entitymultiple'}") 
+	public void beforeGetList( evt ) { 
+		def o = evt.args[0]; 
+
+		def arr = resolveWhere( o ); 
+		def whereList = arr[0]; 
+		def whereMap = arr[1]; 
+
+		if ( o.node?.state ) {
+			def str = "state = :state";
+			if ( whereList ) {
+				whereList.add(0, str); 
+			} else {
+				whereList << str; 
+			}
+
+			whereMap.state = o.node.state; 
+		}
+
+		if ( whereList ) { 
+			o.where = [ whereList.join(' AND '), whereMap ]; 
+		}
+	} 
+
+	def resolveWhere( param ) {
+		def whereList = []; 
+		def whereMap = [:]; 
+		if ( param.where instanceof List ) { 
+			if ( param.where.size() > 0 && param.where[0] ) 
+				whereList << param.where[0]; 
+
+			if ( param.where.size() > 1 && param.where[1] instanceof Map) 
+				whereMap.putAll( param.where[1] ); 
+		} 
+		else if ( param.where instanceof Object[]) { 
+			if ( param.where.length > 0 && param.where[0] ) 
+				whereList << param.where[0]; 
+
+			if ( param.where.length > 1 && param.where[1] instanceof Map) 
+				whereMap.putAll( param.where[1] ); 
+		}
+		return [ whereList, whereMap ]; 
+	}
+}

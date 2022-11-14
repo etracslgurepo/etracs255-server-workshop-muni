@@ -1,0 +1,14 @@
+<schema>
+    <element tablename="rptpayment_share">
+        <field name="objid" primary="true" prefix="RPS"/>
+        <field name="parentid" required="true" />
+        <field name="revperiod" required="true" />
+        <field name="revtype" required="true" />
+        <field name="sharetype" required="true" />
+        <field name="item_objid" required="true" />
+        <field name="year" type="integer" />
+        <field name="amount" required="true" type="decimal"/>
+        <field name="discount" required="true" type="decimal"/>
+        <field name="iscommon" type="boolean"/>
+    </element>  
+</schema>

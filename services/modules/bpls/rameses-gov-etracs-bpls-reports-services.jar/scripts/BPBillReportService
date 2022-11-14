@@ -1,0 +1,38 @@
+import com.rameses.annotations.*; 
+
+class BPBillReportService {
+	
+	@ActiveDB('bpbill_report') 
+	def bpbill_report; 
+
+	@Service('DateService') 
+	def dateSvc; 
+
+    @Service('BusinessBillingService') 
+    def billSvc;
+
+    def YMD = new java.text.SimpleDateFormat( 'yyyy-MM-dd' ); 
+
+	@ProxyMethod 
+	public def init() {
+		def rundate = dateSvc.getServerDate(); 
+		return [ billdate: YMD.format( rundate ) ]; 
+	}
+
+	@ProxyMethod
+	public def getBusinessList( params ) { 
+		if ( !params._start ) params._start = 0; 
+		if ( !params._limit ) params._limit = 25; 
+
+		params.searchtext = (params.searchtext? params.searchtext: '')+'%'; 
+		return bpbill_report.getList( params );  
+	} 
+
+	@ProxyMethod 
+	public def getBilling( params ) { 
+		if ( params.billdate instanceof String ) {
+			params.billdate = YMD.parse( params.billdate ); 
+		} 
+		return billSvc.getBilling( params ); 
+	} 
+}

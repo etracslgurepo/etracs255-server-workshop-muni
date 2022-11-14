@@ -1,0 +1,180 @@
+import com.rameses.annotations.*
+import com.rameses.eserver.*;
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class SubdivisionWorkflowInterceptor
+{
+	@Env 
+	def env 
+
+
+	@ActiveDB('subdivision')
+	def em
+
+	@ActiveDB('rpt_requirement')
+	def em_requirement
+
+	@Service('SubdivisionWorkflowService')
+	def workflowSvc
+
+	@Service('SubdivisionService')
+	def subdivisionSvc
+
+	@Service('RPTUtil')
+	def util
+
+	@Service('RPTRequirementRuleService')
+    def ruleReqSvc
+
+	@Service('RPTRequirementService')
+	def reqSvc
+
+	@Service('ExaminationService')
+	def examinationSvc
+
+	@Service('Var')
+	def var 
+
+	@Service('RPTLedgerService')
+	def ledgerSvc 
+
+	@DataContext('subdivision_assist_item')
+	def em_assist_item
+
+
+	@After(pattern='SubdivisionService.create')
+	public void afterCreate(evt){
+		def subdivision = evt.result 
+		def info = evt.args[0] 
+
+		subdivision.task = workflowSvc.start([refid:subdivision.objid, data:subdivision])[0]
+		subdivision.taskid = subdivision.task.objid 
+		subdivision.taskstate = subdivision.task.state
+
+		def requirements = ruleReqSvc.getRequirements([
+			txntype 		: subdivision.txntype,
+			attributes		: info.attributes 
+		])
+
+		requirements.unique().each{
+			em_requirement.create([
+				objid  				: 'R' + new java.rmi.server.UID(),
+				requirementtypeid 	: it.objid,
+				handler 			: it.handler,
+				refid 				: subdivision.objid,
+				value_objid 		: null,
+				value_txnno			: null,
+				value_txndate 		: null,
+				value_txnamount 	: 0.0,
+				value_remarks 		: null,
+				complied 			: 0,
+			])
+		}
+	}
+
+
+	@After(pattern="SubdivisionWorkflowService.openTask") 
+	public void handleWorkflowOpen( evt ) {
+		def task = evt.result 
+		if ( ! task.refid ) throw new Exception('RefId is required.')
+		task.data = subdivisionSvc.open([objid:task.refid])
+		task.data.taskid = task.objid 
+		task.data.taskaction = task.state
+		task.data.assignee = task.assignee 
+	}
+
+
+	@Before(pattern="SubdivisionWorkflowService.signal", eval="#{args[0].state.equalsIgnoreCase('receiver') && args[0].action != 'delete'}", index=10) 
+	public void validateReceiveInfo( evt ) {
+		def subdivision = evt.args[0].data
+		reqSvc.checkCompliance(subdivision.objid)
+	}
+
+	@After(pattern="SubdivisionWorkflowService.signal", eval="#{args[0].action =='delete'}", index=10) 
+	public void deleteSubdivision( evt ) {
+		def subdivision = evt.args[0].data
+		subdivisionSvc.delete(subdivision)
+	}
+
+	@After(pattern="SubdivisionWorkflowService.signal", eval="#{args[0].action =='disapprove'}", index=10) 
+	public void disapproveSubdivision( evt ) {
+		def subdivision = evt.args[0].data
+		subdivisionSvc.delete(subdivision)
+	}
+
+	@Before(pattern="SubdivisionWorkflowService.signal", eval="#{args[0].state.equalsIgnoreCase('examiner') && !args[0].action?.matches('return.*')}", index=10) 
+	public void validateExaminationInfo( evt ) {
+		def subdivision = evt.args[0].data
+		def findings = examinationSvc.getFindings(subdivision.objid)
+		if (!findings)
+			throw new Exception('Examination Finding is required.')
+	}
+
+
+	@Before(pattern="SubdivisionWorkflowService.signal", eval="#{args[0].state.equalsIgnoreCase('taxmapper') && !args[0].action?.matches('return.*')}", index=10) 
+	public void validateTaxmappingInfo( evt ) {
+		def subdivision = evt.args[0].data
+
+		subdivisionSvc.checkCompletedAssistance([objid: subdivision.objid, taskstate: 'taxmapper'])
+
+		//check landpin count, at least 2
+		def lands = subdivisionSvc.getSubdividedLands(subdivision.objid)
+		if (lands.size() <= 1)
+			throw new Exception('Subdivision requires at least two (2) Subdivided Lands.')
+
+
+		//check all affected rpus are assigned with new PIN
+		def nopinRpus = em.getAffectedRpuWithNoPin(subdivision)
+		if (nopinRpus)
+			throw new Exception('Affected RPU with TD No. ' + nopinRpus[0].tdno + ' is not assigned with a new PIN.');
+	}
+
+	@Before(pattern="SubdivisionWorkflowService.signal", eval="#{args[0].state.matches('appraiser|provappraiser') &&  ! args[0].action?.matches('return.*')}", index=15)
+	public void validateAppraisalInfo( evt ) {
+		def subdivision = evt.args[0].data
+		subdivisionSvc.checkCompletedAssistance([objid: subdivision.objid, taskstate: 'appraiser'])
+		subdivisionSvc.validateSubdividedLands(subdivision)
+		validateSubdividedLand(subdivision)
+		validateAffectedRpu(subdivision)
+
+	}
+
+
+	@After(pattern="FAASService.(updateFaas)") 
+	public void afterFaasUpdate( evt ) {
+		def faas = evt.args[0]
+		updateAssistantItemStatus(faas)
+	}
+
+	void updateAssistantItemStatus(faas) {
+		if (!faas.assistant) return
+		def item = em.findAssistItemStatus([subdivisionid: faas.assistant.parent.objid, assistid: faas.assistant.objid])
+		if (item) {
+			item.parcelcreated = item.appraisedcount
+			em_assist_item.update(item)
+		}
+	}
+
+	void validateSubdividedLand(subdivision){
+		def lands = em.getSubdividedLandInfoForValidation(subdivision);
+		lands.each{
+			if (it.ldcount == 0 )
+				throw new Exception('Subdivided Land ' + it.newpin + ' is not yet appraised.')
+			if (!it.memoranda)
+				throw new Exception('Memoranda for Subdivided Land ' + it.newpin + ' is required.')
+		}
+	}
+
+	void validateAffectedRpu(subdivision){
+		def rpus  = em.getAffectedRpuWithNoPin(subdivision)
+		rpus.each{
+			if (! it.memoranda){
+				def pin = it.newpin + '-' + it.newsuffix
+				throw new Exception('Memoranda is required for Affected RPU with New PIN ' + pin + '.')
+			}
+		}
+	}
+
+}
+

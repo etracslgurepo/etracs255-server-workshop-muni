@@ -1,0 +1,28 @@
+import com.rameses.annotations.*;
+
+class UserNotificationService {
+	
+	@Service(value='NotificationService', connection='notification_proxy')  
+	def proxySvc;
+
+	public def getList( params ) { 
+		params.recipienttype = 'user';
+		return proxySvc.getList( params ); 
+	} 
+
+	public def addMessage( params ) {
+		proxySvc.addMessage( params ); 
+	} 
+
+	public void removeMessage( params ) {
+		proxySvc.removeMessage( params ); 
+	} 
+
+	public void getNotified( params ) {
+		proxySvc.getNotified( params ); 
+	} 
+
+	public void importMessage( params ) {
+		proxySvc.importMessage( params ); 
+	} 
+}

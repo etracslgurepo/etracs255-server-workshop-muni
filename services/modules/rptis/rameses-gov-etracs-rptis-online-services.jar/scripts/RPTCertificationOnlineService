@@ -1,0 +1,411 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import com.rameses.services.extended.*
+
+class RPTCertificationOnlineService {
+	@Service('DateService')
+	def dtSvc
+
+	@Service('Var')
+	def var
+
+	@Service('RPTUtil')
+	def util
+
+	@Service('EntityService')
+	def entitySvc
+
+	@Service('RPTCertificationService')
+	def certSvc
+
+	@Service('LandTaxReportTaxClearanceService')
+	def clearanceSvc
+
+	@Service('RPTAssessmentNoticeService')
+	def noaSvc
+
+	@Service('ReportParameterService')
+	def reportSvc
+
+	@DataContext('faas')
+	def em_faas
+
+	@DataContext('faas_previous')
+	def em_faas_previous
+
+	@DataContext('rptcertification')
+	def em_cert
+
+	@DataContext('rptcertification_online')
+	def em_cert_online
+
+	@DataContext('assessmentnotice')
+	def em_noa
+
+	@DataContext('assessmentnotice_online')
+	def em_noa_online
+
+	@DataContext('rptledger')
+	def em_ledger
+
+
+	@ProxyMethod
+	public def issueTrueCopy( params ) {
+		def onlineCert = getOnlineCert(params, 'truecopy') 
+		if (onlineCert) {
+			return onlineCert
+		} else {
+			def cert = initTrueCopy(params)
+			def entity = entitySvc.open([objid: params.entityid])
+			entity.address = entity.address.text
+			cert.taxpayer = entity
+			cert.requestedby = entity.name
+			cert.requestedbyaddress = entity.address
+			certSvc.createCertification(cert)
+			cert.items.each { certSvc.createItem(it) }
+			return createOnlineCertification(cert, params)
+		}
+	}
+
+	@ProxyMethod
+	public def issueTaxClearance( params ) {
+		def onlineCert = getOnlineCert(params, 'rpttaxclearance') 
+		if (onlineCert) {
+			return onlineCert
+		} else {
+			def cert = initTaxClearance(params)
+			def entity = entitySvc.open([objid: cert.entityid])
+			entity.address = entity.address.text
+			cert.taxpayer = entity
+			cert.requestedby = params.requestedby?.name ? params.requestedby.name :  entity.name
+			cert.requestedbyaddress = params.requestedby?.address ? params.requestedby.name :  entity.address
+			clearanceSvc.createClearance(cert)
+			return createOnlineCertification(cert, params)
+		}
+	}
+
+	@ProxyMethod
+	public def issueNOA(params) {
+		def onlineNoa = getOnlineNoa(params) 
+		if (onlineNoa) {
+			return onlineNoa
+		} else {
+			if (!params.faases) params.faases = [params.faas]
+			def noa = initNoa(params)
+			noaSvc.create(noa)
+			return createOnlineNoa(noa, params)
+		}
+	}
+
+	def validDocTypes = ['tdtruecopy', 'rptnoa', 'rpttaxclearance'];
+
+	def generateTrueCopy = {params ->
+		def result = [];
+		params.faases.each{ faas -> 
+			params.faas = faas;
+			result << issueTrueCopy(params);
+		}
+		return result;
+	}
+
+	def generateNOA = {params ->
+		return issueNOA(params);
+	}
+
+	def generateTaxClearance = {params ->
+		return issueTaxClearance(params);
+	}
+
+	def doctypeHandlers = [
+		tdtruecopy: generateTrueCopy,
+		rptnoa: generateNOA,
+		rpttaxclearance: generateTaxClearance,
+	]
+
+	@ProxyMethod
+	public def generateDocs(params) {
+		if (!params.faases) throw new Exception("faases must be specified");
+		def doctypes = params.remove("doctypes");
+		if (!doctypes) doctypes = validDocTypes;
+
+		def faases = params.remove("faases");
+		def result = [:]
+		
+		doctypes.each{doctype ->
+			def p = [:];
+			p.putAll(params);
+			p.faases = faases;
+			def handler = doctypeHandlers[doctype];
+			if (!handler) throw new Exception('Handler not defined for doctype ' + doctype);
+			result[doctype] = handler(p);
+		}
+
+		return result;
+	}
+
+	@ProxyMethod
+	public void postPayment( cert ) {
+		required('objid', cert.objid)
+		required('orno', cert.orno)
+		required('ordate', cert.ordate)
+		required('oramount', cert.oramount)
+		cert.state = 'PAID'
+		em_cert.update(cert)
+		em_cert_online.update(cert)
+		em_noa_online.update(cert)
+	}
+
+	@ProxyMethod
+	public def open(cert) {
+		return em_cert_online.read(cert)
+	}
+
+	def createOnlineCertification(cert, params) {
+		def onlineCert = [
+			objid : cert.objid,
+			state : 'FORPAYMENT',
+			txnno : cert.txnno,
+			reftype: params.reftype,
+			refid: params.refid,
+			refno: params.refno,
+			refdate: params.refdate
+		]
+		em_cert_online.create(onlineCert)
+		return onlineCert
+	}
+
+	def initTrueCopy(params) {
+		required('faas', params.faas);
+		required('faas.objid', params.faas.objid);
+		params.faas = em_faas.find([objid: params.faas.objid]).first();
+		if (!params.faas) throw new Exception("FAAS does not exist or has alrady been deleted.");
+		params.entityid = params.faas.taxpayer.objid;
+		required('refid', params.refid);
+		required('reftype', params.reftype);
+		required('refno', params.refno);
+		required('refdate', params.refdate);
+		required('purpose', params.purpose);
+
+		validateFaas(params.faas);
+
+		params.certid = 'RC' + new java.rmi.server.UID()
+		params.faases = []
+		params.faases << [
+			rptcertificationid: params.certid,
+			refid: params.faas.objid
+		]
+
+		def reportParams = reportSvc.getStandardParameter()
+
+		def certifiedby = reportParams.ASSESSORNAME
+		def certifiedbytitle = reportParams.ASSESSORTITLE
+
+		if (!certifiedby) {
+			certifiedby = var.ASSESSORCERTIFIEDBY
+			certifiedbytitle = var.ASSESSORCERTIFIEDBYTITLE
+		}
+
+		if (!certifiedby) {
+			certifiedby = 'SYSTEM'
+			certifiedbytitle = 'SYSTEM'
+		}
+
+		return [
+			objid            : params.certid,
+        	opener           : 'tdtruecopy',
+        	certifiedby      : certifiedby,
+        	certifiedbytitle : certifiedbytitle,
+        	purpose          : params.purpose,
+			asofyear         : dtSvc.getServerYear(),
+			faasid 			 : params.faas.objid,
+			items 			 : params.faases,
+			oramount         : 0.0,
+        	stampamount      : 0.0,
+        	office           : 'assessor',
+        	official         : false,
+        	_online 		 : true,
+		]
+	}
+
+	def initTaxClearance(params) {
+		required('faases', params.faases);
+		required('refid', params.refid);
+		required('reftype', params.reftype);
+		required('refno', params.refno);
+		required('refdate', params.refdate);
+		required('purpose', params.purpose);
+
+		def currdate = dtSvc.parseCurrentDate();
+		params.certid = 'RC' + new java.rmi.server.UID()
+
+		def reporttype = null;
+
+		params.faases.each {
+			validateFaas(it)
+			def ledger = getLedger(it)
+			if (ledger) {
+				it.rptcertificationid = params.certid 
+				it.refid = it.objid
+				it.putAll(ledger)
+
+				if (!util.isTrue(ledger.taxable)) {
+					reporttype = [name: 'exempt', title: 'EXEMPT']
+				} else if (ledger.totalav == 0) {
+					reporttype = [name: 'zerovalue', title: 'ZERO VALUE']
+				} else if (ledger.txntype.objid == 'ND') {
+					reporttype = [name: 'newdiscovery', title: 'NEW EFFECTIVE']
+				} else {
+					reporttype = [name:"fullypaid", title:"FULL PAYMENT"]
+				}
+			}
+		}
+
+		def faasledger = params.faases[0];
+		if (reporttype.name == "fullypaid") {
+			if (faasledger.lastyearpaid < currdate.year) {
+				throw new Exception('Ledger is not yet paid for the current year.')
+			}
+			if (faasledger.lastyearpaid == currdate.year && faasledger.lastqtrpaid < currdate.qtr) {
+				throw new Exception('Ledger is not yet paid for the current quarter.')
+			}
+		}
+
+		def treasurer = getTreasurer()
+		def certifiedby = treasurer ? treasurer.name : "SYSTEM"
+		def certifiedbytitle = treasurer ? treasurer.title : "SYSTEM"
+		
+		return [
+			objid            : params.certid,
+        	opener           : 'rpttaxclearance',
+        	certifiedby      : certifiedby,
+        	certifiedbytitle : certifiedbytitle,
+        	purpose          : params.purpose,
+			asofyear         : currdate.year,
+			year 			 : currdate.year,
+			qtr 			 : faasledger.lastqtrpaid != 4 ? faasledger.lastqtrpaid : 4,
+			items 			 : params.faases,
+        	oramount         : 0.0,
+        	stampamount      : 0.0,
+        	office           : 'landtax',
+        	official         : false,
+        	_online 		 : true,
+        	reporttype		 : reporttype,
+        	properties 		 : [reporttype: reporttype],
+			entityid 		 : params.faases[0].taxpayer.objid,
+			addlinfo		 : reporttype.title,
+		]
+	}
+
+	def getLedger(faas) {
+		def ledger = findLedger([faasid: faas.objid])
+		if (ledger) return ledger
+
+		//try ledger by prevfaas 
+		def prevfaas = em_faas_previous.find([faasid: faas.objid]).first();
+		if (prevfaas) {
+			ledger = findLedger([faasid: prevfaas.prevfaasid])
+			if (ledger) return ledger
+		}
+
+		//try faas.prevtdno 
+		return findLedger([prevtdno: faas.tdno])
+	}
+
+	def findLedger(findBy) {
+		return em_ledger.select('lastyearpaid,lastqtrpaid,taxable,totalav,txntype.objid')
+				.find(findBy)
+				.first()
+	}
+
+	def initNoa(params) {
+		required('faases', params.faases)
+		params.faases.each{ faas ->
+			validateFaas(faas)
+		}
+
+		def noa = [objid: 'NOA' + new java.rmi.server.UID()]
+		noa.taxpayer = params.faases[0].taxpayer
+		noa._online = true
+		noa.items = []
+		params.faases.each{ faas ->
+			noa.items << [
+				faasid: faas.objid,
+				faas: faas,
+				effectivityyear: faas.effectivityyear,
+			]
+		}
+		return noa
+	}
+
+	def createOnlineNoa(noa, params) {
+		def onlineNoa = [
+			objid : noa.objid,
+			state : 'FORPAYMENT',
+			txnno : noa.txnno,
+			reftype: params.reftype,
+			refid: params.refid,
+			refno: params.refno,
+			refdate: params.refdate
+		]
+		em_noa_online.create(onlineNoa)
+		return onlineNoa
+	}	
+
+	void required(caption, value) {
+		if (!value) throw new Exception(caption + ' must be specified');
+	}
+
+	void validateFaas(entity) {
+		def fields = 'objid,state,tdno,effectivityyear,taxpayer.objid,taxpayer.name,taxpayer.address.text,administrator.name,administrator.address'
+		def faas = em_faas.select(fields).find([objid: entity.objid]).first()
+		if (!faas) {
+			//resolve faas by tdno
+			faas = em_faas.select(fields).find([tdno: entity.objid]).first()
+			if (faas) {
+				entity.objid = faas.objid
+				entity.faas = faas
+			}
+		}
+		if (!faas) throw new Exception('FAAS ' + entity.tdno + ' does not exist or has been deleted.')
+		if (faas.state.matches('INTERIM|PENDING')) throw new Exception('FAAS ' + entity.tdno + ' is not yet approved.')
+		entity.putAll(faas)
+	}
+
+	def getOnlineCert(params, certtype) {
+		def onlineCert = em_cert_online.find([refid: params.refid]).first()
+		if (onlineCert) {
+			def mainCert = em_cert.select('opener').find([objid: onlineCert.objid]).first()
+			if (mainCert?.opener == certtype) {
+				return onlineCert
+			}
+		} 
+		return null
+	}
+
+	def getOnlineNoa(params) {
+		def onlineNoa = em_noa_online.find([refid: params.refid]).first()
+		if (onlineNoa) {
+			return onlineNoa
+		} 
+		return null
+	}
+
+
+	
+	@DataContext("city")
+	def em_city
+
+	@DataContext("municipality")
+	def em_muni
+
+	@DataContext("province")
+	def em_prov
+
+	@ProxyMethod
+	public def getTreasurer() {
+		def lgu = em_city.select("treasurer.*").where("1=1").first();
+		if (!lgu) lgu = em_prov.select("treasurer.*").where("1=1").first();
+		if (!lgu) lgu = em_muni.select("treasurer.*").where("1=1").first();
+		return lgu?.treasurer;
+	}
+}

@@ -1,0 +1,22 @@
+<schema>
+	<element tablename="rpt_sales_data">
+		<!-- links to faas.objid -->
+		<field name="objid" primary="true"/>
+        <field name="seller_name" required="true" caption="Seller" searchable="true" indexex="true"/>
+        <field name="seller_address" required="true"/>
+        <field name="buyer_name" required="true" caption="Buyer" searchable="true"  indexex="true"/>
+        <field name="buyer_address" required="true"/>
+        <field name="saledate" required="true" caption="Date of Sale"/>
+        <field name="amount" required="true" type="decimal" caption="Sale Amount" />
+        <field name="remarks" />
+
+        <complex name="faas" ref="faas_list" jointype="many-to-one" required="false"
+            includefields="state,tdno,displaypin,barangay,owner.name,totalmv,totalav,titleno,cadastrallotno,totalareaha,totalareasqm" 
+        >
+            <key field="objid" target="objid" />
+        </complex>
+    </element>
+</schema>
+
+
+

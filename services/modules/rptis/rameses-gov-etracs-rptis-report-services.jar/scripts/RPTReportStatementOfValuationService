@@ -1,0 +1,42 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class RPTReportStatementOfValuationService
+{
+	@Env 
+	def env 
+
+    @ActiveDB('rptreport_statement_of_valuation')
+    def em
+
+    @Service('RPTUtil')
+    def util
+
+
+    @Async
+	@ProxyMethod
+	public Map buildReport( params ) {
+		util.required('Month', params.month)
+
+		params.lguid = (params.lgu ? params.lgu.objid : '%')
+		params.lguname = (params.lgu ? params.lgu.fullname : 'ALL MUNICIPALITIES')
+		util.buildStartEndDateFilter(params)
+		
+		def p = [
+			TITLE 		: 'STATEMENT OF VALUATION ',
+			SUBTITLE	: 'For the Month of ' + params.month.caption + ', ' + params.year,
+			FORLGUNAME  : (params.lguid != env.ORGID ? params.lguname : ''),
+		]
+
+		def items = em.getList(params).each { 
+			it.title = it.title.toUpperCase()
+			if (it.isitem == 1) it.title = '     ' + it.title 
+		}
+
+		return [
+			parameters  : p, 
+			reportdata  : items,
+		]
+	}
+}

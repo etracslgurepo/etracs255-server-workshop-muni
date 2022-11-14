@@ -1,0 +1,121 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import java.util.concurrent.*;
+
+class MunicipalitySubdivisionSupport2Service
+{
+	@Env
+	def env
+
+    @Service('RPTNotificationService')
+    def svc 
+	
+	@Service('SubdivisionSupport2Service')
+	def supportSvc
+
+    /* intercepted by Subdivision Sync Facility */
+    @ProxyMethod
+    public def resendToProvince( subdivision ) {
+        return subdivision;
+    }
+
+    @ProxyMethod
+    public void submitToProvince( subdivision ) {
+        def queue = new LinkedBlockingQueue();
+        subdivision.putAll(supportSvc.buildSubdivisionData(subdivision))
+        sendSubdivisionFaases(subdivision)
+        queue.poll(1, TimeUnit.SECONDS)
+        sendSubdivision(subdivision)
+        queue.poll(1, TimeUnit.SECONDS)
+        sendExaminations(subdivision)
+        sendRequirements(subdivision)
+    }
+
+    void sendSubdivision(subdivision){
+        def asyncreq    = svc.createAsyncRequest('ProvinceSubdivisionRemoteService', 'postSubdivisionForApproval', subdivision, svc.buildEnvMap(env))
+        def msg         = svc.createAsyncMessage(asyncreq[0])
+        msg.txnid       = subdivision.objid
+        msg.txnno       = subdivision.txnno 
+        msg.groupid     = 'assign-receiver'
+        msg.filetype    = 'subdivision'
+        msg.message     = 'Subdivision No. ' + subdivision.txnno + ' (assign-receiver)'
+        msg.messagetype = 'subdivision-forprovapproval'
+        svc.sendAsyncMessage(msg)
+        println 'Sending subdivision ' + subdivision.txnno + ' to municipality.'
+    }
+
+    void sendExaminations(subdivision){
+        def data = supportSvc.buildExaminations(subdivision)
+        def asyncreq    = svc.createAsyncRequest('ProvinceSubdivisionRemoteService', 'postExaminations', data, svc.buildEnvMap(env))
+        def msg         = svc.createAsyncMessage(asyncreq[0])
+        msg.txnid       = subdivision.objid
+        msg.txnno       = subdivision.txnno 
+        msg.groupid     = null 
+        msg.filetype    = null 
+        msg.message     = 'Examinations for Subdivision No. ' + subdivision.txnno 
+        msg.messagetype = 'subdivision-examinations'
+        svc.sendAsyncMessage(msg)
+        println 'Sending subdivision ' + subdivision.txnno + ' examinations to municipality.'
+    }
+
+    void sendRequirements(subdivision){
+        def requirements = supportSvc.getRequirements(subdivision)
+        requirements.each{
+            def data = supportSvc.buildRequirement(it)
+            def asyncreq    = svc.createAsyncRequest('ProvinceSubdivisionRemoteService', 'postRequirement', data, svc.buildEnvMap(env))
+            def msg         = svc.createAsyncMessage(asyncreq[0])
+            msg.txnid       = subdivision.objid
+            msg.txnno       = subdivision.txnno 
+            msg.groupid     = null 
+            msg.filetype    = null 
+            msg.message     = 'Requirement for Subdivision No. ' + subdivision.txnno 
+            msg.messagetype = 'subdivision-requirement'
+            svc.sendAsyncMessage(msg)
+        }
+        println 'Sending subdivision ' + subdivision.txnno + ' requirements to municipality.'
+    }
+
+    void sendSubdivisionFaases(subdivision){
+        subdivision.subdividedlands.each{
+            sendSubdivisionFaas(subdivision, it)
+        }
+        subdivision.affectedrpus.each{
+            sendSubdivisionFaas(subdivision, it)
+        }
+        println 'Sending subdivision ' + subdivision.txnno + ' faases to municipality.'
+    }
+
+    void sendSubdivisionFaas(subdivision, item){
+        def data = supportSvc.buildFaasData(item)
+        def asyncreq    = svc.createAsyncRequest('ProvinceSubdivisionRemoteService', 'postFaasData', data, svc.buildEnvMap(env))
+        def msg         = svc.createAsyncMessage(asyncreq[0])
+        msg.txnid       = subdivision.objid
+        msg.txnno       = subdivision.txnno 
+        msg.groupid     = null 
+        msg.filetype    = null 
+        msg.message     = 'New FAAS ' + data.tdno + ' for Subdivision No. ' + subdivision.txnno 
+        msg.messagetype = 'subdivision-faas'
+        svc.sendAsyncMessage(msg)
+    }
+
+
+    @ProxyMethod 	
+	public def resubmitToProvince( subdivision ) {
+        subdivision._resubmitted = true 
+        submitToProvince(subdivision)
+        return subdivision;
+        println 'Resubmit Subdivision to province....'
+	}
+
+    @ProxyMethod
+    public void resubmitRequirements( subdivision ){
+        sendRequirements(subdivision)
+    }
+
+    @ProxyMethod
+    public def resendRequirements( subdivision ){
+        return subdivision
+    }
+
+}
+

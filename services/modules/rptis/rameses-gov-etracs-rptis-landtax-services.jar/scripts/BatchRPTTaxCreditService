@@ -1,0 +1,145 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import com.rameses.util.*
+import com.rameses.services.extended.*
+
+class BatchRPTTaxCreditService
+{
+    @Env
+    def env
+
+    @DataContext('batch_rpttaxcredit')
+    def em_batch
+
+    @DataContext('rpttaxcredit')
+    def em_credit
+
+    @DataContext('batch_rpttaxcredit_ledger')
+    def em_batch_ledger
+
+    @DataContext('batch_rpttaxcredit_ledger_posted')
+    def em_batch_ledger_posted
+
+    @Service('RPTBillingService')
+    def billingSvc
+
+    @Service('NumberService')
+    def numSvc
+
+    @Service('DateService')
+    def dtSvc
+
+    @Service('SequenceService')
+    def seqSvc
+
+    @Service('PersistenceService')
+    def persistence
+
+    @Service("RPTTaxCreditService")
+    def creditSvc
+
+
+    @ProxyMethod
+    public def beforeCreate(batch) {
+        batch.txnno = getNextSeries()
+        batch.txndate = dtSvc.serverDate
+        batch.amtapplied = 0
+
+        if (batch.validity) {
+            def validity = dtSvc.parse('yyyy-MM-dd', batch.validity)
+            if (validity < dtSvc.serverDate) {
+                throw new Exception('Validity Date should be greater than current date.')
+            }
+        }
+    }
+
+    @ProxyMethod
+    public void buildLedgersForCredits(entity) {
+        em_batch.insertLedgersForCredits(entity)
+    }
+    
+    @ProxyMethod
+    public def getBarangays(entity) {
+        return em_batch.getBarangays(entity).each{
+            it.completed = it.forpostingcount == 0
+        }
+    }
+
+    @ProxyMethod
+    public def getLedgers(params) {
+        return em_batch_ledger.find([parentid: params.batchid, barangayid: params.barangayid]).list()
+    }
+
+    @ProxyMethod
+    public def postTaxCredit(params) {
+        try {
+            if (creditSvc.checkTaxCreditPosted([
+                rptledger: params.rptledger, 
+                creditedyear: params.batch.creditedyear
+            ])) {
+                return [status: "OK"]
+            }
+
+            def credit = createTaxCredit(params)
+            creditSvc.approve(credit)
+            creditSvc.apply(credit)
+            em_batch_ledger_posted.create(params.rptledger)
+            em_batch_ledger.find([objid: params.rptledger.objid]).delete()
+            return [status: "OK"]
+        } catch (e) {
+            em_batch_ledger
+                .find([objid: params.rptledger.objid])
+                .update([state: "ERROR", error: e.message])
+            return [status: e.message]
+        }
+    }
+
+    def createTaxCredit(params) {
+        def batch = params.batch
+        def rptledger = params.rptledger
+
+        def credit = [_schemaname: 'rpttaxcredit']
+        credit.state = 'DRAFT'
+        credit.type = 'TAX_ADJUSTMENT'
+        credit.reftype = 'tax_adjustment'
+        credit.refid = batch.objid
+        credit.refno = batch.txnno
+        credit.refdate = batch.txndate
+        def creditinfo = getCreditInfo(params)
+        credit.amount = creditinfo.credit
+        credit.balance = credit.amount
+        credit.amtapplied = 0
+        credit.rptledger = rptledger
+        credit.remarks = batch.reason
+        credit.approvedby_objid = env.USERID
+        credit.approvedby_name = env.FULLNAME
+        credit.approvedby_title = env.JOBTITLE
+        credit.info = [
+            batchid: batch.objid,
+            creditedyear: batch.creditedyear,
+            annualtax: creditinfo.taxdue,
+            av: creditinfo.av,
+            rate: batch.rate,
+            rateoflevy: creditinfo.rateoflevy,
+        ]
+        return persistence.create(credit)
+    }
+
+    def getCreditInfo(params) {
+        return creditSvc.getCreditInfo([
+            rptledger: params.rptledger,
+            creditedyear: params.batch.creditedyear,
+            rate: params.batch.rate
+        ])
+    }
+
+    def getNextSeries() {
+        def lguid = env.ORGID.replaceAll('-','')
+        def key = 'RPT-BATCH-CREDIT-' + lguid
+        return 'BTC' + lguid + seqSvc.getNextFormattedSeries(key)
+    }
+
+
+}
+
+

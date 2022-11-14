@@ -1,0 +1,11 @@
+<schema adapter="main">
+
+	<element tablename="entity_relation_type"> 
+		<field name="objid" primary="true"/> 
+		<field name="gender" /> 
+		<field name="inverse_any" /> 
+		<field name="inverse_male" /> 
+		<field name="inverse_female" /> 
+	</element> 
+
+</schema>

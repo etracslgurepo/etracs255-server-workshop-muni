@@ -1,0 +1,48 @@
+import com.rameses.annotations.*;
+import groovy.text.*;
+
+class JasperEmailQueueService {
+	
+	@DataContext("sys_email_queue")
+	def emailEm;
+
+	@DataContext("sys_email_template")
+	def templateEm;
+
+	@Service("DateService")
+	def dateSvc;
+
+	@Env
+	def env;
+
+	@ProxyMethod
+	public def send( def o ) {
+		if( !o.refid ) throw new Exception("refid is required");
+		if( !o.reportid ) throw new Exception("reportid is required");
+		if( !o.to ) throw new Exception("to is required");
+
+		o.dtsent = dateSvc.getServerDate();
+		o.state = 0;
+
+		if( !o.subject || !o.message  ) {
+			if(!o.info) throw new Exception("info is required. info must be a map");
+
+			//retreive the email template
+			def tmp = templateEm.find( [objid: o.reportid ]).first();
+			if(!tmp) throw new Exception("email template for " + o.reportid + " not found"  );
+			if(!tmp.subject) throw new Exception("please indicate subject in " + o.reportid  );
+			if(!tmp.message) throw new Exception("please indicate message in " + o.reportid  );
+
+			def templateEngine = new groovy.text.SimpleTemplateEngine(); 
+			if(!o.subject ) o.subject = templateEngine.createTemplate(tmp.subject).make(o.info)?.toString(); 
+			if(!o.message ) o.message = templateEngine.createTemplate(tmp.message).make(o.info)?.toString(); 
+		}
+		emailEm.create( o );
+	}
+
+    @ProxyMethod
+    public def reactivate( def o ) {
+        emailEm.find( [objid: o.objid ]).update([state:0, errmsg: "{NULL}"]) 
+    }
+	
+}

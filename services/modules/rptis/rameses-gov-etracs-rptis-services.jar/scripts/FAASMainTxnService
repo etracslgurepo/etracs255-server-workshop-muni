@@ -1,0 +1,51 @@
+import com.rameses.annotations.*
+import com.rameses.services.extended.*
+
+
+class FAASMainTxnService
+{
+	@DataContext('subdivision')
+	def em_subdivision;
+	
+	@DataContext('subdivision_subdividedland')
+	def em_subdividedland;
+	
+	@DataContext('subdivision_affectedrpu')
+	def em_subdivisionaffectedrpu;
+	
+	@DataContext('consolidation')
+	def em_consolidation;
+
+
+	@ProxyMethod
+	public def getEntity(param) {
+		if (!param.objid) throw new Exception('objid param must be specified');
+		if (!param.doctype) throw new Exception('doctype param must be specified');
+
+		if ('subdivision'.equalsIgnoreCase(param.doctype)) {
+			return getSubdivision(param)
+		}
+		throw new Exception('Viewing ' + param.doctype + ' is not currently supported.')
+	}
+
+
+	def getSubdivision(param) {
+			def entity = em_subdividedland.select('subdivisionid').find([newfaasid: param.objid]).first();
+			if (!entity) {
+				entity = em_subdivisionaffectedrpu.select('subdivisionid').find([newfaasid: param.objid]).first();
+			}
+			if (!entity) {
+				throw new Exception('Subdivision record does not exist or has already been deleted.')
+			}
+
+			def subdivision = em_subdivision.select('objid,state').find([objid: entity.subdivisionid]).first();
+			if (subdivision.state == 'APPROVED') {
+				subdivision.opener = 'subdivision:closedwf:open'
+			} else {
+				subdivision.opener = 'subdivision:open'
+			}
+
+			return subdivision;
+	}
+}
+

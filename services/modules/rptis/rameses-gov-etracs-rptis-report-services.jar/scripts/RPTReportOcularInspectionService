@@ -1,0 +1,54 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import com.rameses.util.*
+import com.rameses.services.extended.*
+import com.rameses.custom.impl.*;
+
+
+class RPTReportOcularInspectionService
+{
+	@ActiveDB('rptreport_ocularinspection')
+	def em
+	
+	@Env 
+	def env
+
+	@Service('LGUService')
+	def lguSvc 
+
+
+	@ProxyMethod
+	public def buildReport(finding){
+		def reportdata = em.findOcularInspectionInfo(finding)
+		if (!reportdata) throw new Exception('Record does not exist or has already been deleted.')
+		if(reportdata.inspectors && reportdata.inspectors != 'null')
+			reportdata.inspectors = JsonUtil.toObject(reportdata.inspectors)
+		else
+			reportdata.inspectors = []
+		buildLocation(reportdata)
+		return reportdata
+	}
+
+
+	void buildLocation(reportdata){
+		def muni = lguSvc.lookupMunicipalityById(reportdata.barangay?.parentid)
+		def district = lguSvc.lookupDistrictById(reportdata.barangay?.parentid)
+		def prov = lguSvc.lookupProvinceById(muni?.parentid)
+		def city = lguSvc.lookupCityById(district?.parentid)
+		
+		reportdata.location = '';
+
+		if (reportdata.purok)
+			reportdata.location += reportdata.purok;
+
+		if (reportdata.street){
+			if (reportdata.location) reportdata.location += ', '	
+			reportdata.location +=  reportdata.street 
+		}
+
+		if (reportdata.location) reportdata.location += ', '	
+		reportdata.location += reportdata.barangay.name + ', ' 
+		reportdata.location += ( muni ? muni.name + ', ' : '') + ( prov ? prov.name : city?.name )
+	}
+}
+

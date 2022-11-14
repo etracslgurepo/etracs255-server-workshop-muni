@@ -1,0 +1,14 @@
+<schema adapter="main">
+    <element tablename="subdivision_cancelledimprovement">
+        <field name="objid" primary="true" />
+        <field name="parentid" required="true"/>
+        <field name="faasid" required="true"/>
+        <field name="remarks" />
+        <field name="lasttaxyear" type="integer" />
+        <field name="lguid" required="true" />
+        <field name="reason_objid" required="true" />
+        <field name="cancelledbytdnos"/>
+        <field name="cancelledbypins"/>
+    </element>
+</schema>
+

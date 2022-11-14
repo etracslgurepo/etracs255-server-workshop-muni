@@ -1,0 +1,53 @@
+import com.rameses.annotations.*;
+
+class BusinessCapturePaymentService {
+	
+	@ActiveDB("business_receivable")
+	def em;
+
+	@Service("BusinessPaymentService")
+	def pmtSvc;
+
+	@Service("BusinessApplicationService")
+	def appSvc;
+
+	@Service("BusinessApplicationWorkflowService")
+	def workflowSvc;
+
+	@ProxyMethod
+	public def getReceivables(def app) {
+		//search by appno
+		def p = [appno: app.appno];
+		p.filter = ''' app.appno=$P{appno} ''';
+		def list = em.getReceivables( p );
+		if(!list)
+			throw new Exception("There are no receivables for payment found. " + app.paymentdate );
+		return list;
+	}
+
+	@ProxyMethod
+	public def post(o ) {
+		o.items.each {
+			it.amtdue = it.amount;
+		}
+		pmtSvc.create( o );
+
+		def app = appSvc.open([ objid: o.applicationid ]);
+		if (app.state == 'COMPLETED') return;
+
+		def stat = appSvc.checkReleaseStatus([ 
+			objid: app.objid, apptype: app.apptype, 
+			txnmode: app.txnmode, appyear: app.appyear, 
+			receiptdate: o.refdate 
+		]); 
+
+		if ( stat.canRelease == true ) { 
+			def tsk = workflowSvc.getTaskFromAppid([ applicationid: app.objid ]); 
+			if ( tsk?.state == 'payment' ) { 
+				tsk.action = 'release'; 
+				tsk.data = [objid: app.objid, business: app.business]; 
+				workflowSvc.signal( tsk ); 
+			} 
+		} 
+	} 
+}

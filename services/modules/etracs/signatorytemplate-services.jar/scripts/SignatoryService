@@ -1,0 +1,69 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+
+class SignatoryService
+{
+	@PersistenceContext('main')
+	def em
+	
+	def SCHEMANAME = 'signatory:signatory'
+	
+	@ProxyMethod
+	public def getList( params ) {		
+		return em.sqlContext.createNamedQuery( 'signatory:getList' )
+										.setParameter( 'doctype', params.doctype )
+										.resultList
+	}
+
+	@ProxyMethod
+	public def getUserAsSignatories( params ) {
+		params.searchtext = (params.searchtext ? params.searchtext : '') + '%'
+		return em.sqlContext.createNamedQuery( 'signatory:getUserAsSignatories' )
+						.setParameters(params)
+						.resultList
+	}
+	
+	@ProxyMethod
+	public def create( signatory ) {
+		signatory.state = 'APPROVED'
+		
+		em.validate( SCHEMANAME, signatory )
+		em.create( SCHEMANAME, signatory )
+		
+		return signatory
+	}
+	
+	@ProxyMethod
+	public def delete( params ) {
+		em.delete( SCHEMANAME, params.signatory )
+
+		//renumber
+		params.signatories.remove(params.signatory)
+		int index = 1
+		params.signatories.each{
+			it.indexno = index
+			updateSignatoryIndexNo(it)
+			index += 1
+		}
+		return params.signatories 
+	}
+	
+	@ProxyMethod
+	public def changeIndexNo( params ) {
+		def index1 = params[0].indexno
+		params[0].indexno = params[1].indexno
+		params[1].indexno = index1
+		
+		params.each {
+			updateSignatoryIndexNo( it )
+		}
+		
+		return getList( [doctype:params[0].doctype] )
+	}
+	
+	void updateSignatoryIndexNo( signatory ) {
+		em.sqlContext.createNamedExecutor( 'signatory:updateIndexno' )
+						.setParameters( signatory )
+						.execute()
+	}
+}

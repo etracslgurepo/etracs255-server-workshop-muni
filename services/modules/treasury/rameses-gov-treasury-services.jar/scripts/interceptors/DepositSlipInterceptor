@@ -1,0 +1,22 @@
+import com.rameses.annotations.*;
+
+class DepositSlipInterceptor {
+
+	@DataContext("checkpayment")
+	def chkPmtEm;
+
+	@DataContext("depositvoucher_fund")
+	def dvfEm;
+
+	@Before(pattern="PersistenceService.removeEntity", eval="#{ args[0]._schemaname == 'depositslip' }")
+	public void beforeRemoveDepositSlip( evt ) { 
+		def o = evt.args[0];
+		if( o.validation?.refno ) 
+			throw new Exception("Cannot remove deposit slip that is alreday validated");
+
+		def amt = o.amount;
+		dvfEm.find( [objid:o.depositvoucherfundid ] ).update([amountdeposited: "{amountdeposited - :amt}"], [amt: amt]);
+		chkPmtEm.find( [depositslipid: o.objid] ).update( [depositslipid: "{NULL}"] );		
+	}
+
+}

@@ -1,0 +1,15 @@
+<schema>
+	<element tablename="report_rptdelinquency">
+		<field name="objid" primary="true" prefix="RD" />
+		<!-- PROCESSING, COMPLETED -->
+		<field name="state" required="true" />
+		<field name="dtgenerated" required="true" />
+		<field name="dtcomputed" required="true" />
+		<field name="generatedby_name" />
+		<field name="generatedby_title" />
+
+		<complex name="barangays" ref="report_rptdelinquency_barangay" jointype="one-to-many" orderBy="idx,barangay.name">
+			<key field="objid" target="parentid"/>
+		</complex>
+	</element>
+</schema>

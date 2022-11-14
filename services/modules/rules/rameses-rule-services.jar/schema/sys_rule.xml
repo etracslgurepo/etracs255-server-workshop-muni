@@ -1,0 +1,22 @@
+<schema>
+
+	<element tablename="sys_rule">
+		<field name="objid" primary="true"/>
+		<field name="state" required="true"/>
+		<field name="name" required="true"/>
+		<field name="ruleset" required="true"/>
+		<field name="rulegroup" required="true"/>
+		<field name="title" required="true"/>
+		<field name="description" />
+		<field name="salience" required="true"/>
+		<field name="effectivefrom" />
+		<field name="effectiveto" />
+		<field name="dtfiled" required="true"/>
+		<field name="user_objid" required="true"/>
+		<field name="user_name" required="true"/>
+		<field name="noloop" defaultValue="1"/>
+	</element>	
+
+
+</schema>	
+

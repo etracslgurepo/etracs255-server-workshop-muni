@@ -1,0 +1,126 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class RPTMigrationUtilService
+{
+	@PersistenceContext('main')
+	def em 
+
+	@Service('RPTLedgerService')
+	def ledgerSvc
+
+	@ActiveDB('xrptmigrate')
+	def db 
+
+	@ProxyMethod
+	public List getFaasNoTDByBarangay(barangayid){
+		return em.sqlContext.createQuery('''
+			select f.objid
+			from iligan..faas f 
+				inner join iligan..rpu r on f.rpuid = r.objid 
+				inner join iligan..realproperty rp on r.realpropertyid = rp.objid 
+			where rp.barangayid = $P{barangayid}
+			  and f.tdno is null 
+			  and r.ry = 2014
+			 ORDER BY r.fullpin 
+		''')
+		.setParameter('barangayid', barangayid)
+		.resultList
+	}
+
+
+	@ProxyMethod
+	public void updateTDNo(faasid, tdno){
+		em.sqlContext.createExecutor('''
+			UPDATE iligan..faas SET 
+				tdno = $P{tdno},
+				utdno = $P{tdno},
+				autonumber = 1
+			WHERE objid =$P{faasid}
+		''')
+		.setParameter('faasid', faasid)
+		.setParameter('tdno', tdno)
+		.execute()
+		println 'Updated TD No. ' + tdno 
+	}
+
+
+
+	@ProxyMethod
+	public def getBarangayIds(  ) {
+		return em.sqlContext.createQuery('select objid from iligan..barangay').resultList
+	}
+
+	@ProxyMethod
+	public def getRealPropertyIds( barangayid ) {
+		return em.sqlContext.createQuery('select objid from iligan..realproperty where barangayid = $P{barangayid}')
+					.setParameter('barangayid', barangayid)
+					.resultList 
+	}
+
+	@ProxyMethod
+	public void updateBoundary( realpropertyid) {
+		def boundaries = em.sqlContext.createQuery('''
+			select strdirection, strboundary 
+			from tracsiligan..tblrealpropertyboundary 
+			where parentid = $P{realpropertyid}
+			order by objid
+		''')
+		.setParameter('realpropertyid', realpropertyid)
+		.resultList 
+
+		if (boundaries) {
+			def north = '-'
+			def east = '-'
+			def south = '-'
+			def west = '-'
+
+			for(int i = 0 ; i < boundaries.size(); i++){
+				if (i == 0) north = boundaries[i].strdirection + ' - ' + boundaries[i].strboundary
+				if (i == 1) east = boundaries[i].strdirection + ' - ' + boundaries[i].strboundary
+				if (i == 2) south = boundaries[i].strdirection + ' - ' + boundaries[i].strboundary
+				if (i == 3) west = boundaries[i].strdirection + ' - ' + boundaries[i].strboundary
+			}
+
+			em.sqlContext.createExecutor('''
+				update iligan..realproperty set 
+					north = $P{north},
+					east = $P{east},
+					south = $P{south},
+					west = $P{west}
+				where objid = $P{realpropertyid}
+			''')
+			.setParameter('north', north)
+			.setParameter('east', east)
+			.setParameter('south', south)
+			.setParameter('west', west)
+			.setParameter('realpropertyid', realpropertyid)
+			.execute()
+
+		}
+		println 'Successfully updated boundary -> ' + realpropertyid
+	}	
+
+
+
+	@ProxyMethod
+	public def clearRPTLedgerItems(  ) {
+		println 'Clearing LedgerItems'
+		db.deleteQuarterlyLedgerItems()
+		db.deleteLedgerItems()
+	}
+
+	@ProxyMethod
+	public def getMigratedLedgersForApproval () {
+		println 'Loading ledgers for approval'
+		return db.getUnpostedMigratedLedgers()
+	}
+
+	@ProxyMethod
+	public def approveMigratedLedger( ledger ) {
+		ledgerSvc.approveMigratedLedger(ledger)		
+	}
+
+}
+

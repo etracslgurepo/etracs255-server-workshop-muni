@@ -1,0 +1,11 @@
+<schema>
+	<element tablename="faas_requested_series">
+    <field name="objid" primary="true" prefix="FRS" />
+    <field name="parentid" required="true" />
+    <field name="series" required="true" />
+    <field name="requestedby_name" required="true" />
+    <field name="requestedby_date" required="true" />
+    <field name="createdby_name" required="true" />
+    <field name="createdby_date" required="true" />
+	</element>
+</schema>

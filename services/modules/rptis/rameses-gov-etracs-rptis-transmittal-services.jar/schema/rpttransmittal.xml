@@ -1,0 +1,21 @@
+<schema adapter="main"> 
+	<element name="rpttransmittal" tablename="rpttransmittal">
+		<field name="objid" primary="true" prefix="TR"/>
+		<field name="state" required="true" caption="State" indexed="true" searchable="true" />
+		<!-- TYPE: SYNC, FORAPPROVAL -->
+		<field name="type" required="true" caption="Type" indexed="true" searchable="true" />
+		<field name="filetype" required="true" caption="Document" indexed="true" searchable="true" />
+		<field name="txnno" required="true" caption="Txn No" indexed="true" searchable="true" />
+		<field name="txndate" required="true" caption="Txn Date"/>
+		<field name="lgu_objid" required="true" />
+		<field name="lgu_name" required="true" caption="From LGU" searchable="true" />
+		<field name="lgu_type" required="true" />
+		<field name="tolgu_objid" required="true" />
+		<field name="tolgu_name" required="true" caption="Transmitted To" searchable="true" />
+		<field name="tolgu_type" required="true" />
+		<field name="createdby_objid" required="true" />
+		<field name="createdby_name" required="true" caption="Transmitted By" />
+		<field name="createdby_title" required="true" />
+		<field name="remarks" caption="Remarks" />
+	</element>
+</schema>

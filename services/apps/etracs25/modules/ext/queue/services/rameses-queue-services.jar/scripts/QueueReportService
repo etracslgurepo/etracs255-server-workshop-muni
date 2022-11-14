@@ -1,0 +1,117 @@
+import com.rameses.annotations.*; 
+import com.rameses.util.*;
+
+class QueueReportService {
+
+	@Service('DateService') 
+	def dateSvc; 
+
+	@ActiveDB(value='queue_report', em='queue') 
+	def reportdb; 
+
+	@DataContext('queue_counter') 
+	def qc_db; 
+
+	@ProxyMethod 
+	public def getReport( params ) { 
+		if ( !params.period ) throw new Exception('period parameter is required'); 
+
+		buildParams( params ); 
+
+		def result = [:]; 
+		result.startdate = params.startdate; 
+
+		params.filter = '';
+		if ( params.counterid ) { 
+			params.filter = ''' AND counter_objid = $P{counterid} '''; 
+			result.counter = qc_db.find([ objid: params.counterid ]).first(); 
+		} 
+
+		if ( params.period == 'daily' ) { 
+			result.periodtitle = new java.text.SimpleDateFormat('MMMMM dd, yyyy').format( params.startdate ); 
+			result.resultdata = reportdb.getReportDataHourly( params );  
+			result.enddate = params.enddate; 
+
+		} else if ( params.period == 'monthly' ) { 
+			result.periodtitle = new java.text.SimpleDateFormat('MMMMM yyyy').format( params.startdate ); 
+			result.resultdata = reportdb.getReportDataHourly( params );  
+			result.enddate = new java.sql.Date( dateSvc.add( params.enddate, '-1d' ).time );  
+
+		} else if ( params.period == 'range' ) {
+			result.periodtitle = params.startdate.toString() +' TO '+ params.enddate.toString(); 
+			result.resultdata = reportdb.getReportDataHourly( params );  
+			result.enddate = new java.sql.Date( dateSvc.add( params.enddate, '-1d' ).time );  
+		} 
+
+		return result; 
+	}
+
+	void buildParams( params ) {
+		if ( params.period == 'daily' ) { 
+			def txndate = params.txndate; 
+			if ( txndate instanceof String ) {
+				txndate = resolveDate( txndate ); 
+			} else {
+				txndate = new java.sql.Date( txndate.time ); 
+			}
+
+			if ( !txndate ) throw new Exception('Invalid transaction date format'); 
+
+			def enddate = dateSvc.add( txndate, '1d' ); 
+			params.enddate = new java.sql.Date( enddate.time ); 
+			params.startdate = txndate; 
+
+		} else if ( params.period == 'monthly' ) {
+			def txnyear = resolveInteger( params.year ); 
+			if ( !txnyear ) throw new Exception('year parameter is required'); 
+
+			def txnmonth = resolveInteger( params.month );
+			if ( !txnmonth ) throw new Exception('month parameter is required'); 
+
+			def strdate = ''+ txnyear +'-'+ String.format('%02d', txnmonth) +'-01';
+			def txndate = resolveDate( strdate ); 
+			if ( !txndate ) throw new Exception('Invalid transaction date format'); 
+			
+			params.enddate = dateSvc.add( txndate, '1M'); 
+			params.startdate = txndate; 
+
+		} else if ( params.period == 'range' ) { 
+			if ( !params.startdate ) throw new Exception('startdate parameter is required');
+			if ( !params.enddate ) throw new Exception('enddate parameter is required');
+
+			def startdate = resolveDate( params.startdate ); 
+			if ( !startdate ) throw new Exception('startdate is not a valid date value');
+
+			def enddate = resolveDate( params.enddate ); 
+			if ( !enddate ) throw new Exception('enddate is not a valid date value');
+
+			enddate = dateSvc.add( enddate, '1d' ); 
+			params.startdate = new java.sql.Date( startdate.time ); 
+			params.enddate = new java.sql.Date( enddate.time ); 
+		} 
+	}
+
+	def resolveInteger( value ) {
+		try { 
+			if ( value instanceof Number ) {
+				return ((Number) value).intValue(); 
+			}
+			return Integer.parseInt( value.toString()); 
+		} catch(Throwable t) {
+			return null; 
+		}
+	}
+	def resolveDate( value ) {
+		if ( value instanceof java.util.Date ) return value; 
+
+		try { 
+			return java.sql.Timestamp.valueOf( value ); 
+		} catch(Throwable t){;} 
+
+		try { 
+			return java.sql.Date.valueOf( value ); 
+		} catch(Throwable t){
+			return null; 
+		} 
+	} 
+}

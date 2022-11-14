@@ -1,0 +1,263 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.common.*
+import com.rameses.services.extended.*
+
+class CashReceiptService  {
+
+	@PersistenceContext("main")
+	def em;
+
+	@ActiveDB("collector")
+	def collector;	
+
+	@ActiveDB("cashreceipt")
+	def cashreceipt; 
+
+	@DataContext("cashreceipt")
+	def cashreceiptEm; 
+
+	@DataContext('cashreceipt_void') 
+	def cashreceipt_void;
+
+   	@DataContext("cashreceiptpayment_noncash")
+   	def cashRctPmt;
+
+   	@DataContext("cashreceiptitem")
+   	def cashRctItem;
+
+   	@DataContext("eftpayment")
+   	def eftPayment;
+
+    @DataContext("checkpayment")
+   	def checkPayment;
+
+	@Service("DateService")
+	def dateService;
+
+	@Service(dynamic=true)
+	def dynSvc;
+
+	@DataContext("paymentorder")
+   	def pmtOrderEm;
+
+	@Service("NumberService")
+	def numSvc;
+	
+	@Service("Var")
+	def var;
+
+	@Env
+	def env;
+
+	@Service("AFControlService")
+	def afControlSvc;
+
+	/**
+	* note: setting of collector is in the CashReceiptInterceptor of gov. module.
+	* it is gotten during getNextReceiptInfo
+	*/
+	@ProxyMethod
+	public def init( def entity ) {
+		entity.objid = "RCT"+new java.rmi.server.UID();
+		if(!entity.receiptdate) {
+			entity.receiptdate =  dateService.serverDate;
+		}	
+		else {
+			def currdate = dateService.serverDate; 
+			entity.receiptdate = dateService.parse( 'yyyy-MM-dd',entity.receiptdate)
+        	if( entity.receiptdate > currdate ) throw new Exception('Advance date is not allowed.')
+		}
+
+		entity.org = [objid:env.ORGID, name:env.ORGNAME];
+		entity.user = [objid: env.USERID, name:env.USER];
+		entity.items = [];
+        entity.amount = 0;
+        entity.totalcash = 0;
+        entity.totalnoncash = 0;
+        entity.balancedue = 0;
+        entity.cashchange = 0;
+        entity.totalcredit = 0;
+        entity.paymentitems = [];	
+        entity.shares = [];
+        
+        if(	!entity.formtype) {
+        	throw new Exception("Form type is required. Check collection form");
+        }
+        
+		def afc = afControlSvc.getNextAfSeries( entity );
+		entity.putAll( afc );
+		return entity;
+	}	
+
+	@ProxyMethod
+    public void validateCheckDate( def checkdate ) {
+		def currdate = dateService.serverDate 
+        checkdate = dateService.parse( 'yyyy-MM-dd',checkdate)
+        if( checkdate > currdate ) throw new Exception('Post dated check is not allowed.')
+        def daysdiff = dateService.getDaysDiff( checkdate, currdate ) 
+        def staledayscount = Integer.parseInt( var.getProperty("stale_check_days_count", 180) + "" );
+        if( daysdiff > staledayscount ) throw new Exception('Stale check is not allowed.')
+    }
+	
+	void updatePaymentReferences( def p ) {
+		if( !p.paymentitems ) return; 	
+		//check if there are payment items with no type. throw error
+		def test = p.paymentitems.findAll{ !it.reftype };
+		if(test) throw new Exception("All payment items must have a type. Please review the code");
+
+		if( p.checks ) {
+			p.checks.each {
+				checkPayment.create( it );	
+			}
+		}
+
+		p.paymentitems.each {
+			boolean _imported_ = it._imported_.toString().matches('true|1'); 
+
+			it.voidamount = 0.0;			
+			if ( it.reftype == 'CHECK' ) { 
+				if ( _imported_ ) {
+					// proceed to the next item if data is marked as imported 
+					return; 
+				}
+
+				it.checkid = it.refid;
+				checkPayment.find( [objid: it.checkid ] ).update( [amtused: "{ amtused + :amt }"], [amt: it.amount] );
+				//if amtused is fully exhausted fire an error
+				def z = checkPayment.find([objid: it.checkid ] ).where("amount - amtused < 0 ").first();
+				if ( z ) throw new Exception("Check no " + z.refno + " is already used. amount - amtused less than 0");				
+			}
+			else if( it.reftype == 'EFT') {
+				def item = it.item;
+				item.state = 'POSTED';
+				eftPayment.save( item );
+			}
+		}
+	}
+
+	@ProxyMethod
+	public def post( p ) {
+		if ( !p.formtype ) throw new Exception("Form type is required");
+
+		def amount = numSvc.round( p.amount );
+		def amtitemsum = numSvc.round( p.items.amount.sum() ); 		
+		if( amount != amtitemsum )	{ 
+			println '** amount='+ amount + ', amtitemsum='+ amtitemsum; 
+			throw new Exception('A data problem is encountered during validation of Receipt No. ' + p.receiptno + '.\nThe Receipt Amount is not equal to item amount total.\nClose the form and recreate the transaction to correct the problem.')
+		} 
+
+		/***************************************************************
+		//additional code on checks 
+		****************************************************************/
+		updatePaymentReferences( p );
+
+		if(!p.payer) p.payer = [:];  //if there is no id, we need still to add bec. it is an object.
+
+		p.txndate = dateService.serverDate;
+		p.state = "POSTED"
+		if(p.subcollector?.objid ) p.state = "DELEGATED"
+		if(p.batchcapture) p.state = "CAPTURED"
+
+		cashreceiptEm.create( p );
+		afControlSvc.updateNextSeries( p );
+
+		if ( p._paymentorderid ) { 
+			//remove payment order. we need to load first payment order so it can be evaluated by interceptors
+			def svc = null;
+			if(!p._connection || p._connection == "default" ) {
+				svc = dynSvc.lookup("PaymentOrderService");
+			}
+			else {
+				svc = dynSvc.lookup("PaymentOrderService", p._connection );
+			}
+			svc.postPayment([ objid: p._paymentorderid, receipt: p, receipttype: 'cashreceipt']);
+		} 
+
+		return formatReport(p);
+	}	
+		
+	@ProxyMethod
+	public def formatReport( def p ) {
+		p.payerdetails = p.paidby + "\n" + p.paidbyaddress;
+		if( p.amount < 1 ) { 
+			def amount = Long.parseLong( p.amount.toString().split("\\.")[1] )
+			p.amountinwords = numSvc.doubleToWords( amount ).toUpperCase() + " CENTAVOS";
+		} else { 
+			p.amountinwords = numSvc.doubleToWords( p.amount ).toUpperCase() + " PESOS ONLY";
+		} 
+
+		return p;
+	}
+	
+	@ProxyMethod 
+	public def open( o ) {
+		def x = cashreceipt.findCashReceiptInfo( o ); 
+		x.voided = x.voided.intValue();
+		x.items = cashreceipt.getItems( o );
+		x.paymentitems = cashreceipt.getNoncashPayments( o ); 
+		return formatReport( x );
+	} 
+
+	@ProxyMethod 
+	public void updateState( o ) {
+		cashreceipt.updateState( o ); 
+	} 
+
+	@ProxyMethod 
+	public void verifyOffline( params ) {
+		// check receipt date against the current date 
+		def rundate = toDate( dateService.getServerDate() ); 
+		def receiptdate = toDate( params.receiptdate ); 
+		if ( receiptdate.after(rundate) ) 
+			throw new Exception('Receipt date must be less than or equal to the current date'); 
+
+		def info = cashreceipt.findMaxReceiptDateByControlid([ controlid : params.controlid ]); 
+		if ( !info?.receiptdate ) return; 
+
+		// check receipt date against the max receipt date 
+		def maxreceiptdate = toDate( info.receiptdate ); 
+		if ( receiptdate.compareTo( maxreceiptdate ) < 0 ) { 
+			def sdate = dateService.format( 'yyyy-MM-dd', maxreceiptdate ); 
+			throw new Exception('Receipt date must not be less than the previous transaction date ('+ sdate +')'); 
+		} 
+	} 
+
+	@ProxyMethod 
+	public void validatePayer( params ) {
+		//do nothing 
+	}
+
+	@ProxyMethod 
+	public def removeReceipt( params ) { 
+		def p = [ objid: params.objid ]; 
+		def rct = cashreceiptEm.find( p ).first(); 
+		if ( rct ) { 
+			rct.remitted = ( rct.remittanceid ? true : false ); 
+			if ( rct.remitted ) 
+				throw new Exception('You are not allowed to remove a remitted receipt'); 
+
+			def rctparam = [ receiptid: rct.objid ]; 
+			def voidrec = cashreceipt_void.find( rctparam ).select('objid').first(); 
+			rct.voided = ( voidrec?.objid ? true : false ); 
+
+			cashreceipt_void.find( rctparam ).delete();
+			cashRctPmt.find( rctparam ).delete(); 
+
+			rct.items = cashRctItem.find( rctparam ).list(); 
+			cashRctItem.find( rctparam ).delete(); 
+			cashreceiptEm.find( p ).delete(); 
+		} 
+		return rct; 
+	} 
+
+	private def toDate( value ) { 
+		if ( value == null ) return value; 
+
+		def time = dateService.resolveDate( value ).time; 
+		def sdate = new java.sql.Date( time ).toString(); 
+		return dateService.parse('yyyy-MM-dd', sdate); 
+	} 
+
+}

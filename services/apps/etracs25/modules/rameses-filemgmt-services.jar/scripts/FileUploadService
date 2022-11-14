@@ -1,0 +1,56 @@
+import com.rameses.annotations.*;
+import java.io.*;
+
+class FileUploadService {
+
+    @DataContext("sys_fileloc")
+    def filelocEm;	
+
+    @DataContext("sys_fileitem")
+    def fileitemEm;	
+
+
+    @ProxyMethod 
+    public def getLocations() {
+    	return filelocEm.list(); 
+    } 
+
+    @ProxyMethod
+    public def start( def info ) { 
+    	return null; 
+    } 
+
+    @ProxyMethod
+    public def end( def info ) { 
+    	return null; 
+    } 
+
+    @ProxyMethod
+    public def process( def info, def bytes ) {
+		def id =  info.id;
+		def filelocid = info.filelocid;
+		if( !filelocid ) filelocid = "default"; 
+
+		def fileLoc = filelocEm.find([ objid: filelocid ]).first(); 
+		def path = fileLoc.filepath + "/" + info.id;
+		println path;
+
+		def out = null;
+		try {
+		   out = new FileOutputStream( new File(path), true); 
+		   out.write( bytes ); 
+		   out.flush();
+
+		   fileitemEm.find([ objid: id ]).update([ bytestransferred: '{bytestransferred + :bt}' ], [bt: bytes.length]); 
+		   return info; 
+        }
+		catch(e) {
+		    throw e;
+		}
+		finally {
+		    try { out.close(); } catch(fe) {;}	
+		} 
+
+		return info; 
+    } 
+}

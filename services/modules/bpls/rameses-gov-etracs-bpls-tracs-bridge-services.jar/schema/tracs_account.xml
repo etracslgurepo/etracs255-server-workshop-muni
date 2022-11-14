@@ -1,0 +1,10 @@
+<schema adapter="tracsdb">
+
+	<element tablename="etracs25_capture_account">
+		<field name="oldaccount_objid" primary="true"/>
+		<field name="oldaccount_title" required="true"/>
+		<field name="account_objid" required="true"/>
+		<field name="account_title" required="true"/>
+	</element>
+
+</schema>

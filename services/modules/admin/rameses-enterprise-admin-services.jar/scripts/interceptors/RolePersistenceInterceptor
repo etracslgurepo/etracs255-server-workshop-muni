@@ -1,0 +1,10 @@
+import com.rameses.annotations.*;
+
+class RolePersistenceInterceptor {
+
+	@Before( pattern="PersistenceService.create", eval="#{args[0]._schemaname=='sys_usergroup'}" ) 
+	void beforeCreateRole( evt ) {
+		def param = evt.args[0]; 
+		param.objid = param.domain +'.'+ param.role;
+	}
+}

@@ -1,0 +1,106 @@
+import com.rameses.annotations.*
+import com.rameses.eserver.*;
+import com.rameses.common.*;
+
+class CancelledFAASWorkflowInterceptor
+{
+	@Env 
+	def env 
+
+
+	@ActiveDB('cancelledfaas_task')
+	def em
+
+
+	@Service('CancelledFAASWorkflowService')
+	def workflowSvc
+
+	@Service('CancelledFAASService')
+	def cancelledSvc
+
+	@Service('DateService')
+	def dtSvc
+
+	@Service('RPTRequirementService')
+	def reqSvc
+
+	@Service('ExaminationService')
+	def examinationSvc
+
+	@Service('RPTRequirementRuleService')
+    def ruleSvc
+
+    @Service('RPTUtil')
+    def util
+
+
+	@After(pattern="CancelledFAASService.init") 
+	public void initWorkflow( evt ) {
+		def  entity = evt.result 
+		entity.task = workflowSvc.start([refid: entity.objid, data: entity])[0]
+		entity.taskid =  entity.task.objid 
+		cancelledSvc.saveSignatory( entity)
+		buildRequirements(entity)
+	}
+
+
+	@After(pattern="CancelledFAASWorkflowService.signal", eval="#{args[0].state == 'receiver' && args[0].action == 'delete'}", index=10) 
+	public void deleteRecord( evt ) {
+		def entity = evt.args[0].data
+		cancelledSvc.delete(entity)
+	}
+
+	@Before(pattern="CancelledFAASWorkflowService.signal", eval="#{args[0].state == 'receiver' && args[0].action != 'delete'}", index=10) 
+	public void validateReceiveInfo( evt ) {
+		def faas = evt.args[0].data
+		util.required('Cancel Reason', faas.reason)
+        util.required('Cancel Reason', faas.reason.code)
+		util.required('Last Tax Year', faas.lasttaxyear)
+		util.required('Remarks', faas.remarks)
+
+		reqSvc.checkCompliance(faas.objid)
+	}
+
+
+	@Before(pattern="CancelledFAASWorkflowService.signal", eval="#{args[0].state == 'examiner' && args[0].action == 'submit' }", index=10) 
+	public void validateExaminationInfo( evt ) {
+		def faas = evt.args[0].data
+		def findings = examinationSvc.getFindings(faas.objid)
+		if (!findings )
+			throw new Exception('Examination Finding is required.')
+	}
+
+	@After(pattern="CancelledFAASWorkflowService.signal", eval="#{args[0].state == 'approver' && args[0].action == 'approve'}") 
+	public void approve( evt ) {
+		def cancelledfaas = evt.args[0].data
+		cancelledfaas.dtapproved = dtSvc.serverDate
+		cancelledSvc.onlineApprove(cancelledfaas)
+	}
+
+	void buildRequirements(entity){
+		def requirements = ruleSvc.getRequirements([
+			txntype 		: [objid:'CTD'],
+			txntypemode 	: null,
+			attributes		: [],
+			rputype    		: entity.faas.rputype, 
+			classificationid : entity.faas.classification?.objid,
+		])
+
+		requirements.unique().each{
+			reqSvc.create([
+				objid  				: 'R' + new java.rmi.server.UID(),
+				requirementtypeid 	: it.objid,
+				handler 			: it.handler,
+				refid 				: entity.objid,
+				value_objid 		: null,
+				value_txnno			: null,
+				value_txndate 		: null,
+				value_txnamount 	: 0.0,
+				value_remarks 		: null,
+				complied 			: 0,
+			])
+		}
+	}	
+	
+}
+

@@ -1,0 +1,24 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import java.rmi.server.UID
+import java.text.SimpleDateFormat;
+import com.rameses.services.extended.*;
+
+class FormReportService  {	
+
+	@ProxyMethod
+	public def getParameters( o ) { 
+		return [:];
+	}
+
+	@ProxyMethod
+	public def getData( o ) { 
+		return [:];
+	}
+
+	@ProxyMethod
+	public def abort( o ) { 
+		return [:];
+	}
+
+}

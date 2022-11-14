@@ -1,0 +1,48 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import com.rameses.util.*
+import com.rameses.services.extended.*
+
+
+class FAASStewardshipInterceptor
+{
+	@Service('FAASService')
+	def faasSvc 
+
+	@Service('FAASStewardshipService')
+	def stewardshipSvc 
+
+	@Service('RPTUtil')
+	def util 
+
+
+	@Before(pattern="FAASWorkflowService.signal", eval="#{args[0].state.matches('appraiser|provappraiser') && !args[0].action?.matches('return.*') && args[0].data.txntype.objid =='ST'}", index=15) 
+	public void validateParentStewardshipFaas( evt ) {
+		def faas = evt.args[0].data
+
+		util.required('Stewardship FAAS Memoranda', faas.memoranda)
+
+		if (faas.parentfaasid){
+			def parentfaas = faasSvc.openFaas([objid:faas.parentfaasid])
+			
+			util.required('Mother FAAS Memoranda', parentfaas.memoranda)
+
+			def prevareaha = util.toDecimal(parentfaas.previousfaases[0].prevareaha.replaceAll(',', ''))
+			
+			if (faas.rpu.totalareaha > prevareaha){
+				throw new Exception('Stewardship FAAS area must be less than or equal to ' + parentfaas.prevareaha + ' ha.')
+			}
+			
+			def parentexpectedarea = prevareaha - faas.rpu.totalareaha
+			if (parentfaas.rpu.totalareaha != parentexpectedarea){
+				throw new Exception('Mother FAAS area must be equal to ' + parentexpectedarea + ' ha.')
+			}
+		}
+	}
+
+	@After(pattern='FAASService.open', index=50)
+	public void afterOpenFaas(evt){
+		def faas = evt.result 
+		faas.stewardships = stewardshipSvc.getStewardshipFaases(faas)
+	}
+}

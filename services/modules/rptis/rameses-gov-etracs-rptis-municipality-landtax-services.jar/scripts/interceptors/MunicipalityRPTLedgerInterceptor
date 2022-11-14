@@ -1,0 +1,64 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import com.rameses.services.extended.*
+
+
+class MunicipalityRPTLedgerInterceptor
+{
+    @Env
+    def env
+
+    @Service('DateService')
+    def dtSvc
+
+    @Service('RPTLedgerService')
+    def ledgerSvc
+
+    @DataContext('rptledger')
+    def em_rptledger
+
+    @DataContext('remote_mapping')
+    def em_remote
+
+
+
+    /*---------------------------------------------------------
+    *
+    * LEDGER MAPPING SUPPORT
+    *
+    ---------------------------------------------------------*/
+
+    @After(pattern="RPTMainSyncDataService.receive", eval="#{args[0].reftype == 'rptledger' && 'CREATEMAPPING'.equalsIgnoreCase(args[0].action)}") 
+    public void createRemoteMapping( evt ) {
+        def params = evt.args[0].data
+
+        def ledger = em_rptledger.select('objid,state').find([faasid:params.ledger.faasid]).first()
+        if (!ledger) {
+            throw new Exception('Remote ledger does not exist.')
+        }
+        if ('INTERIM'.equalsIgnoreCase(ledger.state)) {
+            throw new Exception('Ledger is still pending.')
+        }
+
+        def mapping = [:]
+        mapping.objid = ledger.objid 
+        mapping.doctype = 'rptledger'
+        mapping.orgcode = params.remote.orgcode 
+        mapping.remote = [objid: params.ledger.objid, orgcode: params.orgcode] 
+        mapping.createdby = [name:'SYSTEM', title:'SYSTEM']
+        mapping.dtcreated = dtSvc.serverDate
+        em_remote.save(mapping) 
+
+        def result = evt.result 
+        result.putAll(ledger)
+    }
+
+    @After(pattern="RPTMainSyncDataService.receive", eval="#{args[0].reftype == 'rptledger' && 'SYNCDATA'.equalsIgnoreCase(args[0].action)}") 
+    public void syncLedgerData( evt ) {
+        def mapping = evt.args[0].data
+        def result = evt.result 
+        result.putAll(ledgerSvc.getInfo(mapping))
+    }
+
+}
+

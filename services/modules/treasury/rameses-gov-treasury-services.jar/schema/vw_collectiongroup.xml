@@ -1,0 +1,23 @@
+<!--
+DROP VIEW IF EXISTS vw_collectiongroup;
+
+CREATE VIEW vw_collectiongroup AS
+SELECT cg.objid,cg.name,cg.sharing,NULL AS orgid 
+FROM collectiongroup cg
+LEFT JOIN collectiongroup_org co ON co.collectiongroupid=cg.objid
+WHERE co.objid IS NULL AND cg.state = 'ACTIVE'
+
+UNION 
+
+SELECT cg.objid,cg.name,cg.sharing,co.org_objid AS orgid 
+FROM collectiongroup cg
+INNER JOIN collectiongroup_org co ON co.collectiongroupid=cg.objid
+WHERE cg.state = 'ACTIVE';
+-->
+<schema>
+	<element tablename="vw_collectiongroup">
+		<field name="objid" primary="true"/> 
+		<field name="name" searchable="true"/> 
+		<field name="sharing"/> 
+	</element>
+</schema>

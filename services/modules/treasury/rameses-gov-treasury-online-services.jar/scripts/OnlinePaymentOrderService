@@ -1,0 +1,169 @@
+import com.rameses.annotations.*;
+
+class OnlinePaymentOrderService {
+	
+	@XConnection( dynamic=true )
+	def dynaConn;
+
+	@DataContext( dynamic=true )
+	def dynaEm;
+
+	@Service( dynamic=true )
+	def dynaSvc;
+
+	@Service
+	def self;
+
+	@Env
+	def env;
+
+	private def getPaymentOrderService(def conn) {
+		if ( conn==null || conn=="default" )	{
+			return dynaSvc.lookup("PaymentOrderService");
+		}	
+		return dynaSvc.lookup("PaymentOrderService", conn);
+	}
+
+
+	@ProxyMethod
+	public def getPaymentOrderBarcodeKey( def o ) {
+		if ( !o.connection ) o.connection = "default";
+
+		def em = dynaEm.lookup('barcode_launcher'); 
+		def bc = em.find([ connection: o.connection ]).where("paymentorder=1").first(); 
+		return bc?.objid; 
+	}
+
+	@ProxyMethod
+	public def getBilling( o ) {
+		if (!o?.refno) throw new Exception("refno is required in getBilling method");
+		if (!(o.refno instanceof String)) throw new Exception("refno must be an instance of String in getBilling method");
+
+		def arr = o.refno.split( ":" );
+		if ( arr.length != 2 ) 
+			throw new Exception("Invalid refno format. It should follow the following format <KEY:REFNO>");
+
+		def barcodekey = arr[0];
+		def refno = arr[1];
+
+		def em = dynaEm.lookup('barcode_launcher')
+		def bc = em.find([ objid: barcodekey ]).first();
+		if ( !bc ) throw new Exception("'" + barcodekey + "' barcode launcher not found");
+
+		if ( bc.paymentorder.toString() != '1' )
+			throw new Exception("'" + barcodekey + "' barcode launcher must be configured as paymentorder=1");
+
+		def svc = getPaymentOrderService( bc.connection );
+		if ( o.checksum ) { 
+			svc.verifyCheckSum( refno, o.checksum ); 
+		}
+
+		def bill = svc.getBilling([ refno: refno ]); 
+		if ( bill.refno ) {
+			bill.barcodeid = bill.refno;
+			bill.barcodeparams = bill.params;
+		}
+		else if ( !bill.items ) 
+			throw new Exception("No available bill item(s) for payment order "+ refno);
+
+		bill._connection = ( bc.connection ? bc.connection : 'default' );
+		bill.objid = bill._paymentorderid;
+
+		em = dynaEm.lookup('collectiontype');
+		bill.collectiontype = em.find([ objid: bill.type.collectiontype.objid ]).first();
+		return bill; 
+	}
+
+
+	@ProxyMethod
+	public def verifyPayment( o ) {
+		def data = o.info?.data; 
+		if ( !data?.objid ) throw new Exception("info.data.objid  parameter is required");
+
+		if ( !data._connection ) data._connection = 'default'; 
+
+		def svc = getPaymentOrderService( data._connection ); 
+		svc.verify( data.objid, data.amount ); 
+		return data; 
+	}
+
+	@ProxyMethod
+	public def postPayment( eor, bill ) {
+		if ( !eor?.paymentorder?.refno ) throw new Exception("eor.paymentorder.refno  argument is required");
+		if ( !bill.objid ) throw new Exception("bill.objid  argument is required");
+
+		def svc = getPaymentOrderService( bill._connection );  
+		svc.postPayment([ 
+			objid: bill.objid, 
+			receipttype: 'eor',  
+			receipt: [ objid: eor.objid, receiptno: eor.receiptno, receiptdate: eor.receiptdate ] 
+		]);
+		return [ status: "OK" ];
+	}
+
+
+    @ProxyMethod
+	public def getEmailAttachments( eor ) {
+        return []; 
+    }	
+
+
+    @ProxyMethod
+	public def sendMail( param ) {
+		if ( !param.objid ) throw new Exception('objid parameter is required in sendMail'); 
+		if ( !param.email ) throw new Exception('email parameter is required in sendMail'); 
+
+		def fgroup = System.getenv("filipizen_group"); 
+		if ( !fgroup ) throw new Exception("filipizen_group ENV variable is not set");
+
+		def svc = dynaSvc.lookup('PersistenceService');
+		def po = svc.read([ _schemaname: 'paymentorder', objid: param.objid ]);
+		if ( !po ) throw new Exception("'"+ param.objid +"' payment order not found"); 
+		if ( !po.txncode ) throw new Exception("payment order txncode must be set"); 
+		if ( !po.checksum ) throw new Exception("payment order checksum must be set"); 
+
+		po.formatted_amount = new java.text.DecimalFormat('#,##0.00').format( po.amount );
+		po.formatted_expirydate = new java.text.SimpleDateFormat('MM/dd/yyyy').format( po.expirydate );
+		po.customer_name = (po.paidby ? po.paidby : po.payer?.name); 
+
+		def req = [ to: param.email ];
+		req.connection = param.connection; 
+		req.subject = "Payment Order #"+ po.txncode;
+		req.message = """
+<br>
+<b>Hi ${po.customer_name ? po.customer_name : ''}!</b> 
+<br><br>
+<span style="font-size:1.2em;">
+	Please be guided that your Payment Order #${po.txncode} 
+	with the amount of Php ${po.formatted_amount} is ready for payment 
+	and will expires on ${po.formatted_expirydate}.
+
+	<br><br><br>
+	To pay, please visit or click &nbsp;&nbsp;
+	<a href="https://www.filipizen.com/partners/${fgroup}/po/${po.txncode}?c=${po.checksum}" style="font-size:1.3em;">
+		filipizen.com
+	</a>
+
+	<br><br><br>
+	Kindly disregard if payment has been made.
+
+	<br><br>
+	Thank you for using ETRACS!
+	<br><br>
+</span>
+		""".toString();
+
+		self.sendToMailServer( req ); 
+        return [ status: "OK" ]; 
+    } 
+
+    @Async
+    @ProxyMethod(local=true)
+	public void sendToMailServer( req ) {
+		def connection = req.remove('connection'); 
+		if ( !connection ) connection = 'primary-email-server'; 
+
+		def xconn = dynaConn.lookup( connection ); 
+		xconn.send( req ); 
+	} 
+}

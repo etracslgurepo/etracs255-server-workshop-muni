@@ -1,0 +1,324 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.util.*;
+import com.rameses.services.extended.*;
+
+class FaasBldgReportInterceptor
+{
+	@ActiveDB('faasreport_bldg')
+	def em
+
+	@Service('Var')
+	def var
+	
+	@Service('RPTUtil')
+	def util 
+
+	@Service('NumberService')
+	def numberSvc
+
+	@Service('FAASReportService')
+	def faasReportSvc 
+
+	def MAX_MATERIAL_ROW_COUNT = 7
+
+	@After(pattern="FAASReportService.getReportData", eval="#{result.rpu.rputype=='bldg'}")
+	public void buildReport(evt){
+		def faas = evt.result
+		faas.rpu += em.findBldgInfoById(faas.rpu)
+		faas.rpu.structuraltypes = getStructuralTypes(faas.rpu)
+		faas.rpu.structures = em.getStructures(faas.rpu)
+
+		faasReportSvc.buildLandReference( faas )
+		buildBldgLandPins(faas)
+		buildFloorInfo(faas)
+		buildBldgStructures(faas)
+		buildAdditionalItems(faas)
+		buildAssessments(faas)
+		buildRpuInfo(faas)
+		buildComputationInfo(faas)
+	}
+
+	void buildComputationInfo(faas){
+		if (faas.rpu.useswornamount)
+			buildSwornInfo(faas)
+		else
+			buildDetailedComputationInfo(faas)
+	}
+
+	void buildSwornInfo(faas){
+		def info = 'Sworn Amount : P ' + numberSvc.format('#,##0.00', faas.rpu.swornamount)
+		faas.rpu.bldgcorecomputations = info 
+		faas.subtotal = faas.rpu.swornamount 
+	}
+
+	void buildDetailedComputationInfo(faas){
+		faas.rpu.bldgcorecomputations = ''
+		faas.rpu.structuraltypes.each{ st ->
+			st.bldguses.each{bu ->
+				def s_area = numberSvc.format('#,##0.00', bu.area)
+				def s_basevalue = numberSvc.format('#,##0.00', bu.basevalue )
+				def s_basemarketvalue = numberSvc.format('#,##0.00', bu.basemarketvalue)
+
+				def s = st.bldgtype.code + ':  '
+				s += bu.actualuse.code + ':  ' 
+				s += s_area + ' * ' + s_basevalue 
+				s = s.padRight(35, ' ')
+				s += ' = 	' + s_basemarketvalue.padLeft(16, ' ') + '\n'
+				faas.rpu.bldgcorecomputations += s 
+			}
+		}
+		def s_totalbmv = numberSvc.format('#,##0.00', faas.rpu.totalbmv)
+		faas.rpu.bldgcorecomputations += ' '.padRight(39, ' ') + ' '.padLeft(16, '=') + '\n'
+		faas.rpu.bldgcorecomputations += '           Construction Cost: '.padRight(35, ' ') + '   ' + s_totalbmv.padLeft(16, ' ') + '\n'
+
+		if (faas.additionalitems){
+			def totaladdl = faas.additionalitems.findAll{it.amount != null}.amount.sum();
+			if (totaladdl == null) totaladdl = 0.0 
+			def s_totalcost = numberSvc.format('#,##0.00', faas.rpu.totalbmv + totaladdl)
+			def s_totaladdl = numberSvc.format('#,##0.00', totaladdl)
+			faas.rpu.bldgcorecomputations += '               Add: Additional Items '.padRight(35, ' ') + ' ' +s_totaladdl.padLeft(16, ' ') + '\n'
+			faas.rpu.bldgcorecomputations += '           Total Construction Cost: '.padRight(35, ' ') + '  ' + s_totalcost.padLeft(16, ' ')
+			faas.subtotal = faas.rpu.totalbmv + totaladdl
+		}
+	}
+
+	void buildBldgStructures(faas){
+		if (util.isTrue(var.faas_report_bldg_detailed_structure) ){
+			faas.bldgstructures = em.getDetailedStructureMaterials(faas.rpu)
+			if (faas.bldgstructures.size() % 2 != 0){
+				faas.bldgstructures.add([:])
+			}
+		}
+		else{
+			faas.bldgstructures = getSimplifiedBldgStructures(faas)
+		}
+	}
+
+	def getSimplifiedBldgStructures(faas){
+		def structmaterials = em.getStructureMaterials(faas.rpu)
+		def data = [] 
+		def mat0s = structmaterials.findAll{it.idx == 0}
+		def mat1s = structmaterials.findAll{it.idx == 1}
+		def mat2s = structmaterials.findAll{it.idx == 2}
+		def maxrows = mat0s.size() 
+		maxrows = (maxrows < mat1s.size() ? mat1s.size() : maxrows )
+		maxrows = (maxrows < mat2s.size() ? mat2s.size() : maxrows )
+		for( int i=0; i<maxrows; i++){
+			def d = [:]
+			if (i < mat0s.size()) d.mat0 = mat0s[i].mat0
+			if (i < mat1s.size()) d.mat1 = mat1s[i].mat1 
+			if (i < mat2s.size()) d.mat2 = mat2s[i].mat2 
+			data << d
+		}
+
+		//check applicable materials
+		structmaterials = em.getBldgStructureMaterials(faas.rpu)
+		for(int i=0; i<3; i++){
+			def list = structmaterials.findAll{it.idx == i}
+			checkMaterials(data, list, i)
+		}
+		return data
+	}
+
+	void checkMaterials(data, mats, structidx){
+		mats.eachWithIndex{m, idx->
+			def key = 'mat'+structidx
+			def d = data.find{it[key] == m.material}
+			if (d){
+				d[key+m.floor] = 'X'
+			}
+		}
+	}
+
+	void buildFloorInfo(faas){
+		// faas.rpu.groundfloorarea = faas.rpu.structuraltypes?.basefloorarea.sum();
+		faas.rpu.groundfloorarea = 0.0;
+		faas.rpu.floor1area = 0.0;
+		faas.rpu.floor2area = 0.0;
+		faas.rpu.floor3area = 0.0;
+		faas.rpu.floor4area = 0.0;
+		faas.rpu.floor5abovearea = 0.0;
+		faas.rpu.bldgfloorarea = 0.0;
+		faas.rpu.structuraltypes?.each{st ->
+			st.bldguses.each{bu ->
+				bu.floors.each{f ->
+					def floorno = Integer.parseInt(f.floorno)
+					if (floorno == 1) faas.rpu.groundfloorarea += f.area 
+					if (floorno == 1) faas.rpu.floor1area += f.area 
+					if (floorno == 2) faas.rpu.floor2area += f.area
+					if (floorno == 3) faas.rpu.floor3area += f.area
+					if (floorno == 4) faas.rpu.floor4area += f.area
+					if (floorno >= 5) faas.rpu.floor5abovearea += f.area
+					faas.rpu.bldgfloorarea += f.area
+				}
+			}
+		}
+		if (faas.rpu.floor2area == 0.0 ) faas.rpu.floor2area = null;
+		if (faas.rpu.floor3area == 0.0 ) faas.rpu.floor3area = null;
+		if (faas.rpu.floor4area == 0.0 ) faas.rpu.floor4area = null;
+		if (faas.rpu.floor5abovearea == 0.0 ) faas.rpu.floor5abovearea = null;
+
+		faas.rpu.groundflooraddlarea = 0.0;
+		faas.rpu.floor1addlarea = 0.0;
+		faas.rpu.floor2addlarea = 0.0;
+		faas.rpu.floor3addlarea = 0.0;
+		faas.rpu.floor4addlarea = 0.0;
+		faas.rpu.floor5aboveaddlarea = 0.0;
+		faas.rpu.additionalarea = 0.0;
+
+		def floorAdditionals = em.getFloorAdditionalAreas(faas.rpu)
+		floorAdditionals.each{
+			def floorno = Integer.parseInt(it.floorno)
+			if (floorno == 1) faas.rpu.groundflooraddlarea += it.area 
+			if (floorno == 1) faas.rpu.floor1addlarea += it.area
+			if (floorno == 2) faas.rpu.floor2addlarea += it.area
+			if (floorno == 3) faas.rpu.floor3addlarea += it.area
+			if (floorno == 4) faas.rpu.floor4addlarea += it.area
+			if (floorno >= 5) faas.rpu.floor5aboveaddlarea += it.area
+			faas.rpu.additionalarea += it.area
+			faas.rpu.totalareasqm += it.area
+		}
+	}
+
+
+	void buildBldgLandPins(faas){
+		//adjust pin based on additional bldg lands
+		if (faas.rpu.lands){
+			def landpins = faas.rpu.lands.landfaas.fullpin.join(', ')
+			faas.rpu.fullpin += '\nPartially erected on lands: ' + landpins
+		}
+	}
+
+	void buildRpuInfo(faas){
+		def bldgtypes = faas.rpu.structuraltypes.bldgtype.unique();
+		faas.rpu.bldgtypes = bldgtypes.code.join(',')
+
+		def bldgkinds = faas.rpu.structuraltypes.bldgkindbucc.bldgkind.unique();
+		faas.rpu.bldgkinds = bldgkinds.name.join(',')
+
+		def depreciation = numberSvc.format("#,##0.00", faas.rpu.depreciation) + ' %'
+		faas.depreciation = depreciation
+		faas.subtotal = faas.rpu.totalbmv
+		faas.rpu.predominant = (faas.rpu.predominant == 1 ? true : false)
+		faas.rpu.formattedassesslevel = numberSvc.format("#,##0", faas.rpu.assesslevel ) + ' %'
+
+		if( faas.additionalitems && faas.additionalitems[0].amount) {
+			def addlitmtotalamt = faas.additionalitems.findAll{it.amount != null}.amount.sum()
+			faas.subtotal = faas.subtotal.add( addlitmtotalamt )
+		}
+
+	}
+
+	void buildAssessments(faas){
+		faas.propertyassessments = em.getBldgPropertyAssessments(faas.rpu)
+		faas.propertyassessments.each{
+			def bu = em.findBldgUseAdditionalInfo(it)
+			if (bu && bu.addlinfo)
+				it.putAll(bu)
+		}
+		util.buildEmptyRows( faas.propertyassessments, 3)
+	}
+
+
+	void buildAdditionalItems( faas ) {
+		def rpu = faas.rpu 
+		faas.additionalitems = [] 
+
+		rpu.structuraltypes.each{ stt -> 
+			stt.bldguses?.each { bldguse ->
+				bldguse.floors?.each { floor ->
+					floor.additionals?.each {
+						def binding = buildFieldBindings( floor)
+						binding += buildParamBindings( it.params )
+						def  expr = replaceExpr( it.expr, binding )
+						
+						def item = [
+							floorno 	: stt.bldgtype.code + ' - ' + floor.floorno,
+							addlitemcode: it.additionalitem.code,
+							addlitemname: it.additionalitem.name,
+							expr		: expr,
+							amount		: it.amount
+						]
+						faas.additionalitems << item
+					}
+				}
+			}
+		}
+		if (!faas.additionalitems){
+			faas.additionalitems << [:]
+			faas.additionalitems << [:]
+		}
+		else {
+			//sortAdditionalItems(faas)
+			def LIST_SIZE = 6
+			if (faas.additionalitems.size() > LIST_SIZE){
+				def additionalitems2 = faas.additionalitems[LIST_SIZE..faas.additionalitems.size()-1];
+				def additionalitems = faas.additionalitems - additionalitems2
+				additionalitems << [
+					floorno 		: null, 
+					addlitemname	: 'PAGE 3 ADDITIONAL ITEMS TOTAL ', 
+					expr 			: null, 
+					amount 			: additionalitems2.sum{ it.amount ? it.amount : 0.0 }
+				]
+
+				faas.additionalitems = [] 
+				faas.additionalitems.addAll(additionalitems)
+				faas.additionalitems2 = []
+				faas.additionalitems2.addAll(additionalitems2)
+			}
+		}
+		
+		faas.additionalparams = em.getAdditionalItemParamDetails(faas.rpu)
+	}	
+
+	void sortAdditionalItems(faas){
+		faas.additionalitems.sort{a,b -> 
+			def stra = a.floorno + a.addlitemcode
+			def strb = b.floorno + b.addlitemcode
+			return stra <=> strb 
+		}
+	}
+
+	private def buildFieldBindings(item) {
+		return [
+			SYS_BASE_MARKET_VALUE       : item.basemarketvalue,
+			SYS_MARKET_VALUE            : item.marketvalue,
+			SYS_BASE_VALUE              : item.basevalue,
+			SYS_UNIT_VALUE              : item.unitvalue,
+			SYS_AREA                    : item.area
+		]
+	}
+	
+	private def buildParamBindings( params ) {
+		def binding = [:]
+        params.each {
+            binding[it.param.name] = it.decimalvalue ? it.decimalvalue : it.intvalue 
+        }
+		
+        return binding
+	}
+	
+	private def replaceExpr( expr, binding ) {
+		binding.keySet().each { key ->
+			expr = expr.replace( key, numberSvc.format( "#,##0.00", binding[key] ) )
+		}
+		
+		return expr
+	}	
+
+
+	List getStructuralTypes(rpu){
+		return em.getStructuralTypes(rpu).each{stt ->
+			stt.bldguses = em.getBldgUses(stt).each{bu -> 
+				bu.floors = em.getFloors(bu)
+				bu.floors.each{ floor ->
+					floor.additionals = em.getAdditionalItems(floor)
+					floor.additionals.each{ addl -> 
+						addl.params = em.getAdditionalItemParams(addl)
+					}
+				}
+			}
+		}
+	}
+}

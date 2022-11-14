@@ -1,0 +1,68 @@
+import com.rameses.annotations.*;
+
+class IncomeSummaryModifyService {
+
+	@DataContext('collectionvoucher') 
+	def cv_db; 
+
+	@ActiveDB('income_summary_modify')
+	def inc_mod_db;
+
+	@ProxyMethod 
+	public void rebuildByLiquidation( param ) {
+		if ( !param.objid ) throw new Exception('objid parameter is required'); 
+
+		def findby = [ objid: param.objid ]; 
+		def cv = cv_db.find( findby ).select('objid').first(); 
+		if ( !cv ) throw new Exception('Collection Voucher record cannot be found'); 
+
+		inc_mod_db.deleteDataByLiquidation( findby ); 
+		inc_mod_db.insertDataByLiquidation( findby ); 
+	} 
+
+	@ProxyMethod 
+	public void deleteData( param ) {
+		if ( !param.startdate ) throw new Exception('startdate parameter is required'); 
+		if ( !param.enddate ) throw new Exception('enddate parameter is required'); 
+
+		def postingtypeid = param.postingtype?.objid; 
+		if ( !postingtypeid ) throw new Exception('postingtype.objid parameter is required'); 
+
+		def valid_posting_types = 'BY_REMITTANCE_DATE|BY_LIQUIDATION_DATE|BY_CREDITMEMO_DATE'; 
+		if ( !postingtypeid.matches( valid_posting_types )) 
+			throw new Exception(''+ postingtypeid +' posting type is not supported'); 
+
+		if ( postingtypeid == 'BY_REMITTANCE_DATE') {
+			inc_mod_db.deleteDataByRemittanceDate( param );
+		} 
+		else if ( postingtypeid == 'BY_CREDITMEMO_DATE' ) {
+			inc_mod_db.deleteDataByCreditMemoDate( param ); 
+		}		
+		else {
+			inc_mod_db.deleteDataByLiquidationDate( param );
+		}
+	}
+
+	@ProxyMethod 
+	public void rebuild( param ) {
+		if ( !param.startdate ) throw new Exception('startdate parameter is required'); 
+		if ( !param.enddate ) throw new Exception('enddate parameter is required'); 
+
+		def postingtypeid = param.postingtype?.objid; 
+		if ( !postingtypeid ) throw new Exception('postingtype.objid parameter is required'); 
+
+		def valid_posting_types = 'BY_REMITTANCE_DATE|BY_LIQUIDATION_DATE|BY_CREDITMEMO_DATE'; 
+		if ( !postingtypeid.matches( valid_posting_types )) 
+			throw new Exception(''+ postingtypeid +' posting type is not supported'); 
+
+		if ( postingtypeid == 'BY_REMITTANCE_DATE') {
+			inc_mod_db.insertDataByRemittanceDate( param );
+		} 
+		else if ( postingtypeid == 'BY_CREDITMEMO_DATE' ) {
+			inc_mod_db.insertDataByCreditMemoDate( param ); 
+		}
+		else {
+			inc_mod_db.insertDataByLiquidationDate( param ); 
+		}
+	} 
+}

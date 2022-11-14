@@ -1,0 +1,43 @@
+<schema>
+    <element name="landrpuitem" tablename="landrpuitem">
+		<field name="objid" required="true"  />
+		<field name="faasid" required="true" /> 
+		
+		<field name="lcuvid" mapfield="actualuseid" required="true" />
+		<field name="lcuvcode" mapfield="actualusecode" required="true" />
+		<field name="lcuvname" mapfield="actualusename" required="true" />
+		
+		<field name="specificclassid" required="true" />
+		<field name="specificclasscode" required="true" />
+		<field name="specificclassname" required="true" />
+		
+		<field name="subclassid" required="true" />
+		<field name="subclasscode" required="true" />
+		<field name="subclassname" required="true" />
+		
+		<field name="assesslevelid" mapfield="al.assesslevelid" required="true" />
+		<field name="assesslevelcode" mapfield="al.assesslevelcode" required="true" />
+		<field name="assesslevelname" required="true" />
+		<field name="assesslevel" type="decimal" required="true" />
+		
+		<field name="strippingid" mapfield="stripping.strippingid"/>
+		<field name="striplevel" />
+		<field name="striprate" type="decimal" />
+		
+		<field name="area" type="decimal" required="true"/>
+		<field name="areaha" type="decimal" required="true"/>
+		<field name="areasqm" type="decimal" required="true"/>
+		<field name="areatype" required="true"/>
+		
+		<field name="basevalue" type="decimal" required="true"/>
+		<field name="unitvalue" type="decimal" required="true"/>
+		
+		<field name="adjustment" type="decimal" required="true"/>
+		<field name="landvalueadjustment" type="decimal" required="true"/>
+		
+		<field name="basemarketvalue" type="decimal" required="true"/>
+		<field name="marketvalue" type="decimal" required="true"/>
+		<field name="assessedvalue" type="decimal" required="true"/>
+		
+    </element>
+</schema>

@@ -1,0 +1,167 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+
+class CashReceiptVoidService  {
+
+	@PersistenceContext("main")
+	def em;
+
+	@DataContext('cashreceipt') 
+	def cashreceipt_db;
+
+	@DataContext('cashreceipt_void') 
+	def cashreceipt_void;
+
+	@DataContext('txnlog') 
+	def txnlog;
+
+	@Service('Var') 
+	def var; 
+
+	@Env
+	def env;
+	
+	@Service 
+	def self;
+
+	@Service( dynamic=true )
+	def dynaSvc;
+	
+	@Service("DateService")
+	def dateService;
+	
+	@DataContext('cashreceiptpayment_noncash') 
+	def ncPmtEm;
+
+	@DataContext('checkpayment') 
+	def pmtChkEm;
+
+	@DataContext('checkpayment_deadchecks') 
+	def deadChksEm;
+
+	@Service("ActionPermissionService")
+	def actionPermissionSvc;
+
+	@ProxyMethod
+	public def post( def p ) { 
+		if ( !p.receipt ) throw new Exception('receipt  parameter is required'); 
+		if ( !p.receipt.objid ) throw new Exception('receipt.objid  parameter is required'); 
+
+		def usr = null; 
+		if ( p.txnmode == 'CAPTURE' ) {
+			usr = p.postedby; 
+		} else if(p.applysecurity == true) {
+			usr = actionPermissionSvc.checkAllowedAction( [username:p.username, password: p.password, action: 'cashreceipt.approve_void' ] );
+			usr.name = ''+ usr.firstname +' '+ usr.lastname; 
+		}
+		else {
+			usr = [objid:env.USERID, name:env.FULLNAME];
+		}
+		
+		def rct = cashreceipt_db.find([ objid: p.receipt?.objid ]).select('objid,formtype,remittanceid,collectiontype.*').first();
+		if ( !rct?.objid ) throw new Exception('Cash Receipt record not found');
+
+		if ( rct.formtype.toString() != 'serial')
+			throw new Exception('Void Receipt is only applicable to serial receipt transaction'); 
+		if ( rct?.remittanceid ) 
+			throw new Exception('Void Receipt is not allowed. This transaction has already been remitted'); 
+
+		def v = [ objid: "VOID"+ new UID() ];
+		if ( p._imported_.toString() == 'true' ) {
+			v.putAll( p ); 
+
+		} else {
+			v.postedby = [ objid:usr.objid, name:usr.name ];
+			v.receiptid = p.receipt.objid;
+			v.reason = p.reason;
+			v.txndate = ( p.txndate ? p.txndate : dateService.getServerDate()); 
+		}
+
+		cashreceipt_void.create( v ); 
+		
+		def plist = ncPmtEm.select("refid,amount").find([receiptid: v.receiptid] ).where(" reftype='CHECK' ").list();
+		if(plist) {
+			plist.each {
+				pmtChkEm.find([objid: it.refid]).update( [amtused:'{amtused - :amt}'], [amt: it.amount] );
+				def chkp = pmtChkEm.find([objid: it.refid]).first();
+				//if amt used is already 0, place the check in the deadchecks and delete from the check payment 
+				if ( chkp && chkp.amtused == 0 ) {
+					deadChksEm.create( chkp );
+					pmtChkEm.find( [objid: it.refid ] ).delete();
+				}
+			}
+		}
+
+		//update the void amount to its amount and amount to zero; 
+		ncPmtEm.find([receiptid: v.receiptid] ).update([ voidamount: '{amount}',  amount: 0  ]);
+
+		v.receipt = p.receipt;
+
+		if ( rct.collectiontype ) {
+			v.receipt.collectiontype.putAll( rct.collectiontype ); 
+		}
+		v.collectiontype = v.receipt.collectiontype; 
+
+		def paymentorderid = v.receipt._paymentorderid; 
+		if ( v.receipt.paymentorder?.objid ) { 
+			paymentorderid = v.receipt.paymentorder?.objid; 
+		} 
+
+		if ( paymentorderid ) { 
+			def povSvc = dynaSvc.lookup("PaymentOrderVoidService");
+			povSvc.post([ objid: paymentorderid, data: v ]);
+		} 
+
+		return v;
+	}	
+	
+	@ProxyMethod 
+	public def getOptions() { 
+		return [ 
+			collector_allow_void_cashreceipt: var.collector_allow_void_cashreceipt 
+		];
+	}
+
+	@ProxyMethod 
+	public void revert( params ) { 
+		if ( !params.objid ) throw new Exception('objid parameter is required'); 
+		if ( !params.reason ) throw new Exception('reason parameter is required'); 
+
+		def o = cashreceipt_void.find([ receiptid: params.objid ]).first(); 
+		if ( !o ) throw new Exception('void receipt transaction not found');  
+		if ( o.receipt?.remittanceid ) throw new Exception('Revert is not allowed. This transaction has already been remitted'); 
+
+		cashreceipt_void.find([ receiptid: params.objid ]).delete(); 
+
+		def v = [ objid: "LOG" + new UID() ];
+		v.txndate = dateService.serverDate;
+		v.ref = 'CashReceiptVoid';
+		v.refid = params.objid; 
+		v.action = 'revert';
+		v.userid = env.USERID;
+		v.username = env.FULLNAME;
+		v.remarks = params.reason;
+		txnlog.create( v );  
+	}
+
+	@ProxyMethod
+	public def postReceipts( param ) { 
+		if ( !param.receipts ) throw new Exception('receipts parameter is required'); 
+
+		param.remove('receipt'); 
+
+		def receipts = param.remove('receipts'); 
+		receipts.each{ 
+			def rct = cashreceipt_db.find([ objid: it.objid ]).first(); 
+			if ( !rct ) return; 
+
+			def voidrct = [:]; 
+			voidrct.putAll( param ); 
+			voidrct.receipt = rct; 
+			voidrct.objid = rct.objid; 
+			self.post( voidrct );  
+		} 
+	} 
+}

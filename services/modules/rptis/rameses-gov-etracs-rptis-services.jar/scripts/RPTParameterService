@@ -1,0 +1,40 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class RPTParameterService 
+{
+	@DataContext('rptparameter')
+	def rptparameter
+
+
+	@ProxyMethod
+    public List getFieldList() {
+        return [
+            [objid:'SYS_BASE_MARKET_VALUE', name:'SYS_BASE_MARKET_VALUE', caption:'SYSTEM BASE MARKET VALUE', paramtype:'decimal'],
+            [objid:'SYS_MARKET_VALUE', name:'SYS_MARKET_VALUE', caption:'SYSTEM MARKET VALUE', paramtype:'decimal'],
+            [objid:'SYS_BASE_VALUE', name:'SYS_BASE_VALUE', caption:'SYSTEM BASE VALUE', paramtype:'decimal'],
+            [objid:'SYS_UNIT_VALUE', name:'SYS_UNIT_VALUE', caption:'SYSTEM UNIT VALUE', paramtype:'decimal'],
+            [objid:'SYS_AREA', name:'SYS_AREA', caption:'SYSTEM AREA', paramtype:'decimal'],
+            [objid:'SYS_ASSESSED_VALUE', name:'SYS_ASSESSED_VALUE', caption:'SYSTEM ASSESSED VALUE', paramtype:'decimal'],
+            [objid:'SYS_FLOOR_BASE_MARKET_VALUE', name:'SYS_FLOOR_BASE_MARKET_VALUE', caption:'SYSTEM FLOOR BASE MARKET VALUE', paramtype:'decimal'],
+            [objid:'SYS_FLOOR_MARKET_VALUE', name:'SYS_FLOOR_MARKET_VALUE', caption:'SYSTEM FLOOR MARKET VALUE', paramtype:'decimal'],
+            [objid:'SYS_BLDG_BASE_FLOOR_AREA', name:'SYS_BLDG_BASE_FLOOR_AREA', caption:'SYSTEM BUILDING BASE FLOOR AREA', paramtype:'decimal'],
+            [objid:'SYS_BLDG_FLOOR_AREA', name:'SYS_BLDG_FLOOR_AREA', caption:'SYSTEM BUILDING FLOOR AREA', paramtype:'decimal'],
+        ]
+    }
+
+    @ProxyMethod
+    public List getVariableList() {
+        return getFieldList() + rptparameter.orderBy('name').list()
+    }
+
+	@ProxyMethod
+	public def getRPTParameters( params ) {
+        if (!params.searchtext) params.searchtext = ''
+        params.searchtext += '%'
+        def list = rptparameter.where('name like :searchtext', params).list()
+        list.each{it.type = it.paramtype}
+        return list 
+	}
+}

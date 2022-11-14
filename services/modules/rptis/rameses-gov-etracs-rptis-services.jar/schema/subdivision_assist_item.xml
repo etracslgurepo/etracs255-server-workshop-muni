@@ -1,0 +1,19 @@
+<schema>
+    <element tablename="subdivision_assist_item">
+		<field name="objid" primary="true" prefix="SAI"/>
+		<field name="subdivision_objid" required="true" />
+		<field name="parent_objid" required="true" />
+		<field name="pintype" required="true" />
+		<field name="section" required="true" />
+		<field name="startparcel" required="true" />
+		<field name="endparcel" required="true" />
+		<field name="parcelcount" required="true" />
+		<field name="parcelcreated" required="true" />
+		<field name="completed" expr="case when parcelcreated >= parcelcount then 1 else 0 end" />
+		<complex name="parent" ref="subdivision_assist" jointype="many-to-one"
+			includefields="taskstate,assignee.*">
+			<key field="parent_objid" target="objid" />
+		</complex>
+    </element>
+</schema>
+

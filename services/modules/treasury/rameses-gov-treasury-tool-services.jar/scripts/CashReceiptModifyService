@@ -1,0 +1,181 @@
+import com.rameses.annotations.*;
+
+class CashReceiptModifyService {
+
+	@DataContext('cashreceipt')
+	def rct_db; 
+
+	@DataContext('cashreceiptpayment_noncash')
+	def rct_noncash_db; 
+
+	@DataContext('cashreceipt_void')
+	def rct_void_db; 
+
+	@DataContext('checkpayment')
+	def checkpayment_db; 
+
+	@DataContext('cashreceipt_changelog')
+	def changelog_db; 
+
+	@Service('DateService') 
+	def dateSvc; 
+
+	@Env 
+	def env; 
+
+	@ProxyMethod
+	public void convertCashToCheck( param ) { 
+		if ( !param?.objid ) throw new Exception('objid parameter is required'); 
+		if ( !param?.remarks ) throw new Exception('remarks parameter is required'); 
+		if ( !param?.updateinfo ) throw new Exception('updateinfo parameter is required'); 
+		if ( !param?.updateinfo?.paymentitems ) throw new Exception('updateinfo.paymentitems parameter is required'); 
+
+		def receiptid = param.objid; 
+		def rctinfo = rct_db.find([ objid: receiptid ]).select('objid,totalnoncash,totalcash,cashchange').first(); 
+		if ( !rctinfo ) throw new Exception('Cash Receipt transaction not found'); 
+
+		def voidinfo = rct_void_db.find([ receiptid: receiptid ]).select('objid').first(); 
+		if ( voidinfo ) throw new Exception('This transaction has already been voided'); 
+
+		def ncinfo = rct_noncash_db.find([ receiptid: receiptid ]).select('objid').first(); 
+		if ( ncinfo ) throw new Exception('This transaction has already been paid in CHECK'); 
+
+		def changelog = [:]; 
+		changelog.objid = 'CHLOG-'+ new java.rmi.server.UID(); 
+		changelog.dtfiled = dateSvc.getServerDate(); 
+		changelog.filedby = [objid: env.USERID, name: env.FULLNAME]; 
+		changelog.receiptid = receiptid; 
+		changelog.oldvalue = [:]; 
+		changelog.oldvalue.putAll( rctinfo ); 
+		changelog.oldvalue.remove('objid');  
+
+		def totalnoncash = param.updateinfo.paymentitems.sum{ it.amount } 
+		rctinfo.totalnoncash = totalnoncash; 
+		rctinfo.totalcash = param.updateinfo.totalcash; 
+		rctinfo.cashchange = param.updateinfo.cashchange;
+		changelog.newvalue = [:]; 
+		changelog.newvalue.putAll( rctinfo ); 
+		changelog.newvalue.remove('objid');  
+		changelog.newvalue.checks = []; 
+		changelog.remarks = param.remarks;
+		changelog.action = 'convert-cash-to-check'; 
+
+		def chkupd = [:]; 
+		if ( !param.updateinfo.checks ) {
+			def chk = param.updateinfo.paymentitems.first().check; 
+			changelog.newvalue.checks << [ 
+				objid: chk.objid, 
+				refno: chk.refno, 
+				refdate: chk.refdate, 
+				receivedfrom: chk.receivedfrom, 
+				bank: chk.bank, 
+				amount: totalnoncash 
+			]; 
+
+			chkupd.objid = chk.objid; 
+		} 
+
+		param.updateinfo.checks.each{ 
+			changelog.newvalue.checks << [
+				objid: it.objid, 
+				refno: it.refno, 
+				refdate: it.refdate, 
+				receivedfrom: it.receivedfrom, 
+				bank: it.bank, 
+				amount: it.amount 
+			]; 
+			checkpayment_db.create( it ); 
+			chkupd.objid = it.objid; 
+		}
+
+		param.updateinfo.paymentitems.each{ 
+			it.receiptid = receiptid; 
+			rct_noncash_db.create( it ); 
+		}
+
+		def upd = [:]; 
+		upd.putAll( rctinfo ); 
+		upd.remove('objid');  
+		rct_db.find([ objid: receiptid ]).update( upd ); 
+
+		if ( chkupd?.objid ) {
+			// force update to locked record 
+			checkpayment_db.find([ objid: chkupd.objid ]).update([amtused: '{amtused + 1}']); 
+			def chk = checkpayment_db.find([ objid: chkupd.objid ]).select('objid,amtused').first(); 
+			chk.amtused -= 1; 
+			chk.amtused += totalnoncash; 
+			checkpayment_db.find([ objid: chk.objid ]).update( chk ); 
+		} 
+
+		changelog_db.create( changelog ); 
+	}
+
+	@ProxyMethod
+	public void convertCheckToCash( param ) {
+		if ( !param?.objid ) throw new Exception('objid parameter is required'); 
+		if ( !param?.remarks ) throw new Exception('remarks parameter is required'); 
+
+		def receiptid = param.objid; 
+		def rctinfo = rct_db.find([ objid: receiptid ]).select('objid,amount,totalnoncash,totalcash,cashchange').first(); 
+		if ( !rctinfo ) throw new Exception('Cash Receipt transaction not found'); 
+
+		def voidinfo = rct_void_db.find([ receiptid: receiptid ]).select('objid').first(); 
+		if ( voidinfo ) throw new Exception('This transaction has already been voided'); 
+		
+		def checks = rct_noncash_db.find([ receiptid: receiptid ])
+										.select('objid,reftype,refid,refno,refdate,amount,particulars,fund.*')
+										.list();
+							
+		def noncheck = checks.find{ it.reftype.toString().toUpperCase() != 'CHECK' } 
+		if ( noncheck ) throw new Exception('Converting to cash is not allowed for this particular transaction'); 
+
+		def totalnoncash = checks.sum{( it.amount ? it.amount : 0.0 )} 
+		if ( !totalnoncash ) totalnoncash = 0.0; 
+
+		def amount = rctinfo.remove('amount');
+
+		def changelog = [:]; 
+		changelog.objid = 'CHLOG-'+ new java.rmi.server.UID(); 
+		changelog.dtfiled = dateSvc.getServerDate(); 
+		changelog.filedby = [objid: env.USERID, name: env.FULLNAME]; 
+		changelog.receiptid = receiptid; 
+		changelog.oldvalue = [:]; 
+		changelog.oldvalue.putAll( rctinfo ); 
+		changelog.oldvalue.remove('objid');  
+		changelog.oldvalue.checks = checks;
+
+		rctinfo.totalcash = amount;
+		rctinfo.totalnoncash = 0.0; 
+		rctinfo.cashchange = 0.0;
+		changelog.newvalue = [:]; 
+		changelog.newvalue.putAll( rctinfo ); 
+		changelog.newvalue.remove('objid'); 
+		changelog.newvalue.checks = []; 
+		changelog.remarks = param.remarks;
+		changelog.action = 'convert-check-to-cash'; 
+
+		checks.each{ 
+			rct_noncash_db.find([ objid: it.objid ]).delete(); 
+
+			checkpayment_db.find([ objid: it.refid ]).update(amtused: '{amtused + 1}');
+			def chk = checkpayment_db.find([ objid: it.refid ]).select('objid,amtused').first();
+			if ( chk ) {
+				chk.amtused -= 1; 
+				chk.amtused -= it.amount; 
+				if ( chk.amtused < 0 ) 
+					throw new Exception('Check Payment amtused may be tampered. Please verify Check Ref# '+ it.refno);  
+				
+				checkpayment_db.find([ objid: it.refid ]).update( chk ); 
+				checkpayment_db.find([ objid: it.refid ]).where('amtused = 0').delete(); 
+			} 
+		}
+		
+		def upd = [:]; 
+		upd.putAll( rctinfo ); 
+		upd.remove('objid'); 
+		rct_db.find([ objid: receiptid ]).update( upd ); 
+
+		changelog_db.create( changelog ); 
+	}	
+
+} 

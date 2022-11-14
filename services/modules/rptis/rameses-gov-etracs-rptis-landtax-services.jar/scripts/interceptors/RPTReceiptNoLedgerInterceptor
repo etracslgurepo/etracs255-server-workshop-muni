@@ -1,0 +1,73 @@
+import com.rameses.annotations.*
+import com.rameses.eserver.*;
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class RPTReceiptNoLedgerInterceptor
+{
+	@ActiveDB('cashreceiptrpt')
+	def em
+
+	@Service('RPTReceiptNoLedgerService')
+	def svc 
+
+	@Service('Var')
+	def var;
+
+	@After(pattern="CashReceiptService.open", eval="#{result.formno=='56'  && args[0].txntype == 'noledger'}", index=100) 
+	public void interceptOpenReceipt( evt ) {
+		def receipt = evt.result
+		if ( ! receipt._items )
+			receipt._items = []
+		receipt._items += svc.getItemsForPrinting(receipt)
+		receipt.itemcount = receipt._items.size()
+		if(receipt.itemcount > 0) addLGUInfo(receipt)
+
+	}
+
+	@Before(pattern="CashReceiptService.post", eval="#{args[0].formno=='56' && args[0].txntype == 'noledger'}") 
+	public void interceptBeforePostNoLedgerReceipt( evt ) {
+		def receipt = evt.args[0]
+		receipt.ledgerfaases.each{ rl ->
+			rl.taxes.each{ tax ->
+				receipt.items << createReceiptItem(receipt, tax)
+			}
+		}
+	}
+
+
+	@After(pattern="CashReceiptService.post", eval="#{result.formno=='56' && args[0].txntype == 'noledger'}") 
+	public void interceptPostNoLedgerReceipt( evt ) {
+		def receipt = evt.result
+		svc.createReceipt(receipt)
+		receipt._items = svc.getItemsForPrinting(receipt)
+		receipt.itemcount = receipt._items.size()
+		receipt.ledgers = null
+		if(receipt.itemcount > 0) addLGUInfo(receipt)
+	}
+
+	def createReceiptItem(receipt, tax){
+		return [
+			objid  		: tax.objid,
+			receiptid 	: receipt.objid,
+			item        : em.findRevenueItemById(tax.item),
+			amount		: tax.amount,
+			remarks		: null,
+		]
+	}
+
+	void addLGUInfo( receipt ) {
+		if("province".equalsIgnoreCase(var.lgu_type)) {
+			receipt.lguname = receipt._items.unique{it.munidistrict}*.munidistrict.join('/')
+			receipt.parentlguname = receipt._items[0].provcity 
+		} else if ("city".equalsIgnoreCase(var.lgu_type)) { 
+			def i = receipt._items[0]
+			receipt.lguname = i.provcity  
+		} else {
+			def i = receipt._items[0]
+			receipt.lguname = i.munidistrict
+			receipt.parentlguname = i.provcity 
+		}
+	}
+}
+

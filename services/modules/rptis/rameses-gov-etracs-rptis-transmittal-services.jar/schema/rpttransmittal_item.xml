@@ -1,0 +1,15 @@
+<schema adapter="main">
+	<element name="rpttransmittal_item" tablename="rpttransmittal_item">
+		<field name="objid" primary="true" />
+		<field name="parentid" required="true" />
+		<field name="state" required="true" />
+		<!-- OK, APPROVED, DISAPPROVED, REDFLAG -->
+		<field name="status" />
+		<field name="filetype" required="true" />
+		<field name="refid" required="true" />
+		<field name="refno" required="true" />
+		<field name="disapprovedby_name"/>
+		<field name="message" />
+		<field name="remarks" />
+	</element>
+</schema>

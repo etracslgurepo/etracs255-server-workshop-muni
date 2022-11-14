@@ -1,0 +1,89 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import com.rameses.util.*
+import com.rameses.services.extended.*
+
+
+class FAASChangeKindInterceptor
+{
+	@Service('RPUService')
+	def rpuSvc
+
+
+	@Before(pattern="FAASService.initOnlineTransaction", eval="#{args[0].txntype.objid == 'CK'}", index=10000) 
+	public void validateNewSuffix( evt ) {
+		def info = evt.args[0]
+		rpuSvc.validateSuffix(info.newrputype, info.newsuffix)
+	}
+
+	@After(pattern="FAASService.initTransaction", eval="#{args[0].txntype.objid == 'CK'}", index=10000) 
+	public void buildChangeKind( evt ) {
+		def info = evt.args[0]
+		def faas = evt.result
+
+		def newrpu = [:]
+		newrpu.objid = faas.rpu.objid
+		newrpu.landrpuid = faas.rpu.landrpuid
+		newrpu.state = faas.rpu.state
+		newrpu.ry = faas.rpu.ry
+		newrpu.classification = faas.rpu.classification
+		newrpu.exemptiontype = faas.rpu.exemptiontype
+		newrpu.rputype = info.newrputype
+		newrpu.suffix = info.newsuffix
+		newrpu.subsuffix = null
+		newrpu.fullpin = faas.rp.pin + '-' + info.newsuffix
+		newrpu.taxable = true
+		newrpu.totalareaha = 0
+		newrpu.totalareasqm = 0
+		newrpu.totalbmv = 0
+		newrpu.totalmv = 0
+		newrpu.totalav = 0
+		newrpu.hasswornamount = false
+		newrpu.swornamount = 0
+		newrpu.useswornamount = false
+		newrpu.previd = faas.rpu.previd
+		newrpu.rpumasterid = faas.rpu.rpumasterid
+		newrpu.reclassed = faas.rpu.reclassed
+		newrpu.isonline = false
+		newrpu.stewardparentrpumasterid = faas.rpu.stewardparentrpumasterid
+		
+		def newimprovementrpu = getNewRpu(info, faas)
+		newrpu.putAll(newimprovementrpu)
+
+		faas.rpu =newrpu;
+	}
+
+	def getNewRpu(info, faas) {
+		def initialRpus = [:]
+		
+		initialRpus.bldg = [
+			basevalue: 0,
+			floorcount: 0,
+			depreciation: 0,
+			depreciationvalue: 0,
+			totaladjustment: 0,
+			bldgage: 0,
+			percentcompleted: 100,
+			condominium: 0,
+			effectiveage: 0,
+			assesslevel: 0,
+		]
+
+		initialRpus.mach = [
+			params: [],
+		]
+
+		initialRpus.planttree = [
+			productive: 0,
+			nonproductive: 0,
+		]
+		
+		initialRpus.misc = [
+			actualuse: [:]
+		]
+
+		def newrpu = initialRpus[info.newrputype]
+		if (!newrpu) throw new Exception('Initial RPU not defined for ' + info.newrputype)
+		return newrpu
+	}
+}

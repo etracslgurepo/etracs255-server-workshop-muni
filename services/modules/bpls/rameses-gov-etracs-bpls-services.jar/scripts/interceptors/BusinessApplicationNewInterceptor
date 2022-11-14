@@ -1,0 +1,160 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.services.extended.*;
+
+public class NewBusinessApplicationInterceptor {
+
+	@Env
+	def env;
+
+	@Service("BusinessApplicationWorkflowService")
+	def workflowSvc;
+
+	@Service("BusinessMasterService")
+	def bizSvc;
+
+	@Service("BusinessLobService")
+	def lobSvc;
+
+	@Service("BusinessInfoService")
+	def infoSvc;
+
+	@Service("BusinessRequirementService")
+	def reqSvc;
+
+	@Service("DateService")
+	def dateSvc;
+
+	@Service("BusinessReceivableService")
+	def receivableSvc;
+
+	@Service("BusinessAssessmentService")
+	def assessmentSvc; 
+
+	@Service("BusinessPaymentService")
+	def paySvc;
+
+	@ActiveDB("business_billing")
+	def billEm;
+
+	@ActiveDB('business_application') 
+	def business_application;
+
+	@ActiveDB('business_receivable') 
+	def business_receivable; 
+
+
+	@After(pattern="BusinessApplicationService.initNew", eval="#{args[0].apptype=='NEW' && args[0].txnmode == 'ONLINE' }")
+	public void initNew(def evt) { 
+		def entity = evt.result;
+		entity.business.address = [:];
+	    entity.lobs = [];
+		entity.appinfos = [];
+	    entity.assessmentinfos = [];
+	    entity.appyear = dateSvc.getServerYear();
+	    entity.objid = "BANEW"+ new UID();
+	    entity.business.permittype = 'STANDARD';
+	}
+
+	@Before(pattern="BusinessApplicationService.create", eval="#{args[0].apptype=='NEW' && args[0].txnmode == 'ONLINE' }")
+	public void beforeCreate(def evt) { 
+		def app = evt.args[0];
+		app.requirements?.findAll{( it.step.toString() == 'info' )}.each{
+			if ( !it.completed.toString().matches('true|1')) 
+				throw new Exception('Please complete the '+ it.title +' requirement'); 
+			if ( !it.refno ) 
+				throw new Exception(''+ it.title +' requires a reference number');  
+		} 
+		
+		def b = app.business;
+		b.yearstarted = app.yearstarted;
+		b.state = 'PROCESSING';
+		b.apptype = 'NEW';
+		b.activeyear = app.appyear;
+		def biz = bizSvc.create(b);
+		if( !biz.bin ) throw new Exception("BIN is null. Pls. check business master service BIN creation"); 
+
+		app.business.objid = biz.objid;
+		app.appno = biz.bin +  "-1N";
+
+	}
+
+	@After(pattern="BusinessApplicationService.create", eval="#{args[0].apptype=='NEW' && args[0].txnmode == 'ONLINE' }")
+	public void afterCreate(def evt) { 
+		def o = evt.result;
+
+		//add the lobs and app infos
+		def b = [businessid: o.business.objid, activeyear: o.appyear, applicationid: o.objid];
+		b.lobs = o.lobs;
+		b.appinfos = o.appinfos;
+		b.requirements = o.requirements;
+
+		lobSvc.addAppLobs( b ); 
+		infoSvc.addAppInfos( b ); 
+		reqSvc.addRequirements( b ); 
+
+		lobSvc.updateActiveLOBHistory([ businessid: o.business.objid, appyear: o.appyear ]);  
+
+		//update applicationid
+		def bu = o.business;
+		bu.currentapplicationid = o.objid;
+		bizSvc.update(bu);
+
+		//start the workflow
+		workflowSvc.start([refid: o.objid, data: o]);				
+	}
+
+	@After(pattern="BusinessApplicationService.cancel", eval="#{args[0].apptype=='NEW' && args[0].txnmode == 'ONLINE' }")
+	public void afterCancel(def evt) { 
+		def app = evt.result;
+		def b = bizSvc.open(app.business);
+		b.state = 'CANCELLED';
+		bizSvc.update( b );
+		workflowSvc.deleteTasks([applicationid: app.objid]);
+	}
+
+	@After(pattern="BusinessApplicationService.checkReleaseStatus", eval="#{args[0].apptype=='NEW' }")
+	public void checkReleaseStatus(def evt) { 
+		def o = evt.args[0];
+		def result = evt.result;
+
+		def balinfo = business_receivable.findUnpaidBalance([applicationid: o.objid]); 
+		if ( balinfo?.balance > 0.0) {
+			result.canRelease = false; 
+		} else {
+			result.canRelease = true; 
+		}
+	}
+
+	@Before(pattern="BusinessApplicationService.release", eval="#{args[0].apptype=='NEW' && args[0].state=='RELEASE'}")
+	public void beforeRelease( evt ) { 	
+		def param = evt.args[0]; 
+		def xinfo = business_application.findInfoByAppid([applicationid: param.objid]);
+		if ( !xinfo ) throw new Exception(param.appno + " application does not exist"); 
+		if ( xinfo.state != 'RELEASE' )	
+			throw new Exception('The application status has already changed. Please reload the information.'); 
+	} 
+
+	@After(pattern="BusinessApplicationService.release", eval="#{args[0].apptype=='NEW'}")
+	public void afterRelease(def evt) { 
+		def app = evt.result;
+		def b = bizSvc.open(app.business);
+		b.state = 'ACTIVE';
+		b.activeyear = app.appyear;
+		bizSvc.updateOnRelease( b );
+
+		if ( !app.assessmentinfos ) {
+			def m = assessmentSvc.getAssessment( app );
+			app.assessmentinfos = m.assessmentinfos; 
+		} 
+
+		def bb = [businessid: b.objid, lobs: app.lobs, appinfos: app.appinfos, assessmentinfos: app.assessmentinfos ];
+		bb.remove_all = true;
+		lobSvc.addActiveLobs( bb );
+		infoSvc.addActiveAppInfos( bb );
+		infoSvc.addActiveAssessmentInfos( bb );
+
+		lobSvc.updateActiveLOBHistory([ businessid: b.objid, appyear: app.appyear ]);  
+	}
+}

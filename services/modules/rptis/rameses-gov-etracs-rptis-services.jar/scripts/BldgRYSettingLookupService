@@ -1,0 +1,175 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import com.rameses.util.*
+import com.rameses.services.extended.*
+
+public class BldgRYSettingLookupService
+{
+	@PersistenceContext('main')
+	def em
+     
+    @ActiveDB('bldgrysettinglookup')
+    def adb
+
+    
+    @Service('LookupUtilService')
+	def lupSvc 
+
+    @Service('RPTParameterService')
+    def paramSvc
+
+
+    @ProxyMethod
+    public def findByLguIdRy( params ) {
+        return adb.findByLguIdRy(params)
+    }
+
+    @ProxyMethod
+    public def lookupBldgRySettingById(objid){
+        return em.sqlContext.createNamedQuery('bldgrysettinglookup:lookupBldgRySettingById')
+                .setParameter('objid', objid).singleResult
+    }
+
+
+	@ProxyMethod
+    public def lookupAssessLevels(params){
+    	def list = lupSvc.lookup( 'bldgrysettinglookup:lookupAssessLevels', params, 'bal.objid' )
+        return filterByBarangay(params, list)
+    }
+
+
+    @ProxyMethod
+    public def lookupAssessLevelByPrevId(previd){
+        return em.sqlContext.createNamedQuery('bldgrysettinglookup:lookupAssessLevelByPrevId')
+                .setParameter('previd', previd).singleResult
+    }
+
+
+
+
+	@ProxyMethod
+    public def lookupBldgTypes(params){
+    	def list = lupSvc.lookup( 'bldgrysettinglookup:lookupBldgTypes', params, 'bt.objid' )
+        return filterByBarangay(params, list)
+    }
+
+
+
+
+    @ProxyMethod
+    public def lookupBldgTypeByPrevId(previd){
+        return em.sqlContext.createNamedQuery('bldgrysettinglookup:lookupBldgTypeByPrevId')
+                .setParameter('previd', previd).singleResult
+    }
+
+
+    @ProxyMethod
+    public def lookupBldgTypeById(objid){
+    	return em.sqlContext.createNamedQuery('bldgrysettinglookup:lookupBldgTypeById')
+    			.setParameter('objid', objid).singleResult
+
+    }
+
+
+    @ProxyMethod
+    public def lookupBldgKindBuccs(params){
+    	return lupSvc.lookup( 'bldgrysettinglookup:lookupBldgKindBuccs', params, 'bucc.objid' )
+    }
+
+
+    @ProxyMethod
+    public def lookupBldgKindBuccByPrevId(previd){
+        return em.sqlContext.createNamedQuery('bldgrysettinglookup:lookupBldgKindBuccByPrevId')
+                .setParameter('previd', previd).singleResult
+    }
+
+
+    @ProxyMethod
+    public def lookupBldgKindBuccById(objid){
+    	return em.sqlContext.createNamedQuery('bldgrysettinglookup:lookupBldgKindBuccById')
+    			.setParameter('objid', objid).singleResult
+    }
+
+
+    @ProxyMethod
+    public def getDepreciations(bldgtypeid){
+        return em.sqlContext.createNamedQuery('bldgrysettinglookup:getDepreciations')
+                .setParameter('bldgtypeid', bldgtypeid).resultList
+    }
+
+
+    @ProxyMethod
+    public def lookupBldgAssessLevelById( objid ) {
+        return em.sqlContext.createNamedQuery('bldgrysettinglookup:lookupBldgAssessLevelById')
+                .setParameter('objid', objid)
+                .singleResult
+    }
+
+    @ProxyMethod
+    public def lookupBldgAssessLevel( params ) {
+        return em.sqlContext.createNamedQuery('bldgrysettinglookup:lookupBldgAssessLevel')
+                .setParameter('bldgrysettingid', params.bldgrysettingid)
+                .setParameter('classificationid', params.classificationid)
+                .singleResult
+    }
+
+    @ProxyMethod
+    public def lookupAssessLevelFromRange( bldgassesslevelid, mv ) {
+        return em.sqlContext.createNamedQuery('bldgrysettinglookup:lookupAssessLevelFromRange')
+                .setParameter('bldgassesslevelid', bldgassesslevelid)
+                .setParameter('mv', mv)
+                .singleResult    
+    }
+
+
+    @ProxyMethod
+    public def lookupAdditionalItems( params ) {
+        if (!params.searchtext) params.searchtext = ''
+        params.searchtext += '%'
+        
+        if ( !params.type ) params.type = '%'
+
+        def list = em.sqlContext.createNamedQuery('bldgrysettinglookup:lookupAdditionalItems')
+                .setParameters(params)
+                .resultList
+        return filterByBarangay(params, list)
+    }
+
+
+    @ProxyMethod
+    public def lookupAdditionalItemByPrevId(previd){
+        return em.sqlContext.createNamedQuery('bldgrysettinglookup:lookupAdditionalItemByPrevId')
+                .setParameter('previd', previd).singleResult
+    }
+
+    @ProxyMethod 
+    public def getMultiStoreyAdjustmentItem(params) {
+        params.searchtext = 'BMSA'
+        def items = lookupAdditionalItems(params);
+        return items ? items[0] : null;
+    }
+
+    @ProxyMethod
+    public def getVariables() {
+        return paramSvc.getRPTParameters([:])    
+    }
+
+    @ProxyMethod
+    public def getMultiStoreyRateParameter() {
+        def paramname = 'MULTI_STOREY_RATE'
+        def params = paramSvc.getRPTParameters([searchtext: paramname])
+        return params ? params[0] : null
+    }
+
+    @ProxyMethod
+    public def getMultiStoreyAdjustmentSetting(param) {
+        return adb.findMultiStoreyAdjustmentSetting(param)
+    }
+
+    def filterByBarangay(params, list){
+        def res = list.findAll{it.barangayid == params.barangayid}
+        if ( res )
+            return res 
+        return list.findAll{it.barangayid == null} 
+    }
+}

@@ -1,0 +1,146 @@
+
+import com.rameses.annotations.*;
+import java.text.DecimalFormat;
+import java.util.regex.*;
+
+class SequenceService  {
+
+	@ActiveDB(value='sequence', em='system')
+	def em;
+
+	def FORMATTED_LEN = 5;
+
+	@Service("DateService")
+	def dateSvc;
+
+	@Env
+	def env;
+	
+	@ProxyMethod(local=true)
+	public def getCurrentSeries( objid )  {
+		def seq = em.findCurrentSeries([ objid: objid ]); 
+		if ( seq ) {
+			return seq.currentSeries; 
+		} else { 
+			em.create([ objid: objid, nextSeries: 1 ]); 
+			return 1; 
+		} 
+	}
+	
+    @ProxyMethod(local=true)
+	public def getNextFormattedSeries( objid ) {
+		return getNextFormattedSeriesA( objid, FORMATTED_LEN ) ;
+	}
+	
+	@ProxyMethod(local=true)
+	public def getNextFormattedSeriesA( objid, len ) {
+		def nextSeries = getNextSeries( objid );
+		return "$nextSeries".padLeft(len, '0')
+	}
+	
+	@ProxyMethod(local=true)
+	public def getNextSeries( objid ) { 
+		em.incrementNextSeries([ objid: objid ]); 
+		def seq = em.read([ objid: objid ]); 
+		if ( seq ) {
+			return seq.nextSeries-1; 
+		} else { 
+			em.create([ objid: objid, nextSeries: 2 ]); 
+			return 1; 
+		} 
+	} 
+
+	@ProxyMethod(local=true)
+	public def getNextBatchSeries( params ) {
+		if (!params.size) throw new Exception('Please specify the size'); 
+
+		def seq = em.read([ objid: params.objid ]); 
+		if (!seq) seq = create( params.objid ); 
+
+		def seriesno = seq.nextSeries; 
+		updateNextSeries( params.objid, (seriesno+params.size) ); 
+		return seriesno; 
+	} 
+	
+	@ProxyMethod(local=true)
+	public def create( objid ) {
+		def seq = em.read([ objid: objid ]); 
+		if ( !seq ) {
+			seq = [objid: objid, nextSeries: 1]; 
+			em.create( seq ); 
+		} 
+		return seq; 
+	} 
+	
+	@ProxyMethod(local=true)
+	public void updateNextSeries( objid, nextSeries ) { 
+		em.updateNextSeries([ objid: objid, nextSeries: nextSeries ]); 
+	} 
+
+	@ProxyMethod(local=true)
+	public def formatSeries( params ) {
+		def prefix = params.prefix;
+		def seriesno = params.seriesno; 
+		def serieslen = params.serieslength;
+		def xlen = Math.max(serieslen, 0); 
+		if (xlen <= 0) return seriesno; 
+
+		if (!prefix) prefix = '';
+		return prefix + "$seriesno".padLeft(xlen, '0'); 
+	} 
+
+	/************************************************************************
+	* This is an added feature. The pattern is the format of the whole
+	* number not just the prefix. For example
+	* 	pattern: B[org][cluster][yyyyMM]%05d
+	* The text encloded in [] will be handled by the handler.
+	* The %05d is a string format the controls the number of padded 0's.
+	* If needed, intercept the sequence service and add additional handlers on the fly.
+	*    d = pattern
+	*    h = list of handlers, map that has [pattern:string, format:closure];
+	*************************************************************************/
+	@ProxyMethod
+	public def getNextControlNo( def d, def h ) {
+		def handlers = [];
+		if(h) handlers.addAll( h );
+
+		//add the basic date handler
+		handlers << [ 
+			pattern: "ORG" , 
+			format:{ o->return env.ORGCODE;} 
+		]; 
+		handlers << [ 
+			pattern: ".*(y|M|d).*" , 
+			format:{ o->return new java.text.SimpleDateFormat(o).format( dateSvc.getServerDate() );  } 
+		]; 
+
+	    def pattern = Pattern.compile("\\[.*?\\]");
+	    def m = pattern.matcher( d );
+	    def sb = new StringBuilder();
+	    int start = 0;
+	    while(m.find()) {
+	        int end = m.start();
+	        sb.append( d.substring(start, end)  );
+	        String mg = m.group();
+	        mg = mg.substring(1, mg.length()-1);
+	        boolean handled = false;
+	        for(hdlr in handlers) {
+	            if(  mg.matches( hdlr.pattern ) ) {
+	                sb.append( hdlr.format(mg) );
+	                handled = true;
+	                break;
+	            }
+	        }    
+	        if(!handled) {
+	            sb.append( "["+mg+"]" );
+	        }
+	        start = m.end();
+	    }
+	    if( start < d.length() ) sb.append(d.substring(start));
+
+	    String formatX = sb.toString();
+	    int i = getNextSeries(formatX);
+	    return String.format( formatX, i );
+	} 
+
+} 

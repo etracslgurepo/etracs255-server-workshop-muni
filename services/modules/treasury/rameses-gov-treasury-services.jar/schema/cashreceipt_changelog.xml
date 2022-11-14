@@ -1,0 +1,13 @@
+<schema>
+	<element tablename="cashreceipt_changelog"> 
+		<field name="objid" primary="true" /> 
+		<field name="receiptid" required="true" /> 
+		<field name="dtfiled" required="true" /> 
+		<field name="filedby_objid" required="true" /> 
+		<field name="filedby_name" required="true" /> 
+		<field name="action" required="true" /> 
+		<field name="remarks" required="true" /> 
+		<complex name="oldvalue" required="true" serializer="default" />
+		<complex name="newvalue" required="true" serializer="default" />
+	</element>
+</schema> 

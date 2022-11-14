@@ -1,0 +1,56 @@
+<schema adapter="main">
+	<element name="faas" tablename="faas">
+		<field name="objid" primary="true" />
+		<field name="state" required="true"/>
+		<field name="datacapture" required="true"/>
+		<field name="autonumber" required="true"/>
+		<field name="tdno"  caption="TD No." searchable="true" indexed="true" width="140"/>
+		<field name="utdno" required="true" />
+		<field name="txntype_objid" required="true" />
+		<field name="effectivityyear" required="true"/>
+		<field name="effectivityqtr" required="true"/>
+		<field name="titletype" />
+		<field name="titleno" />
+		<field name="titledate" />
+		<field name="rpuid" />
+		<field name="realpropertyid" />
+		<field name="fullpin" required="true"  caption="PIN" searchable="true" indexed="true"  width="150"/>
+		<field name="taxpayer_objid" />
+		<field name="owner_name" caption="Taxpayer" indexed="true"  width="250"/>
+		<field name="owner_address" caption="Address" />
+		<field name="administrator_objid" />
+		<field name="administrator_name" />
+		<field name="administrator_address" />
+		<field name="beneficiary_objid" />
+		<field name="beneficiary_name" />
+		<field name="beneficiary_address" />
+		<field name="memoranda" />
+		<field name="cancelnote" />
+		<field name="backtaxyrs" required="true"/>
+		<field name="prevtdno" />
+		<field name="cancelreason" />
+		<field name="canceldate" />
+		<field name="cancelledbytdnos" />
+		<field name="lguid" />
+		<field name="lgutype" />
+		<field name="txntimestamp" />
+		<field name="cancelledtimestamp"/>
+		<field name="name"/>
+		<field name="dtapproved" />
+		<field name="year" type="integer" />
+		<field name="qtr" type="integer" />
+		<field name="month" type="integer" />
+		<field name="day" type="integer" />
+		<field name="cancelledyear" type="integer" />
+		<field name="cancelledqtr" type="integer" />
+		<field name="cancelledmonth" type="integer" />
+		<field name="cancelledday" type="integer" />
+		<field name="originlguid" />
+		<field name="parentfaasid" />
+		<complex name="taxpayer" ref="entity" jointype="many-to-one" required="false" 
+			includefields="objid,entityno,name,address_text">
+			<key field="taxpayer_objid" target="objid" />
+		</complex>
+	</element>
+
+</schema>

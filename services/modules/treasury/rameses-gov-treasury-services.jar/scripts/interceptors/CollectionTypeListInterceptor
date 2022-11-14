@@ -1,0 +1,74 @@
+import com.rameses.annotations.*;
+
+class CollectionTypeListInterceptor {
+
+    @After(pattern="QueryService.getNodeList", eval="#{ args[0]._schemaname == 'collectiontype' }")
+	public void afterGetNodeList(evt) {
+		def result = evt.result;
+		result << [title:'DRAFT', state:'DRAFT'];
+		result << [title:'ACTIVE', state:'ACTIVE'];
+		result << [title:'INACTIVE', state:'INACTIVE'];
+	}
+
+	@Before(pattern="QueryService.getList", eval="#{ args[0]._schemaname == 'collectiontype' }")
+	public void afterGetList(def evt) {
+		def o = evt.args[0];
+
+		def arr = resolveWhere( o ); 
+		def whereList = arr[0]; 
+		def whereMap = arr[1]; 
+
+		if ( o.node?.state ) {
+
+			def str = "state = :state";
+			if ( whereList ) {
+				whereList.add(0, str); 
+			} else {
+				whereList << str; 
+			}
+
+			whereMap.state = o.node.state; 
+		} 
+		
+		if ( whereList ) { 
+			o.where = [ whereList.join(' AND '), whereMap ]; 
+		}
+	}
+
+	@Before(pattern="QueryService.getList", eval="#{args[0]._schemaname == 'vw_collectiontype'}") 
+	public void beforeGetListView( evt ) { 
+		def param = evt.args[0]; 
+		def arr = resolveWhere( param ); 
+		def whereList = arr[0]
+		def whereMap = arr[1]; 
+
+		if ( param.orgid ) {
+			whereList << 'orgid = :orgid';
+			whereMap.orgid = param.orgid; 
+		}
+
+		if ( whereList ) { 
+			param.where = [ whereList.join(' AND '), whereMap ]; 
+		}
+	}
+
+	def resolveWhere( param ) {
+		def whereList = []; 
+		def whereMap = [:]; 
+		if ( param.where instanceof List ) { 
+			if ( param.where.size() > 0 && param.where[0] ) 
+				whereList << param.where[0]; 
+
+			if ( param.where.size() > 1 && param.where[1] instanceof Map) 
+				whereMap.putAll( param.where[1] ); 
+		} 
+		else if ( param.where instanceof Object[]) { 
+			if ( param.where.length > 0 && param.where[0] ) 
+				whereList << param.where[0]; 
+
+			if ( param.where.length > 1 && param.where[1] instanceof Map) 
+				whereMap.putAll( param.where[1] ); 
+		}
+		return [ whereList, whereMap ]; 
+	}
+}

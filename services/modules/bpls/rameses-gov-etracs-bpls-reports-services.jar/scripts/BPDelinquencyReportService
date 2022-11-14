@@ -1,0 +1,141 @@
+import com.rameses.annotations.*; 
+
+class BPDelinquencyReportService {
+	
+	@DataContext('report_bpdelinquency') 
+	def em_report; 
+
+	@DataContext('report_bpdelinquency_app') 
+	def em_report_app; 
+
+	@DataContext('report_bpdelinquency_item') 
+	def em_report_item; 
+
+	@DataContext('barangay') 
+	def brgydb; 
+
+	@Env 
+	def env; 
+
+	@Service('DateService') 
+	def dateSvc; 
+
+	@Service('BPExpiryDateService')
+	def expiryDateSvc; 
+
+	@ProxyMethod
+	public def getStatus() { 
+		return [
+			current : em_report.find([ state: 'APPROVED' ]).orderBy('dtfiled desc').first(), 
+			pending : em_report.where(" state NOT IN ('APPROVED') ").orderBy('dtfiled desc').first() 
+		]; 		
+	} 
+
+	@ProxyMethod 
+	public def init( params ) { 
+		def o = [ 
+			username : (env.FULLNAME ? env.FULLNAME : params.username),  
+			userid   : (env.USERID ? env.USERID : params.userid), 
+			objid    : 'REPORT'+ new java.rmi.server.UID(), 
+			dtfiled  : dateSvc.getServerDate(),
+			state    : 'DRAFT' 
+		]; 
+		em_report.create( o ); 
+		return o; 
+	} 
+
+	@ProxyMethod 
+	public def open( params ) {
+		return em_report.find([ objid: params.objid ]).first(); 
+	}
+
+	@ProxyMethod
+	public void removeReport( params ) {
+		def findby = [ parentid: params.objid ]; 
+		em_report_item.find( findby ).delete();
+		em_report_app.find( findby ).delete();
+
+		findby.clear(); 
+		findby.objid = params.objid; 
+		em_report.find( findby ).delete();
+	}
+
+	@ProxyMethod
+	public def approve( params ) {
+		if ( !params.objid ) throw new Exception('objid parameter is required');
+
+		def o = em_report.find([ objid: params.objid ]).first(); 
+		if ( o.state.toString().toUpperCase() == 'COMPLETED' ) { 
+			em_report.find([ objid: params.objid ]).update([ state: 'APPROVED' ]);
+			return em_report.find([ objid: params.objid ]).first(); 			
+		} 
+
+		throw new Exception('The build report must be in COMPLETED state'); 
+	} 
+
+
+	@ProxyMethod 
+	public def initReport( params ) {
+		return [ 
+			barangays: brgydb.select('objid,name,pin').where(' 1=1 ').orderBy(' pin ').list()  
+		]; 
+	}	
+
+	@ProxyMethod 
+	public def getReport( params ) { 
+		def builddate = null; 
+		if ( !params.reportid ) {
+			def o = em_report.find([ state: 'APPROVED' ]).orderBy(' dtfiled desc').first(); 
+			if ( o ) { 
+				builddate = o.dtfiled; 
+				params.reportid = o.objid; 
+			} 
+		}
+
+		if ( params.barangay?.objid ) {
+			params.barangayid = params.barangay.objid; 
+		}
+
+		def filter1 = ['1=1']; 
+		def filter2 = ['1=1'];
+
+		if ( params.barangayid ) {
+			filter1 << ''' baddr.barangay_objid = $P{barangayid} ''';
+			filter2 << ''' baddr.barangay_objid = $P{barangayid} ''';
+		}
+
+		def periodtype = params.period.toString().toLowerCase();
+		if ( periodtype.matches('asofqtr')) {
+			filter1 << ''' rpti.duedate < $P{enddate} ''';
+			filter2 << ''' rpti.year <= YEAR($P{startdate}) ''';
+		}
+		else if ( periodtype.matches('quarterly')) {
+			filter1 << ''' rpti.year = $P{year} AND rpti.qtr = $P{qtr} ''';
+			filter2 << ''' rpti.year = $P{year} AND rpti.qtr = $P{qtr} ''';
+		}
+		else if ( periodtype.matches('yearly')) {
+			filter1 << ''' rpti.year = $P{year} ''';
+			filter2 << ''' rpti.year = $P{year} ''';
+		}
+		else {
+			throw new Exception(""+ periodtype +" period type not supported"); 
+		}
+
+		params.filter1 = filter1.join(" AND "); 
+		params.filter2 = filter2.join(" AND "); 
+
+		filter1.clear();
+		filter2.clear();
+		
+		def result = [ 
+			reportdata: em_report.getReport( params ), 
+			builddate : builddate 
+		]; 
+		result.reportdata.each{
+			if ( it.businessaddress ) {
+				it.businessaddress = it.businessaddress.replaceAll("\\s{1,}"," "); 
+			}
+		}
+		return result; 
+	} 
+}

@@ -1,0 +1,10 @@
+<schema adapter="main">
+	<element tablename="online_business_application_doc_fordownload">
+		<field name="objid" primary="true" /> 
+		<field name="scheduledate" required="true"/> 
+		<field name="msg" /> 
+		<field name="filesize" /> 
+		<field name="bytesprocessed" /> 
+		<field name="lockid" /> 
+	</element> 
+</schema> 

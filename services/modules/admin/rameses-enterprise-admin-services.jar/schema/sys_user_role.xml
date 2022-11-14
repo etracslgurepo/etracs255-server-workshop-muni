@@ -1,0 +1,49 @@
+<!--
+[mysql]
+DROP VIEW IF EXISTS sys_user_role
+;
+CREATE VIEW sys_user_role AS 
+SELECT
+	u.objid , u.lastname , u.firstname , u.middlename, u.username, 
+	CONCAT(u.lastname,', ',u.firstname,(case when u.middlename is null then '' else concat(' ',u.middlename) end)) AS name,
+	ug.role, ug.domain, ugm.org_objid AS orgid, u.txncode, u.jobtitle, 
+	ugm.objid as usergroupmemberid, ugm.usergroup_objid
+FROM sys_usergroup_member ugm 
+   inner join sys_usergroup ug on ug.objid = ugm.usergroup_objid 
+   inner join sys_user u on u.objid = ugm.user_objid 
+;
+
+[mssql]
+if object_id('dbo.sys_user_role', 'V') IS NOT NULL 
+  drop view dbo.sys_user_role; 
+go 
+CREATE VIEW sys_user_role AS 
+SELECT
+	u.objid , u.lastname , u.firstname , u.middlename, u.username, 
+	(u.lastname+', '+u.firstname+(case when u.middlename is null then '' else (' '+u.middlename) end)) AS name,
+	ug.role, ug.domain, ugm.org_objid AS orgid, u.txncode, u.jobtitle, 
+	ugm.objid as usergroupmemberid, ugm.usergroup_objid
+FROM sys_usergroup_member ugm 
+   inner join sys_usergroup ug on ug.objid = ugm.usergroup_objid 
+   inner join sys_user u on u.objid = ugm.user_objid 
+go 
+-->	
+<schema>
+	<element tablename="sys_user_role">
+		<field name="objid" primary="true" prefix="USRROLE"/>
+		<field name="lastname" caption="Last Name" indexed="true" searchable="true"/>
+		<field name="firstname" caption="First Name" indexed="true" searchable="true"/>
+		<field name="middlename" caption="Middle Name" />
+		<field name="name" caption="Name" visible="false" hidden="true"/>
+		<field name="username" primary="true"/>
+		<field name="role" caption="Role"/>
+		<field name="domain" caption="Domain"/>
+		<field name="orgid" caption="Org"/>
+
+		<field name="txncode" caption="Txn Code"/>
+		<field name="jobtitle" caption="Job Title"/>
+		
+		<field name="respcenter_objid" caption="RespCenter"/>
+		<field name="respcenter_name" caption="RespCenterName"/>
+	</element>
+</schema> 

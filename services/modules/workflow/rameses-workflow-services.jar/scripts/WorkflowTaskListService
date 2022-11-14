@@ -1,0 +1,58 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+
+class WorkflowTaskListService  {		
+
+	@Service("QueryService")
+	def querySvc;
+
+    @DataContext("sys_wf_node")
+    def wfNode;
+
+    @Env 
+    def env;
+
+    @ProxyMethod
+    public def getNodeList( def o ) {
+        if(!o.processname) throw new Exception("processname is required");
+        def nodes = [];
+        nodes << [title:'My Tasks', name:'mytask'];
+        wfNode.find( [processname: o.processname] ).where(" (nodetype = 'state' OR nodetype = 'end') ").orderBy("idx").list().each {
+            nodes << [title: it.title , name: it.name, domain: it.domain, role:it.role ]
+        }
+        return nodes;
+    }
+
+    @ProxyMethod
+    public def getList( def o ) {
+        if(o.node?.name) {
+            def s = null;
+            def p = [:];
+            switch(o.node.name) {
+                case 'all':
+                    break;
+
+                case 'mytask': 
+                    s = "task.state NOT IN ('start','end') AND task.enddate IS NULL AND task.assignee.objid=:assignee";
+                    p.assignee = env.USERID;
+                    break;    
+
+                default:
+                    s = "task.state=:state AND task.enddate IS NULL ";
+                    p.state = o.node.name;
+                    
+            }
+            if( !o.where ) {
+                o.where = [s,  p ];
+            }
+            else {
+                o.where[0] = s + " AND " + o.where[0];
+                o.where[1] = p + o.where[1];
+            }
+        }
+        return querySvc.getList(o);    
+    }
+
+
+}
+

@@ -1,0 +1,264 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+import com.rameses.util.*;
+
+class TCReportService { 
+
+	@ActiveDB('tcreport')
+	def adb; 
+
+	@DataContext(dynamic=true)
+	def em;
+
+	@Env
+	def env; 
+ 
+	@Service('DateService')
+	def dtSvc; 
+
+
+	@ProxyMethod
+	public def getFunds( ) {
+		return adb.getFunds([ filter: '' ]); 
+	}
+
+
+	@ProxyMethod 
+	public def initReport( param ) {
+		def rundate = new java.sql.Date( dtSvc.getServerDate().getTime()); 
+		def arrs = rundate.toString().split("-"); 
+		def resp = [ 
+			funds  : [], 
+			months : dtSvc.getMonths(), 
+			year   : arrs[0].toInteger(),  
+			month  : arrs[1].toInteger(),  
+			day    : arrs[2].toInteger() 
+		]; 
+
+		def srcfunds = getFunds(); 
+        def groups = srcfunds.collect{[ objid: it.groupid, indexno: it.groupindexno ]}.unique();  
+        groups.sort{ it.indexno }.each{ g-> 
+            resp.funds << g;
+            g.category = 'group'; 
+            g.desc = g.objid + ' GROUP'; 
+            
+            srcfunds.findAll{( it.groupid == g.objid )}.each{ f-> 
+                resp.funds << f; 
+                f.category = 'item'; 
+                f.desc = '    '+ f.title;
+            } 
+        } 
+
+        if ( param?.includeUsers.toString().matches('1|true')) {
+        	def em_ur = em.lookup('sys_user_role'); 
+        	resp.users = em_ur.find([ domain: 'TREASURY', role: 'COLLECTOR' ]).orderBy('name,orgid').list();
+        }
+		return resp; 
+	}
+
+	def resolveDate( value ) {
+		if ( !value ) return null; 
+		if ( value instanceof java.util.Date ) return value; 
+
+		try {
+			return java.sql.Date.valueOf( value.toString()); 
+		} catch(Throwable t) {;}
+
+		try {
+			def o = java.sql.Timestamp.valueOf( value.toString()); 
+			return new java.sql.Date( o.time ); 
+		} catch(Throwable t) {;}
+	}
+
+	@ProxyMethod 
+	public def getCollectionByFund( params ) { 
+		if ( !params.period?.type )
+			throw new Exception('period.type  parameter is required'); 
+		if ( !params.startdate ) 
+			throw new Exception('startdate  parameter is required'); 
+		if ( !params.enddate ) 
+			throw new Exception('enddate  parameter is required'); 
+
+		def startdate = resolveDate( params.startdate ); 
+		if ( !startdate ) throw new Exception('Invalid date value for startdate'); 
+
+		def enddate = resolveDate( params.enddate ); 
+		if ( !enddate ) throw new Exception('Invalid date value for enddate'); 
+
+		def YMD = new java.text.SimpleDateFormat("yyyy-MM-dd");
+		params.enddate = new DateBean( enddate ).add("1d"); 
+		params.enddate = new java.sql.Date( params.enddate.time ); 
+		params.startdate = startdate; 
+
+		if ( params.postingtype == null ) 
+			params.postingtype = [:]; 
+
+		if ( !params.postingtype.objid ) 
+			params.postingtype.objid = 'BY_LIQUIDATION_DATE'; 
+
+		if ( !params.postingtype.title ) 
+			params.postingtype.title = params.postingtype.objid; 
+
+		params.filter = ''; 
+
+		if ( params.fund?.objid ) { 
+			params.fundid = params.fund.objid; 
+			if ( params.fund.category == 'group' ) { 
+				params.filter = ''' AND fund.groupid = $P{fundid} '''; 	
+			} 
+			else {
+				params.filter = ''' AND fund.objid = $P{fundid} '''; 
+			}
+		}  
+
+		def reportdata = [:]
+		if ( params.postingtype.objid == 'BY_REMITTANCE_DATE' ) { 
+			reportdata.items = adb.getRemittedCollectionByFund( params ); 
+		} 
+		else { 
+			reportdata.items = adb.getLiquidatedCollectionByFund( params ); 
+		} 
+		
+		if ( !reportdata.items ) throw new Exception("No record(s) found.     "); 
+
+		reportdata.totalamount = reportdata.items.sum{( it.amount? it.amount : 0.0)}
+
+		reportdata.summaries = []; 
+		reportdata.items.groupBy{[ groupindexno: it.fundgroupindexno, fundid: it.fundid, acctid: it.acctid ]}.each{ k,v-> 
+			def fo = v.first(); 
+			reportdata.summaries << [
+				groupindexno: fo.groupindexno, 
+				fundid: k.fundid, fundname: fo.fundname, 
+				acctid: k.acctid, acctname: fo.acctname, 
+				amount: v.sum{( it.amount? it.amount: 0.0 )} 
+			]; 
+		}
+		reportdata.summaries.sort{( it.groupindexno )} 
+
+		def periodtype = params.period.type;
+		if ( !params.period.title ) 
+			params.period.title = periodtype.toUpperCase();  
+
+		def reportheader = [
+			REPORTTITLE  : 'REPORT OF COLLECTION BY FUND', 
+			PREPAREDBY 	 : env.FULLNAME, PREPAREDBYTITLE: env.JOBTITLE, 
+			POSTINGTYPE  : params.postingtype.title.toUpperCase(), 
+			PERIODTYPE   : periodtype.toUpperCase(), 
+			PERIOD       : buildPeriodTitle( periodtype, startdate, enddate )
+		]; 
+		return [header: reportheader, reportdata: reportdata]; 
+	}	
+
+
+	@ProxyMethod 
+	public def getAbstractOfCollection( params ) {
+		if ( !params.period?.type )
+			throw new Exception('period.type  parameter is required'); 
+		if ( !params.startdate ) 
+			throw new Exception('startdate  parameter is required'); 
+		if ( !params.enddate ) 
+			throw new Exception('enddate  parameter is required'); 
+
+		def startdate = resolveDate( params.startdate ); 
+		if ( !startdate ) throw new Exception('Invalid date value for startdate'); 
+
+		def enddate = resolveDate( params.enddate ); 
+		if ( !enddate ) throw new Exception('Invalid date value for enddate'); 
+
+		def YMD = new java.text.SimpleDateFormat("yyyy-MM-dd");
+		params.enddate = new DateBean( enddate ).add("1d"); 
+		params.enddate = new java.sql.Date( params.enddate.time ); 
+		params.startdate = startdate; 
+
+		if ( params.postingtype == null ) 
+			params.postingtype = [:]; 
+
+		if ( !params.postingtype.objid ) 
+			params.postingtype.objid = 'BY_LIQUIDATION_DATE'; 
+
+		if ( !params.postingtype.title ) 
+			params.postingtype.title = params.postingtype.objid; 
+
+		def filterBuff = new StringBuilder();
+		if ( params.fund?.objid ) { 
+			params.fundid = params.fund.objid; 
+			if ( params.fund.category == 'group' ) { 
+				filterBuff.append(''' AND fund.groupid = $P{fundid} '''); 
+			} 
+			else {
+				filterBuff.append(''' AND fund.objid = $P{fundid} '''); 
+			}
+		}  
+
+		def collectorname = '( ALL )'; 
+		if ( params.collector?.objid ) { 
+			collectorname = params.collector.desc; 
+			if ( !collectorname ) collectorname = params.collector.name;  
+
+			params.collectorid = params.collector.objid 
+			filterBuff.append(' AND t0.collectorid = $P{collectorid} '); 
+		}
+
+		params.filter = filterBuff.toString(); 
+
+		def items = [];
+		if ( params.postingtype.objid == 'BY_REMITTANCE_DATE' ) { 
+			items = adb.getRemittedAbstractOfCollection( params ); 
+		} 
+		else { 
+			items = adb.getLiquidatedAbstractOfCollection( params ); 
+		} 
+		
+		if ( !items ) throw new Exception("No record(s) found.     "); 
+
+		def periodtype = params.period.type;
+		if ( !params.period.title ) 
+			params.period.title = periodtype.toUpperCase();  
+
+		def reportheader = [
+			TITLE           : 'ABSTRACT OF COLLECTION REPORT', 
+			PREPAREDBY 	    : env.FULLNAME, 
+			PREPAREDBYTITLE : env.JOBTITLE, 
+			POSTINGTYPE     : params.postingtype.title.toUpperCase(), 
+			COLLECTORNAME	: '   '+ (collectorname ? collectorname : ''), 
+			PERIODTYPE      : periodtype.toUpperCase(), 
+			PERIOD          : buildPeriodTitle( periodtype, startdate, enddate ) 
+		];
+		return [header: reportheader, reportdata: items]; 
+	} 
+
+
+	def buildPeriodTitle( periodtype, startdate, enddate ) {
+		if ( periodtype == 'yearly' ) {
+			def formatter = new java.text.SimpleDateFormat("yyyy"); 
+			return 'FOR THE YEAR '+ formatter.format( startdate ); 
+		} 
+		else if ( periodtype=='quarterly' ) {
+			def arr = new java.text.SimpleDateFormat("MM-yyyy").format( startdate ).split("-");
+			def qtr = arr[0].toInteger(); 
+			return 'FOR THE QUARTER '+ qtr +', '+ arr[1]; 
+		} 
+		else if ( periodtype=='monthly' ) {
+			def formatter = new java.text.SimpleDateFormat("MMMMM yyyy"); 
+			return formatter.format( startdate ).toUpperCase(); 
+		} 
+		else if ( periodtype == 'daily' ) {
+			def formatter = new java.text.SimpleDateFormat("MMMMM dd, yyyy"); 
+			return formatter.format( startdate ).toUpperCase(); 
+		} 
+		else if ( periodtype == 'range' ) {
+			if ( startdate == enddate ) {
+				def formatter = new java.text.SimpleDateFormat("MMMMM dd, yyyy"); 
+				return formatter.format( startdate ).toUpperCase()
+			}
+			else {
+				def formatter = new java.text.SimpleDateFormat("MMM/dd/yyyy"); 
+				def buff = new StringBuilder(); 
+				buff.append( formatter.format( startdate ).toUpperCase()).append(" - "); 
+				buff.append( formatter.format( enddate ).toUpperCase()); 
+				return buff.toString(); 
+			}
+		} 
+		return null; 
+	}
+}

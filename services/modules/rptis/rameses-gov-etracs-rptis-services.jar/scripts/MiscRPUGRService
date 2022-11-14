@@ -1,0 +1,48 @@
+import com.rameses.annotations.*
+import com.rameses.util.*
+
+class MiscRPUGRService
+{
+    @PersistenceContext('main')
+    def em
+
+    @Service('MiscRYSettingLookupService')
+    def lookupSvc
+
+    @Service('MiscRPUService')
+    def rpuSvc 
+    
+    @Service('DateService')
+    def dtSvc 
+
+    @ProxyMethod
+    public def reviseMiscRpu(rpu){
+        rpu.dtappraised = dtSvc.serverDate 
+        def actualuse = lookupSvc.lookupAssessLevelByPrevId(rpu.actualuse.objid)
+        if( actualuse ) {
+            rpu.actualuse = actualuse
+        }
+        reviseMiscRpuItems(rpu)
+        rpuSvc.calculateAssessment(rpu)
+        return rpu
+    }
+
+    void reviseMiscRpuItems(rpu) {
+        def deletedItems = [] 
+        rpu.items.each { item ->
+            def miv = lookupSvc.lookupMiscItemValueByPrevId(item.miv.objid)
+            
+            if( miv ) {
+                item.miv = miv 
+                item.expr = miv.expr 
+                item.assesslevel = rpu.actualuse.rate 
+            }
+            else {
+                deletedItems.add( miv )
+            }
+        }
+        rpu.items.removeAll( deletedItems )
+    }
+    
+}
+ 

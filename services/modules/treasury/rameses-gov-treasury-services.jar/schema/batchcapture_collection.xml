@@ -1,0 +1,43 @@
+<schema>
+	
+	<element tablename="batchcapture_collection" >
+		<field name="objid" primary="true"/>
+		<field name="state" required="true" caption="Status"/>
+		<field name="txndate" required="true" caption="Txn.Date" indexed="true"/>
+		<field name="defaultreceiptdate" required="true" indexed="true" searchable="true"/>
+		<field name="txnmode" required="true"/>
+		<field name="stub" required="true" caption="Stub No."/>
+		<field name="formno" required="true" caption="Form No." indexed="true"/>
+		<field name="formtype" required="true" caption="Form Type"/>
+		<field name="controlid" required="true"/>
+		<field name="serieslength" required="true" caption="Series Length"/>
+		<field name="prefix" caption="Prefix"/>
+		<field name="suffix" caption="Suffix"/>
+		<field name="startseries" required="true" caption="Start Series" indexed="true" searchable="true"/>
+		<field name="endseries" required="true" caption="End Series" indexed="true" searchable="true"/>
+
+		<field name="totalamount" required="true" caption="Amount"/>
+		<field name="totalcash" required="true" caption="Total Cash"/>
+		<field name="totalnoncash" required="true" caption="Total Noncash"/>
+		<field name="collectiontype_objid" required="true"/>
+		<field name="collectiontype_name" required="true" caption="Collection Type"/>
+		<field name="collector_objid" required="true"/>
+		<field name="collector_name" required="true" caption="Collector" indexed="true" searchable="true"/>
+		<field name="collector_title" required="true"/>
+		
+		<field name="capturedby_objid" required="true"/>
+		<field name="capturedby_name" required="true" caption="CapturedBy" indexed="true" searchable="true"/>
+		<field name="capturedby_title" />
+		<field name="org_objid" required="true"/>
+		<field name="org_name" required="true" caption="Org" indexed="true"/>
+		<field name="postedby_objid" />
+		<field name="postedby_name" caption="PostedBy" indexed="true"/>
+		<field name="postedby_date" />
+
+		<complex name="collectiontype" ref="collectiontype" jointype="many-to-one" 
+				 includefields="objid,name,fund.*">
+			<key field="collectiontype_objid" target="objid"/> 
+		</complex>
+	</element>
+
+</schema>

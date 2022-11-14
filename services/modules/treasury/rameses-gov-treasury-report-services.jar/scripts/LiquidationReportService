@@ -1,0 +1,316 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+import com.rameses.util.*;
+import java.text.DecimalFormat;
+
+class LiquidationReportService  {
+
+	@DataContext('collectionvoucher')
+	def liqEm;
+
+	@ActiveDB("liquidationreport")
+	def liqreport; 
+
+	@ActiveDB("liquidationreport_af")
+	def liqreport_af; 
+
+	@DataContext('fund')
+	def fund_em;	
+
+	@Service("NumberService")
+	def numSvc;
+
+	@Service('RAAFReportService') 
+	def raafSvc; 	
+
+	@Service('Var') 
+	def var; 	
+
+	@Env 
+	def env; 
+
+	def decformat = new DecimalFormat("#,##0.00");
+
+
+	@ProxyMethod 
+	def getReportOptions( params ) {
+		return [
+			funds : liqreport.getCollectionFundlist([ collectionvoucherid: params.objid ]) 
+		]; 
+	}
+
+	@ProxyMethod 
+	def getFundlist( collectionvoucherid ) {
+		return liqreport.getCollectionFundlist([ collectionvoucherid: collectionvoucherid ]);
+	}
+
+	@ProxyMethod 
+	def getRCDReportData( params ) {
+		def data = liqreport.findCollectionVoucherFund( params ); 
+		if( !data ) throw new Exception("Could not open Collection Voucher with objid " + params.collectionvoucherid ); 
+
+		data.txnno = data.controlno; 
+		data.dtposted = data.controldate; 
+
+		params.fundfilter = "''";
+		if ( params._INCLUDE_SUBFUND == true ) { 
+			def list = fund_em.find([ parentid: params.fundid ]).collect{ it.objid }   
+			if ( list ) { 
+				list << params.fundid; 
+				params.fundfilter = "'"+ list.join("','") +"'"; 
+			} 
+		} 
+
+		data.remittances = liqreport.getRCDRemittances( params );
+		data.collectionsummaries = liqreport.getRCDCollectionSummary( params );
+		data.remittedforms = []; 
+		data.nonserialremittances = []; 
+
+		def allow_af = var.liquidation_report_show_accountable_forms.toString().toLowerCase(); 
+		if ( allow_af.matches('true|1')) { 
+			def afs = liqreport_af.getRemittedAFs( params ); 
+			afs.eachWithIndex{ o,idx-> 
+				o.lineno = idx; 
+				o.formno = o.afid;
+				if ( o.formtype == 'serial' ) {
+					data.remittedforms << o; 
+				} else {
+					data.nonserialremittances << o; 
+				} 
+			} 
+			afs.clear(); 
+			data.remittedforms = buildAFSerial( data.remittedforms ); 
+			data.nonserialremittances = buildAFNonSerial( data.nonserialremittances ); 
+		} 
+
+		data.otherpayments = liqreport.getRCDOtherPayments( params );
+		data.otherpayments.each{ 
+			it.reftype = (it.reftype ? it.reftype : it.paytype);
+		}
+		if ( !data.totalnoncash ) { 
+			data.totalnoncash = data.otherpayments.sum{( it.amount ? it.amount : 0.0 )} 
+			data.totalnoncash = (data.totalnoncash ? data.totalnoncash : 0.0); 
+		}
+		if ( !data.totalcash ) {
+			data.totalcash = data.amount - data.totalnoncash; 
+		}
+		data.amountinwords = numSvc.doubleToWords( data.amount ); 
+		data.cashbreakdown = null; 
+		return data;
+	}
+
+
+	@ProxyMethod 
+	def getReportByFund( params ) {
+		def data = liqEm.find([ objid: params.collectionvoucherid ]).first();  
+		if( !data ) throw new Exception("Could not open Collection Voucher with objid " + params.collectionvoucherid ); 
+
+		def funds = [ params.fundid.toString() ]; 
+		if ( params._INCLUDE_SUBFUND == true ) { 
+			def list = fund_em.find([ parentid: params.fundid ]).collect{ it.objid }   
+			if ( list ) funds.addAll( list ); 
+		} 
+		params.fundfilter = " AND fund.objid IN ('"+ funds.join("','") +"') "; 
+
+		data.receipts = liqreport.getReceipts( params ); 
+		if ( !data.receipts ) throw new Exception('No record(s) found                  ');
+
+		data.acctsummaries = liqreport.getReceiptItemAccounts( params );  
+		data.user = [name: env.FULLNAME, title: env.JOBTITLE]; 
+		data.txnno = data.controlno;
+		return data;
+	}
+
+	@ProxyMethod 
+	def generateReportByRevenueItem( liq, fund ) {
+		def data = liqEm.find([ objid: liq.objid ]).first();  
+		if( !data ) throw new Exception("Could not open Collection Voucher with objid " + liq.objid ); 
+
+		def params = [ collectionvoucherid: data.objid ]; 
+
+		params.fundfilter = ""; 
+		if ( fund?.fundid ) {
+			params.fundfilter = " AND fund.objid IN ('"+ fund.fundid +"') "; 
+		}
+		
+		data.acctsummaries = liqreport.getRevenueItemSummaryByFund( params ); 
+		if( ! data.acctsummaries ) throw new Exception("No record(s) found ");
+
+		data.amount = data.acctsummaries.amount.sum(); 
+
+		// resolve data compatibility 
+		data.txnno = data.controlno; 
+		data.remittancedate = data.controldate;
+		return data;
+	} 
+
+
+
+	def buildAFNonSerial( items ) { 
+		def groups = items.groupBy{[ formno: it.formno ]}
+
+		items.clear(); 
+		groups.each{ k,v-> 
+			v.each{ 
+				it.beginstartseries = it.beginendseries = null; 
+				it.issuedstartseries = it.issuedendseries = null; 
+				it.endingstartseries = it.endingendseries = null; 
+				it.receivedstartseries = it.receivedendseries = null; 
+			} 
+
+			def fo = v.first(); 
+			fo.qtyreceived = v.findAll{( it.qtyreceived > 0 )}.sum{ it.qtyreceived } 
+			fo.qtybegin = v.findAll{( it.qtybegin > 0 )}.sum{ it.qtybegin } 
+			fo.qtyissued = v.findAll{( it.qtyissued > 0 )}.sum{ it.qtyissued } 
+			fo.qtyending = v.findAll{( it.qtyending > 0 )}.sum{ it.qtyending } 
+
+			def denomination = (fo.denomination ? fo.denomination : 0.0); 
+			fo.receivedamt = (fo.qtyreceived ? fo.qtyreceived : 0.0) * denomination; 
+			fo.beginamt = (fo.qtybegin ? fo.qtybegin : 0.0) * denomination; 
+			fo.issuedamt = (fo.qtyissued ? fo.qtyissued : 0.0) * denomination;
+			fo.endingamt = (fo.qtyending ? fo.qtyending : 0.0) * denomination;
+			items << fo; 
+		} 
+		return items; 
+	} 
+
+	def buildAFSerial( items ) { 
+		def groupindex = 1000; 
+		def subgroupindex = 1000; 
+
+		def groupMerge = { v-> 
+			def nextseries = 0; 
+			v.each{ vo-> 
+				if ( vo.startseries == nextseries ) {
+					vo.groupindex = groupindex;  
+				} else {
+					vo.groupindex = groupindex + 1; 
+				} 
+				groupindex = vo.groupindex; 
+				nextseries = vo.nextseries; 
+			} 
+		}
+		def subgroupMerge = { v-> 
+			def nextseries = 0; 
+			v.each{ vo-> 
+				if ( vo.startseries == nextseries ) {
+					vo.subgroupindex = subgroupindex;  
+				} else {
+					vo.subgroupindex = subgroupindex + 1; 
+				} 
+				subgroupindex = vo.subgroupindex; 
+				nextseries = vo.nextseries; 
+			} 
+		}
+		def mergeStubs = { vv-> 
+			def fo = vv.first(); 
+			def receivedstartseries = vv.collect{ it.receivedstartseries }.findAll{( it )}.min{( it )}
+			def receivedendseries = vv.collect{ it.receivedendseries }.findAll{( it )}.max{( it )}
+			def beginstartseries = vv.collect{ it.beginstartseries }.findAll{( it )}.min{( it )}
+			def beginendseries = vv.collect{ it.beginendseries }.findAll{( it )}.max{( it )}
+			def issuedstartseries = vv.collect{ it.issuedstartseries }.findAll{( it )}.min{( it )}
+			def issuedendseries = vv.collect{ it.issuedendseries }.findAll{( it )}.max{( it )}
+			def endingstartseries = vv.collect{ it.endingstartseries }.findAll{( it )}.min{( it )}
+			def endingendseries = vv.collect{ it.endingendseries }.findAll{( it )}.max{( it )}
+
+			fo.qtyreceived = vv.findAll{( it.qtyreceived > 0 )}.sum{ it.qtyreceived } 
+			fo.qtybegin = vv.findAll{( it.qtybegin > 0 )}.sum{ it.qtybegin } 
+			fo.qtyissued = vv.findAll{( it.qtyissued > 0 )}.sum{ it.qtyissued } 
+			fo.qtyending = vv.findAll{( it.qtyending > 0 )}.sum{ it.qtyending } 
+
+			if ( fo.qtyreceived == null ) fo.qtyreceived = 0; 
+			if ( fo.qtybegin == null ) fo.qtybegin = 0; 
+			if ( fo.qtyissued == null ) fo.qtyissued = 0; 
+			if ( fo.qtyending == null ) fo.qtyending = 0; 
+			if ( fo.qtycancelled == null ) fo.qtycancelled = 0; 
+
+			fo.receivedstartseries = receivedstartseries; 
+			fo.receivedendseries = receivedendseries; 
+			fo.beginstartseries = beginstartseries; 
+			fo.beginendseries = beginendseries; 
+			fo.issuedstartseries = issuedstartseries; 
+			fo.issuedendseries = issuedendseries; 
+			fo.endingstartseries = endingstartseries; 
+			fo.endingendseries = endingendseries; 
+
+			if ( fo.qtyending == 0 ) {
+				fo.endingstartseries = fo.endingendseries = null; 
+			}
+
+			if ( fo.qtyreceived > 0 ) {
+				fo.sreceivedendseries = formatSeries( fo.receivedendseries, fo.serieslength ); 
+				fo.sreceivedstartseries = formatSeries( fo.receivedstartseries, fo.serieslength ); 
+			}
+			if ( fo.qtybegin > 0 ) {
+				fo.sbeginendseries = formatSeries( fo.beginendseries, fo.serieslength ); 
+				fo.sbeginstartseries = formatSeries( fo.beginstartseries, fo.serieslength ); 
+			}
+			if ( fo.qtyissued > 0 ) {
+				fo.sissuedendseries = formatSeries( fo.issuedendseries, fo.serieslength ); 
+				fo.sissuedstartseries = formatSeries( fo.issuedstartseries, fo.serieslength ); 
+			}
+			if ( fo.qtyending > 0 ) {
+				fo.sendingendseries = formatSeries( fo.endingendseries, fo.serieslength ); 
+				fo.sendingstartseries = formatSeries( fo.endingstartseries, fo.serieslength ); 
+			} 
+			return fo; 
+		}
+
+		def results = []; 
+		items.groupBy{[ formno: it.formno, prefix: it.prefix, suffix: it.suffix ]}.each{ k,v-> 
+			v.sort{ it.startseries } 
+			groupMerge( v ); 
+
+			v.groupBy{ it.groupindex }.each{ kk,vv-> 
+				vv.sort{ it.startseries } 
+
+				def unissuedlist = vv.findAll{ it.qtyissued == 0 }
+				unissuedlist.sort{ it.startseries }
+				subgroupMerge( unissuedlist ); 
+
+				def unissuedmap = unissuedlist.groupBy{ it.subgroupindex } 
+
+				def issuedlist = vv.findAll{ it.qtyissued > 0 }
+				issuedlist.sort{ it.startseries }
+				subgroupMerge( issuedlist );
+
+				issuedlist.groupBy{ it.subgroupindex }.each{ sk,sv-> 
+					sv.sort{ it.startseries } 
+
+					def lo = sv.last(); 					
+					def list = []; 
+					list.addAll( sv );  
+
+					def uu = unissuedlist.find{ it.startseries == lo.nextseries } 
+					if ( uu ) {
+						def vvs = unissuedmap.get( uu.subgroupindex ); 
+						if ( vvs ) list.addAll( vvs ); 
+
+						unissuedmap.remove( uu.subgroupindex ); 
+					} 
+					list.sort{ it.startseries } 
+					def fo = mergeStubs( list ); 
+					results << fo; 
+				}
+				issuedlist.clear(); 
+				unissuedlist.clear(); 
+				unissuedmap.each{ uk,uv-> 
+					uv.sort{ it.startseries } 
+					def fo = mergeStubs( uv ); 
+					results << fo; 
+				} 
+				unissuedmap.clear(); 
+			} 
+		}
+		items.clear(); 
+		results.sort{ it.lineno } 
+		return results; 
+	} 
+
+	private def formatSeries( seriesno, serieslength ) {
+		if ( seriesno == null ) return; 
+		if ( serieslength == null || serieslength <= 0 ) return; 
+
+		return seriesno.toString().padLeft(serieslength, '0'); 
+	}	
+}

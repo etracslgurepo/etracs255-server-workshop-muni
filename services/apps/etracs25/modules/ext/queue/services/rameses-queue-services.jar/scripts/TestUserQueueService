@@ -1,0 +1,93 @@
+import com.rameses.annotations.*;
+
+class TestUserQueueService {
+	
+    @XConnection('queue_ws_server')
+    def wssender;
+
+	@XConnection("queue_poll")
+	def queue_poll;
+
+	@Service 
+	def self; 
+
+	@Env 
+	def env;	
+
+	@ProxyMethod 
+	public void take( params ) {
+		notify([ 
+			counterid: params.counterid, sectionid: params.sectionid,  
+			seriesno: params.seriesno, ticketno: params.ticketno,  
+			type:'TAKE_NUMBER', prefix: params.prefix, 
+			countercode: params.countercode, groupid: params.groupid  
+		]); 
+	}
+
+	@ProxyMethod 
+	public void consume( params ) {
+		notify([ 
+			counterid: params.counterid, sectionid: params.sectionid, 
+			seriesno: params.seriesno, ticketno: params.ticketno, 
+			type:'CONSUME_NUMBER', prefix: params.prefix, 
+			countercode: params.countercode, groupid: params.groupid  
+		]); 
+	} 	
+
+	@ProxyMethod 
+	public void buzz( params ) { 
+		notify([ 
+			counterid: params.counterid, sectionid: params.sectionid, 
+			seriesno: params.seriesno, ticketno: params.ticketno, 
+			type:'BUZZ_NUMBER', prefix: params.prefix, 
+			countercode: params.countercode, groupid: params.groupid    
+		]); 
+	} 	
+
+	void notify( data ) { 
+		def uuid = ''+ data.sectionid +'_'+ data.counterid; 
+		data.uuid = uuid.toLowerCase(); 
+		if ( data.ticketno ) {
+			data.formattedseriesno = data.ticketno; 
+		} else {
+			data.formattedseriesno = formatSeriesNumber( data ); 	
+		} 		
+		self.notifyWs( data ); 
+	} 
+
+	def formatSeriesNumber( data ) {
+		if ( data.seriesno ) {
+			def prefix = (data.prefix? data.prefix : ''); 
+			def snum = data.seriesno.toString();
+			if ( snum.length() < 4 ) { 
+				snum = snum.padLeft(4,'0'); 
+			} 
+			return ''+prefix+snum; 
+		} else { 
+			return ''; 
+		} 
+	} 	
+
+ 
+	@Async 
+	@ProxyMethod(local=true) 
+	public void notifyWs( data ) { 
+		if ( !data ) return; 
+
+		data.channel = data.group = 'queue'; 
+
+		wssender.send([ 
+            channel : data.channel, 
+            group   : data.group, 
+            data    : resolveData( data )  
+        ]); 
+	} 	
+
+	def resolveData( data ) {
+        try {
+            return new com.rameses.util.Base64Cipher().decode( data ); 
+        } catch(Throwable t) { 
+            return data; 
+        } 
+    } 	
+}

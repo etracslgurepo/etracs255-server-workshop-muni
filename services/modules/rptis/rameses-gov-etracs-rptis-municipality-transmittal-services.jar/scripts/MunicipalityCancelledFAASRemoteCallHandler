@@ -1,0 +1,97 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+
+class MunicipalityCancelledFAASRemoteCallHandler
+{   
+	@Service('CancelledFAASService')
+	def svc
+
+	@ActiveDB('cancelledfaas_task')
+	def taskEm;
+
+	@Service('RPTUtil')
+	def util
+
+	@Service('CancelledFAASSupportService')
+	def supportSvc
+
+	@Service('DateService')
+	def dtSvc 
+
+	@Service('NotificationService')
+	def notifySvc		
+
+	@ProxyMethod
+	public void approveCancelledFaasByProvince(data){
+		def cf = supportSvc.findById(data)
+		if (!cf) {
+			println '='*50
+			println 'saving caneclledfaas data '
+			data.state = 'DRAFT'
+			supportSvc.saveCancelledFaasData(data)
+		}
+		else if (cf.state.matches('APPROVED')) 
+			return;
+
+		svc.onlineApprove(data)
+		saveTasks(data)
+		svc.saveSignatory(data.signatory)
+
+		//get recommender and set taskid to approver task 
+		//to open the faas record in approve state 
+		def recommendertask = taskEm.findRecommederTask([refid:data.objid])
+		if (recommendertask && data.tasks){
+			recommendertask.objid = data.tasks.last().objid
+			def info = [
+				message: 'Cancel FAAS No. ' + data.faas.tdno + ' has been approved by ' + data.signatory.approver.name + '.',
+				sender : data.signatory.approver,
+			]
+			notifyRecommender(recommendertask, info)
+		}
+		println 'Cancelled FAAS has been successfully approved by province.'
+	}
+
+
+	@ProxyMethod
+	public void disapprove(data){
+		taskEm.deleteOpenTask(data)
+		def recommendertask = taskEm.findRecommederTask([refid:data.objid])
+		if (recommendertask){
+			recommendertask.enddate = null
+			recommendertask.signature = null
+			recommendertask.message = data.disapprovemessage 
+			taskEm.update(recommendertask)
+
+			def info = [
+				message: 'Cancel FAAS No. ' + data.faas.tdno + ' has been disaproved.',
+				sender : data.signatory.approver,
+			]
+			notifyRecommender(recommendertask, info)
+		}
+	}
+
+	void saveTasks( data ) {
+		taskEm.deleteOpenTask(data)
+		data.tasks.each{
+			def t = taskEm.read(it)
+			if (!t)
+				taskEm.create(it)
+		}
+	}
+
+	void notifyRecommender(currtask, info){
+		def msg = [
+            objid     : currtask.refid,
+            recipientid : (currtask.assignee.objid ? currtask.assignee.objid : '-'),
+            recipienttype : 'user',
+            senderid  : (info.sender.objid ? info.sender.objid : '-'),
+            sender    : info.sender.name,
+            message   : info.message,
+            filetype  : 'cancelledfaas',
+            data 	  : [taskid: currtask.objid],
+        ]
+        notifySvc.addMessage(msg)
+	}
+
+
+}

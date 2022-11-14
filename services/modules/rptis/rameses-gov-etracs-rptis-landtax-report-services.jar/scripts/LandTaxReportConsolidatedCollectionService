@@ -1,0 +1,45 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+import java.rmi.server.UID
+
+class LandTaxReportConsolidatedCollectionService
+{
+    @Service('RPTUtil')
+    def util 
+
+
+    @ActiveDB('landtaxreport_consolidated_collection')
+    def em
+
+    @DataContext('propertyclassification')
+    def em_classificcation
+
+
+    @ProxyMethod
+    public def buildReport( params ) {
+        params.type = params.rputype.type 
+        params.classid = params.classification.objid 
+        util.buildStartEndDateFilter(params)
+
+        params.filter = ' cv.controldate >= $P{startdate} AND cv.controldate < $P{enddate} '
+        if (params.postingtype && params.postingtype.code == 'byrem'){
+            params.filter = ' rem.controldate >= $P{startdate} AND rem.controldate < $P{enddate} '
+        }
+
+        def list = em.getConsolidatedCollections(params)
+        if (!list) throw new Exception('Records not found.')
+
+        def p = [:]
+        p.TITLE = 'CONSOLIDATED REPORT ON UPDATED REAL PROPERTIES CY ' + params.year 
+        p.SUBTITLE = params.classification.name + ' ' + params.rputype.caption.toUpperCase() 
+        return [reportdata:list, parameters:p]
+    }
+
+
+    @ProxyMethod
+    public def getClassifications(  ) {
+        return em_classificcation.select('objid,code,name').find([state:'APPROVED']).orderBy('orderno').list()
+    }
+
+}

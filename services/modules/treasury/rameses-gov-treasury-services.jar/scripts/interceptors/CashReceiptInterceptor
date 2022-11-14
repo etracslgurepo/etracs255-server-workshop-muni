@@ -1,0 +1,90 @@
+import com.rameses.annotations.*;
+
+class CashReceiptInterceptor {
+
+	@DataContext('collectiontype')
+	def colltype_db;
+
+	@DataContext('checkpayment')
+	def check_db;
+
+	@DataContext('af_control')
+	def afc_db;
+
+	@DataContext('cashreceipt_void')
+	def void_db;
+
+	@DataContext('cashreceipt_cancelseries')
+	def cancel_db;
+
+	@Service("NumberService")
+	def numSvc;
+
+	@Service( dynamic=true )
+	def dynaSvc;
+
+
+	@After(pattern="PersistenceService.create", eval="#{ args[0]._schemaname == 'cashreceipt' }", index=-10000)
+	public void afterCreate( evt ) { 
+		adjustReceipt( evt.result ); 
+	} 
+
+
+	@After(pattern="PersistenceService.read", eval="#{ args[0]._schemaname == 'cashreceipt' }", index=-10000)
+	public void afterOpen( evt ) { 
+		adjustReceipt( evt.result ); 
+	} 
+
+	void adjustReceipt( data ) { 
+		if ( data == null ) return; 
+
+		if ( data.collectiontype?.objid ) { 
+			def cta = colltype_db.find([ objid: data.collectiontype.objid ]).select('name,title,handler,formno').first(); 
+			if ( cta ) data.collectiontype = cta; 
+		} 
+
+		if ( data.controlid ) {
+			def afc = afc_db.find([ objid: data.controlid ]).select('afunit.*').first(); 
+			data.afunit = afc?.afunit; 
+		}
+
+		if ( data.afunit == null ) data.afunit = [:]; 
+		
+		data.afunit.hasprintout = (data.afunit.cashreceiptprintout ? true : false);
+		data.afunit.hasprintoutdetail = (data.afunit.cashreceiptdetailprintout ? true : false);
+
+		data.remitted = ((data.remittanceid && data.remittance?.objid) ? 1 :  0); 
+
+		def voidrec = void_db.find([ receiptid: data.objid ]).select('objid,txndate,reason,postedby.*').first(); 
+		if ( voidrec ) data.void = voidrec; 
+
+		def cancelrec = cancel_db.find([ receiptid: data.objid ]).select('objid,txndate,reason,postedby.*').first(); 
+		if ( cancelrec ) data.cancel = cancelrec; 
+
+		data.paymentitems.each{ 
+			def fldnames = 'objid,refno,refdate,bank.*';
+			def chk = check_db.find([ objid: it.checkid ]).select( fldnames ).first(); 
+			if ( chk ) it.check = chk;
+		}
+		
+		data.payerdetails = data.paidby + "\n" + data.paidbyaddress; 
+		if ( data?.amount instanceof Number ) { 
+			if( data.amount < 1 ) { 
+				def amount = Long.parseLong( data.amount.toString().split("\\.")[1] ); 
+				data.amountinwords = numSvc.doubleToWords( amount ).toUpperCase() + " CENTAVOS"; 
+			} else { 
+				data.amountinwords = numSvc.doubleToWords( data.amount ).toUpperCase() + " PESOS ONLY";
+			} 
+		} 
+
+		// data compliant to previous versions
+		if ( data.totalnoncash == null ) data.totalnoncash = data.totalcheck; 
+
+		if ( data.collector?.objid ) {
+			def adminSvc = dynaSvc.lookup('PersistenceService', 'admin'); 
+			def sysuser = adminSvc.read([_schemaname: 'sys_user', objid: data.collector.objid ]); 
+			def fullname = [sysuser?.firstname, sysuser?.middlename, sysuser?.lastname].findAll{( it )}.join(' '); 
+			data.collector.fullname = fullname.trim(); 
+		}
+	}
+}

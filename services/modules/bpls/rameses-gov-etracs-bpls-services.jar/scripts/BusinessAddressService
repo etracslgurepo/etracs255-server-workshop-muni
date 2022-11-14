@@ -1,0 +1,15 @@
+import com.rameses.annotations.*;
+
+import java.rmi.server.*;
+import com.rameses.services.extended.*;
+
+class BusinessAddressService extends ActiveCrudListService {
+
+	@ActiveDB("business_address")
+	def em;
+
+	public void beforeCreate(o) {
+		o.objid = "BIZADDR" + new UID();
+	}
+
+}

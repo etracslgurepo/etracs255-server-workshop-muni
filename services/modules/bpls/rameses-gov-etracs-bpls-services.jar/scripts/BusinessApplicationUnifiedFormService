@@ -1,0 +1,98 @@
+import com.rameses.annotations.*;
+import com.rameses.services.extended.*;
+import java.rmi.server.*;
+
+class BusinessApplicationUnifiedFormService  {
+
+	@Service("BusinessMasterService")
+	def bizSvc;
+
+    @Service("LOVService")
+    def LOV;
+
+    @Service("EntityService")
+    def entitySvc;
+
+    @Service("BusinessApplicationService")
+    def appSvc;
+
+    @Service("BusinessRequirementService")
+    def reqSvc;
+
+    @Service("BusinessAssessmentService")
+    def assmtSvc;
+
+    @ActiveDB("business_application")
+    def ba;
+
+    @ActiveDB("business_requirement")
+    def br;
+
+    @DataContext("entityid")
+    def entityIdEm;
+
+    def format = { x->
+        def dtype = x.attribute.datatype;
+        if( dtype == 'decimal') {
+            if(!x.value) return null;
+            return new Double( x.value + "" );
+        }
+        else if( dtype == "integer") {
+            if(!x.value) return null;
+            return new Integer( x.value + "" );
+        }
+        else if( dtype == "boolean" ) {
+            return x.value;
+        }
+        else {
+            if(!x.value) return null;
+            return x.value;
+        }
+    }
+
+    @ProxyMethod
+	public def getReport( o ) {
+        def app = appSvc.open( o );
+
+        //find registration type
+        def reqList = br.getApplicationRequirements([applicationid: app.objid]); 
+        app.reg = reqList.find { 
+            (it.reftype && it.reftype.matches( 'DTI|SEC|CDA' )) 
+        }
+        app.ctcno = reqList.find{ it.reftype == 'CTC' }?.refno;
+
+        //load the tin
+        app.business.owner.tin = entityIdEm.find( [entityid: app.business.owner.objid, idtype:'TIN'] ).first()?.idno;
+
+        app.appinfos.findAll{it.lob?.objid==null}.each {
+            app[ it.attribute.objid.toLowerCase() ] = format(it); 
+        }
+        app.lobs.each { lb->
+            for( x in app.appinfos.findAll{it.lob?.objid == lb.lobid } ) { 
+                try {
+                    lb[x.attribute.objid.toLowerCase()] = format(x);
+                }catch(ign){;}  
+            };
+        }  
+
+        return app;
+	}
+
+    @ProxyMethod
+    public def getReport2( o ) {
+        def app = appSvc.open( o );
+        def m = assmtSvc.getAssessment( app );
+        def p = [:];
+        p.businessid = app.business?.objid;
+        p.applicationid = app.objid;
+        p.currentdate = p.dateapplied;
+        m.requirements = br.getApplicationRequirements( p );
+        m.appno = app.appno;
+        m.assessorname = app.assessor?.name;
+        m.assessortitle = app.assessor?.title;
+        m.approvername = app.approver?.name;
+        m.approvertitle = app.approver?.title;
+        return m;
+    }
+
+} 

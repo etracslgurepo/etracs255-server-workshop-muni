@@ -1,0 +1,5 @@
+dialect=mysql
+driverClass=com.mysql.jdbc.Driver
+url=jdbc:mysql://${dbserver_host}/${db_notification}
+user=${dbserver_user}
+pwd=${dbserver_pass}

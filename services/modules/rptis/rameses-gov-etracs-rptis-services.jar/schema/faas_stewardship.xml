@@ -1,0 +1,17 @@
+<schema adapter="main">
+    <element tablename="faas_stewardship">
+    	<field name="objid" primary="true"/>
+        <field name="rpumasterid" required="true"/>
+        <field name="stewardrpumasterid"  required="true"/>
+        <field name="ry" type="integer" required="true"/>
+        <field name="stewardshipno"  type="integer" required="true"/>
+    </element>
+
+	<element name="affectedrpu" tablename="faas_affectedrpu">
+		<field name="objid" primary="true" />
+		<field name="faasid" required="true" />
+		<field name="prevfaasid" required="true" />
+		<field name="newfaasid" />
+		<field name="newsuffix" />
+	</element>
+</schema>

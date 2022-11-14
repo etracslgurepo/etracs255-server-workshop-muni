@@ -1,0 +1,19 @@
+import com.rameses.annotations.*;
+
+class MultiCashReceiptInterceptor {
+
+	@DataContext('cashreceipt_group')
+	def cashreceipt_group_db; 
+
+	@DataContext('cashreceipt_groupitem')
+	def cashreceipt_groupitem_db; 	
+
+	@After(pattern="PersistenceService.read", eval="#{ args[0]._schemaname == 'cashreceipt' }")
+	public void afterOpen( evt ) { 
+		def rct = evt.result;
+		def gi = cashreceipt_groupitem_db.find([ objid: rct.objid ]).first();
+		if ( gi ) {
+			rct.receipts = cashreceipt_groupitem_db.getReceipts([ parentid: gi.parentid ]);
+		} 
+	} 
+}

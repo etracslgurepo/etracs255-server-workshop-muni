@@ -1,0 +1,101 @@
+import com.rameses.annotations.*;
+
+class CashReceiptPluginInterceptor {
+
+	@Service( dynamic=true )
+	def svc;
+
+	@DataContext("itemaccount")
+	def revenueItemEm;
+
+	def lookupService( def svcName, def conn ) {
+		def t = null;
+		if ( conn ) {
+			t = svc.lookup(svcName, conn );
+			if ( !t ) throw new Exception(svcName + " not found for @connection "+conn);
+		}
+		else {
+			t = svc.lookup( svcName );
+			if ( !t ) throw new Exception(svcName + " not found");
+		}
+		return t;
+	}
+
+	Throwable getRuntimeCause( RuntimeException re ) {
+
+		def cause = re.getCause(); 
+		if ( cause instanceof RuntimeException && cause.getClass().getName() == 'java.lang.RuntimeException' ) {
+			return getRuntimeCause( cause ); 
+		}
+		return (cause ? cause : re);
+	}
+
+	// this should be thd very first to execute
+	@Before(pattern="CashReceiptService.post", eval="#{args[0]?.collectiontype?.servicename != null}", index=-10000 )
+	public void onPrePayment( evt ) {
+		def arg = evt.args[0];
+		arg.reftype = "cashreceipt";
+
+		def ct = arg.collectiontype;
+		def remoteSvc = lookupService( ct.servicename, ct.connection );
+
+		def result = null; 
+		try {
+			result = remoteSvc.prePayment( arg );
+		}
+		catch(RuntimeException re) { 
+			def cause = getRuntimeCause( re ); 
+			if ( cause instanceof NoSuchMethodException || cause instanceof groovy.lang.MissingMethodException ) { 
+				println '[Warn] '+ ct.connection +'/'+ ct.servicename +' ==> '+ cause.getMessage(); 
+			} 
+			else { 
+				throw re; 
+			}
+		} 
+		catch(Exception e) { 
+			throw e; 
+		} 
+
+		if ( result ) {
+			arg.putAll( result );
+		}
+
+		// check if all items are intact. retrieve each item account from revenueitem
+		arg.items.each {
+			it.item = revenueItemEm.find([ objid: it.item.objid ]).first();
+		} 
+	}
+
+	@After(pattern="CashReceiptService.post", eval="#{args[0]?.collectiontype?.servicename != null}", index=10000 )
+	public void onPostPayment( evt ) {
+		def arg = evt.args[0]; 
+		arg.reftype = "cashreceipt"; 
+
+		def ct = arg.collectiontype; 
+		def remoteSvc = lookupService( ct.servicename, ct.connection ); 
+		def result = remoteSvc.postPayment( arg ); 
+		if ( result ) arg.putAll( result ); 
+	} 
+
+	@After(pattern="CashReceiptVoidService.post", eval="#{result?.receipt?.collectiontype?.servicename != null}", index=10000 )
+	public void onVoidPayment( evt ) {
+		def arg = evt.result;
+		// temporary fixed only 
+		arg.collectiontype = arg.receipt.collectiontype;
+
+		def ct = arg.collectiontype;
+		def remoteSvc = lookupService( ct.servicename, ct.connection );
+		remoteSvc.voidPayment( arg );
+	}
+
+	@After(pattern="CashReceiptVoidService.revert", eval="#{result?.receipt?.collectiontype?.servicename != null}", index=10000 )
+	public void afterRevert( evt ) {
+		def arg = evt.args[0]; 
+		// temporary fixed only 
+		arg.collectiontype = arg.receipt.collectiontype;
+		
+		def ct = arg.collectiontype;
+		def remoteSvc = lookupService( ct.servicename, ct.connection );
+		remoteSvc.revertVoidPayment( arg );
+	}
+}

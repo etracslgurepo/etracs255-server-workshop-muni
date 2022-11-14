@@ -1,0 +1,6 @@
+<schema>
+	<element name="remoteserver_data" tablename="remoteserverdata">
+		<field name="objid" primary="true"/>
+		<field name="data" required="false" />
+	</element>
+</schema>

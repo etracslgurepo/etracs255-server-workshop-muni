@@ -1,0 +1,46 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+
+class DepositFundTransferService  {
+
+	@DataContext("deposit_fund_transfer")
+	def dftEm;
+
+	@DataContext("depositvoucher_fund")
+	def dvfEm;
+
+
+	@ProxyMethod
+	public void create( def o ) {
+		def m = [fromdepositvoucherfundid: o.fromdepositvoucherfundid];
+
+		def list = [];
+		o.items.each {
+			def v = [:];
+			v.putAll(m);
+			v.todepositvoucherfundid = it.todepositvoucherfundid;
+			v.amount = it.amount;
+			list << v; 		
+		}
+
+		//update first the deposit voucher fund values
+		dvfEm.find( [objid:m.fromdepositvoucherfundid] ).update( [totalcr: "{totalcr + :amt}"], [amt: o.amount] );
+		list.each {
+			dftEm.create( it );
+			dvfEm.find( [objid:it.todepositvoucherfundid] ).update( [totaldr: "{totaldr + :amt}"],  [ amt: it.amount ] );
+		}
+	}
+
+	@ProxyMethod
+	public void removeEntity( def o ) {
+		def m = dftEm.find( [objid: o.objid ] ).first(); 
+		dftEm.delete( [objid: o.objid ] );
+		dvfEm.find( [objid: m.fromdepositvoucherfundid] ).update( [totalcr: "{totalcr - :amt}"], [amt: o.amount] );
+		dvfEm.find( [objid: m.todepositvoucherfundid] ).update( [totaldr: "{totaldr - :amt}"],  [ amt: o.amount ] );
+	}
+	
+	
+
+
+}

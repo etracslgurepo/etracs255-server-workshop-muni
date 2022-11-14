@@ -1,0 +1,68 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.services.extended.*;
+
+public class CashReceiptBarcodeService {
+	
+	@DataContext("collectiontype")
+	def collectionTypeEm;
+
+	@DataContext("barcode_launcher")
+	def barcodeLauncherEm;
+
+	@Service(dynamic=true)
+	def dynSvc;
+
+	@Env
+	def env;
+
+	private def getPaymentOrderService(def conn) {
+		if( conn==null || conn=="default" )	{
+			return dynSvc.lookup("PaymentOrderService");
+		}	
+		else {
+			return dynSvc.lookup("PaymentOrderService", conn);
+		}	
+	}
+
+	@ProxyMethod
+	public def getBarcodeInfo( def o ) {
+		if (!o) throw new Exception("barcode  is required in getBarcodeInfo method");
+		if (!(o instanceof String)) throw new Exception("getBarcodeInfo method requires a String argument");
+
+		def arr = o.split( ":" );
+		if ( arr.length < 1 ) 
+			throw new Exception("Invalid barcode format. It should follow the ff. format <KEY:REFNO>");
+
+		def barcodekey = arr[0];
+		def refno = arr[1];
+
+		def result = [:];
+		def bc = barcodeLauncherEm.find( [objid: barcodekey] ).first();
+		if ( !bc ) throw new Exception("barcode launcher " + barcodekey + " not found");
+
+
+		if ( bc.paymentorder == null ) bc.paymentorder = 0;
+
+	 	if ( bc.paymentorder == 0 ) {
+			result.refno = refno;
+			result.barcodeid = refno;
+			result.barcodekey = barcodekey;
+			result.collectiontype = collectionTypeEm.find([objid: bc.collectiontype?.objid.toString() ]).first();
+		}
+		else {
+			def poSvc = getPaymentOrderService( bc.connection );
+			result = poSvc.getBilling([ refno: refno ]);
+			if ( result.refno ) {
+				result.barcodeid = result.refno;
+			}
+			if ( result.params ) {
+				result.barcodeparams = result.params;
+			}
+
+			result.collectiontype = collectionTypeEm.find([objid: result.type.collectiontype.objid ]).first();
+		}
+		return result;	
+	}
+}

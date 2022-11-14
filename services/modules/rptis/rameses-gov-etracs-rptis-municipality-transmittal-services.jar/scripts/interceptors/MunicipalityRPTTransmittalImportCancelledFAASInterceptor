@@ -1,0 +1,54 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class MunicipalityRPTTransmittalImportCancelledFAASInterceptor
+{
+	@Env 
+	def env 
+
+	@Service('MunicipalityCancelledFAASRemoteCallHandler')
+	def svc 
+
+	@Service('RPTTransmittalImportService')
+	def importSvc 	
+
+	
+
+	@After(pattern='RPTTransmittalImportService.importData', eval="#{'cancelledfaas'.equalsIgnoreCase(args[0].filetype) && 'FORAPPROVAL'.equalsIgnoreCase(args[0].type) && args[0].state=='APPROVED'}")
+	public void postApproval(evt){
+		def transmittalitem = evt.args[1].transmittalitem
+		def cancelledfaas = evt.args[1].cancelledfaas 
+		if ('APPROVED'.equalsIgnoreCase(transmittalitem.status)){
+			try{
+				svc.approveCancelledFaasByProvince(cancelledfaas)
+				transmittalitem.status = 'APPROVED'
+				importSvc.log(transmittalitem)
+			}
+			catch(e){
+				transmittalitem.status = 'ERROR'
+				transmittalitem.remarks = e.message 
+				importSvc.log(transmittalitem)
+			}
+		}
+		else if ('DISAPPROVED'.equalsIgnoreCase(transmittalitem.status)){
+			try{
+				def data = [:]
+				data.objid = transmittalitem.refid 
+				data.disapprovemessage = transmittalitem.remarks 
+				data.faas = [tdno:transmittalitem.refno]
+				data.signatory = [approver:transmittalitem.disapprovedby]
+				svc.disapproveCancelledFaasByProvince(data)
+				transmittalitem.status = 'DISAPPROVED'
+				importSvc.log(transmittalitem)
+			}
+			catch(e){
+				transmittalitem.status = 'ERROR'
+				transmittalitem.remarks = e.message 
+				importSvc.log(transmittalitem)
+			}
+		}
+	}
+
+}
+

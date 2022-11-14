@@ -1,0 +1,9 @@
+<schema adapter="main">
+	<element tablename="migrated_business">
+		<field name="objid" primary="true" />
+		<field name="applicationid" />
+		<field name="dtapproved" caption="DateApproved" />
+		<field name="approvedby_objid" />
+		<field name="approvedby_name" caption="ApprovedBy" />
+	</element> 
+</schema> 

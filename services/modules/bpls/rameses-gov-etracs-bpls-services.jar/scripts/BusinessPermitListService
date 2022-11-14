@@ -1,0 +1,42 @@
+import com.rameses.annotations.*;
+import com.rameses.services.extended.*;
+import java.rmi.server.*;
+
+
+class BusinessPermitListService extends ActiveCrudListService  {
+
+	@ActiveDB("business_permit")
+	def em;
+
+	@Service("DateService")
+	def dateSvc;
+
+	@ProxyMethod
+	public def getNodes(o) {
+		def nodes = [];
+		nodes << [name:'active',  caption: 'Active', leaf:true, allowSearch:true];
+		nodes << [name:'expired', caption: 'Expired', leaf:true, allowSearch:true, folder:true];
+		return nodes;
+	}	
+
+	@ProxyMethod
+	public def getColumns(o) {
+		def cols = [];
+		cols <<	[name:'permitno', caption:'Permit No', width:120, resizable:false];
+		cols <<	[name:'apptype', caption:'App Type', width:80, resizable:false];
+		cols << [name:'business.bin', caption:'BIN', width:120, resizable:false];
+		cols <<	[name:'business.businessname', caption:'Business Name'];
+		cols <<	[name:'business.address.text', caption:'Business Address'];
+		cols <<	[name:'business.owner.name', caption:'Owner'];
+		cols <<	[name:'expirydate', caption:'Expiry Date', width:80, resizable:false, type:'date'];
+		return cols;
+	}
+
+	public void beforeList(o) {
+		o.currentdate = dateSvc.getServerDate();
+		if( o.name == 'expired' ) {
+			o._listMethod = 'getExpiredList';
+		}
+	}
+
+} 

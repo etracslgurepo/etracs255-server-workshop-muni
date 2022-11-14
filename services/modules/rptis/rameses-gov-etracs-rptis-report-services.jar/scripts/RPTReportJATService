@@ -1,0 +1,39 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class RPTReportJATService
+{
+    @ActiveDB('rptreport_jat')
+    def em
+
+    @Service('RPTUtil')
+    def util 
+
+
+    @Async
+	@ProxyMethod
+	public def generateJAT( params )  {
+		util.buildStartEndDateFilter(params)
+		params.barangayid = (params.barangay ? params.barangay.objid : '%')
+
+		def list = em.getJAT(params)
+		if( ! list ) throw new Exception('Records not found.')
+		list.each{
+			if (it.administrator && it.administrator.name){
+				it.owner.name = it.owner.name + '\nAdmin: ' + it.administrator.name 
+			}
+		}
+
+        def p = [
+            SUBTITLE : 'For the Month of ' + params.month.caption + ', ' + params.year 
+        ]		
+
+        return [
+            parameters  : p,
+            reportdata  : list
+        ]
+	}
+
+
+}

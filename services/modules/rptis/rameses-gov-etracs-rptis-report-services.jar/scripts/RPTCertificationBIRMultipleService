@@ -1,0 +1,93 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class RPTCertificationBIRMultipleService 
+{
+    @ActiveDB('rptcertification_bir')
+    def em;
+
+    @Service('RPTCertificationService')
+    def certSvc 
+
+	
+    @ProxyMethod
+    public def getPropertiesForBIR(entity){
+    	entity.taxpayerid = entity.taxpayer.objid 
+
+    	def data = em.findRyForAsOfYear(entity)
+    	if (!data) 
+    		throw new Exception('Revision year cannot be determined for the specified As of Year.')
+    	entity.ry = data.ry 
+
+    	def list = em.getPropertiesForBIR(entity)
+    	if (!list)
+    		throw new Exception('There are no properties registered as of year ' + entity.asofyear + '.')
+    	return list 
+    }
+
+
+	@ProxyMethod
+	public def createCertification( cert ) {
+		certSvc.createCertification(cert)
+		
+		cert.properties.each{
+			em.createItem([objid:cert.objid, refid:it.objid])
+		}
+		cert.items = getItems(cert)
+		return cert 
+	}
+
+	@ProxyMethod
+	public def openCertification(objid) {
+		def cert = certSvc.openCertification(objid)
+		if (! cert ) 
+			throw new Exception('Certification does not exist or has already been deleted.')
+		cert.items = getItems(cert)
+		return cert 
+	}
+
+
+	@ProxyMethod
+	public def getItems(cert){
+		def items = em.getItems(cert).each{
+			it.street = (it.street ? it.street : it.barangay)
+			it.description = it.cadastrallotno
+			buildDescription(it)
+		}
+		return items 
+	}
+
+
+	@ProxyMethod
+	public void buildDescription(item){
+		def infos = []
+		if ('land'.equalsIgnoreCase(item.rputype) && item.cadastrallotno){
+			item.description = 'LOT ' + item.cadastrallotno 
+		}
+		else if ('bldg'.equalsIgnoreCase(item.rputype)){
+			infos = em.getBldgInfos(item).each{bi-> bi.info = bi.bldgkind.name}
+			if (infos){
+				item.description = infos.info.join(',')
+			}
+		}
+		else if ('mach'.equalsIgnoreCase(item.rputype)){
+			infos = em.getMachInfos(item)
+			if (infos){
+				item.description = infos.machine.name.join(',')
+			}
+		}
+		else if ('planttree'.equalsIgnoreCase(item.rputype)){
+			infos = em.getPlantTreeInfos(item)
+			if (infos){
+				item.description = infos.planttree.name.join(',')
+			}
+		}
+		else if ('misc'.equalsIgnoreCase(item.rputype)){
+			infos = em.getMiscInfos(item)
+			if (infos){
+				item.description = infos.miscitem.name.join(',')
+			}
+		}
+	}	
+}

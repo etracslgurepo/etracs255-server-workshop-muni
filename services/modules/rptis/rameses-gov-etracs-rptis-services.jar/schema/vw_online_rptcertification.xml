@@ -1,0 +1,29 @@
+<schema>
+	<element tablename="vw_online_rptcertification">
+		<field name="objid" primary="true" />
+		<field name="txnno" caption="Txn No." searchable="true" />
+		<field name="txndate" caption="Txn Date" />
+		<field name="opener" caption="Type" />
+		<field name="taxpayer_objid" />
+		<field name="taxpayer_name" caption="Property Owner" searchable="true" />
+		<field name="taxpayer_address" caption=""/>
+		<field name="requestedby" caption="Requested By" searchable="true" />
+		<field name="requestedbyaddress" />
+		<field name="certifiedby" />
+		<field name="certifiedbytitle" />
+		<field name="official" />
+		<field name="purpose" caption="Purpose"/>
+		<field name="orno" caption="Receipt No." searchable="true" />
+		<field name="ordate" caption="Receipt Date"/>
+		<field name="oramount" caption="Amount"/>
+		<field name="taskid" />
+		<field name="task_state" />
+		<field name="task_startdate" />
+		<field name="task_enddate" />
+		<field name="task_assignee_objid" />
+		<field name="task_assignee_name" />
+		<field name="task_actor_objid" />
+		<field name="task_actor_name" />
+	</element>
+
+</schema>

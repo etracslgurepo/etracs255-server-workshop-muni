@@ -1,0 +1,98 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+import com.rameses.util.*;
+
+class AFCancelSeriesService  {
+
+	@DataContext("cashreceipt")
+	def receipt_db;
+
+	@DataContext("cashreceipt_cancelseries")
+	def cancel_db;
+
+	@DataContext("collectiontype")
+	def coltype_db;
+
+	@DataContext("af_control") 
+	def afctrl_db;
+
+	@DataContext("sys_user") 
+	def user_db;
+
+	@Service("AFControlService")
+	def afSvc;
+
+	@Service("DateService")
+	def dateSvc;
+
+	@Env
+	def env;
+	
+
+	@ProxyMethod
+	public def init( entity ) {  
+		if ( !entity.formno ) throw new Exception('formno parameter is required'); 
+		if ( !entity.controlid ) throw new Exception('controlid parameter is required'); 
+
+		def afcrec = afctrl_db.find([ objid: entity.controlid ]).select('objid,owner.*,af.formtype').first(); 
+		if ( !afcrec?.objid ) 
+			throw new Exception('AFControl record not found'); 
+		if ( afcrec.af?.formtype.toString().toLowerCase() != 'serial')
+			throw new Exception('AF form type must be a serial');  
+		if ( !afcrec.owner?.objid ) 
+			throw new Exception('AFControl must have an owner information');
+
+		def usrrec = user_db.find([ objid: afcrec.owner.objid ]).select('objid,jobtitle').first(); 
+		if ( !usrrec?.objid ) throw new Exception('User record not found');  
+
+		afcrec.owner.title = usrrec.jobtitle;
+
+		def coltype = coltype_db.find([ formno: entity.formno, state: 'ACTIVE' ]).orderBy('name').first(); 
+		entity.collectiontype = coltype; 
+
+		entity.objid = "CRCT"+ new java.rmi.server.UID();
+		entity.org = [objid: env.ORGID, name: env.ORGNAME];
+		entity.user = [objid: env.USERID, name: env.FULLNAME];
+		entity.collector = afcrec.owner; 
+		entity.state = "CANCELLED"; 
+		entity.paidby = "-"; 
+		entity.paidbyaddress = "-"; 
+		entity.amount = 0.0 ; 
+		entity.totalcash = 0.0; 
+		entity.totalnoncash=0.0; 
+		entity.cashchange=0.0; 
+		entity.totalcredit=0.0; 
+		entity.txnmode ='ONLINE'; 
+		return entity; 
+	}
+
+	@ProxyMethod
+	public def post( receipt ) { 	
+		afctrl_db.find([ objid: receipt.controlid ]).update([ lockid: new java.rmi.server.UID().toString() ]); 
+
+		def strSelect = 'currentseries,endseries,state'; 
+		def afc = afctrl_db.find([ objid: receipt.controlid ]).select( strSelect ).first(); 
+		if ( !afc ) throw new Exception('AF Control record not found'); 
+		if ( afc.state.toString() != 'ISSUED' ) throw new Exception('AF Control must be in ISSUED state');
+		if ( afc.currentseries > afc.endseries) throw new Exception('AF Control has already been consumed');
+
+		if ( !receipt.items ) receipt.items = []; 
+		if ( !receipt.paymentitems ) receipt.paymentitems = [];
+
+		def rundate = dateSvc.serverDate; 
+		receipt.receiptdate = rundate;
+		receipt.txndate = rundate; 
+		receipt_db.create( receipt );  
+
+		def v = [objid: "CRCT"+ new java.rmi.server.UID()];
+		v.postedby = [ objid: env.USERID, name: env.FULLNAME ];
+		v.txndate = receipt.txndate;
+		v.controlid = receipt.controlid; 
+		v.receiptid = receipt.objid;
+		v.reason = receipt.reason;
+		cancel_db.create( v );
+
+		afctrl_db.find([ objid: receipt.controlid ]).update([ currentseries: afc.currentseries+1 ]);  
+		return receipt;
+	}	
+}

@@ -1,0 +1,75 @@
+
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+import com.rameses.util.*;
+
+class NotificationPollTask {
+
+    @ActiveDB(value='notification', em='notification')
+    def em;
+
+    @Service('CloudSettings') 
+    def settings; 
+    
+	@Service(value='CloudNotificationService') 
+	def localSvc;
+
+	@Service(value='CloudNotificationService', connection='cloud_notification') 
+	def remoteSvc;    
+
+	@Context
+	def appContext;
+
+	//@Schedule(interval=2)
+	public void execute( task ) { 
+        if ( !settings.isEnabled() ) { 
+            //facility is disabled, exit immediately 
+            return;  
+        } 
+
+		def var = em.read([objid: 'fetch_notification'], 'setting'); 
+		if ( !task.properties.loaded ) { 
+			//the server has just started 
+			if ( var ) { 
+				var.value = 'true'; 
+				em.update( var, 'setting' ); 
+			} else { 
+				var = [objid: 'fetch_notification', value:'true']; 
+				em.create( var, 'setting'); 
+			} 
+
+		} else if ( !var ) { 
+			var = [objid: 'fetch_notification', value:'true']; 
+			em.create( var, 'setting'); 
+
+		} else if ( var.value.toString().toLowerCase().matches("1|true") ) {
+			pollData(); 
+		} 
+	} 
+
+	void pollData() { 
+		def conf = appContext.conf; 
+		def params = [ 
+			channel     : conf['cloud_ws.channel'], 
+			channelgroup: conf['cloud_ws.group'] 
+		]; 
+
+		boolean has_results = false; 
+		remoteSvc.getPendingMessages( params ).each{ o-> 
+
+			def info = [ objid: o.objid ]; 
+			if ( !localSvc.findHeader( info ) ) { 
+				localSvc.createMessageForDownload( o ); 
+			} 
+
+			remoteSvc.markAsReceived( info ); 
+			has_results = true; 
+		} 
+
+		if ( !has_results ) {
+			def var = em.read([objid: 'fetch_notification'], 'setting'); 
+			var.value = 'false'; 
+			em.update( var, 'setting' ); 
+		} 
+	} 
+} 

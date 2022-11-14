@@ -1,0 +1,90 @@
+import com.rameses.annotations.*;
+
+class NGASRemittanceSummaryReportService {
+
+	@ActiveDB('ngas_remittance_summary')
+	def em;
+
+	@DataContext('remittance') 
+	def rem_db;
+
+	@DataContext('fund') 
+	def fund_db;
+
+	@DataContext('account_maingroup') 
+	def acctgroup_db;
+
+	@Service("NumberService")
+	def numSvc;
+
+	@Service("DateService")
+	def dateSvc;
+
+
+	@ProxyMethod 
+	public def initReport( param ) {
+		def m = [:]; 
+		m.funds = em.getFunds([ remittanceid: param.objid ]); 
+
+		m.acctgroups = acctgroup_db.where("reporttype IN ('NGAS','PPSAS')").orderBy('reporttype, version, title').list(); 
+		return m; 
+	}
+
+	@ProxyMethod 
+	public def getReport( param ) { 
+		def rem = rem_db.find([ objid: param.objid ]).first(); 
+		if ( !rem?.objid ) 
+			throw new Exception('Remittance record not found'); 
+
+		def fund = null; 
+		if ( param.fund?.objid ) {
+			fund = fund_db.find([ objid: param.fund.objid ]).first(); 
+		} 
+
+		def p = [ remittanceid: param.objid ];
+		p.maingroupid = param.acctgroup?.objid.toString(); 
+
+		def filters = ['1=1'];
+		if ( fund?.objid ) { 
+			filters << "fund.objid = '"+ fund.objid +"'";
+		} 
+		p.filters = ' AND '+ filters.join(' AND '); 
+
+		def items = em.getReport( p );
+
+		items.each { z->
+			if ( !z.code ) { 
+				z.acctcode = 'UNMAPPED';
+			} 
+			else { 
+				z.acctcode = z.title + " \n(" + z.code + ")";
+			} 
+			if ( z.voided == 1 ) z.paidby = "*** VOID ***";
+		}
+
+		def total = items.sum{( it.amount ? it.amount : 0.0 )} 
+		rem.amount = (total ? total : 0.0); 
+
+		def acctgroup = acctgroup_db.find([ objid: p.maingroupid ]).first();
+		def reporttype = (acctgroup?.reporttype ? acctgroup.reporttype : 'NGAS').toUpperCase(); 
+
+		def hdr = [:]; 
+		hdr.REPORTTITLE = 'REMITTANCE SUMMARY OF COLLECTION BY '+ reporttype; 
+		hdr.REMITTANCEDATE = dateSvc.format('MMMMM dd, yyyy', rem.controldate);
+		hdr.REMITTANCENO = rem.controlno;
+		hdr.REMITTANCEAMOUNT = rem.amount;
+		hdr.COLLECTORNAME = rem.collector?.name;
+		hdr.COLLECTORTITLE = rem.collector?.title;
+		hdr.LIQUIDATINGOFFICER = rem.liquidatingofficer?.name
+		hdr.LIQUIDATINGOFFICERTITLE = rem.liquidatingofficer?.title
+		hdr.AMTINWORDS = numSvc.doubleToWords( rem.amount );
+		hdr.DATEPOSTED =  rem.dtposted;  
+		if ( fund?.objid ) {
+			hdr.FUND = fund.title;
+		} 
+		else {
+			hdr.FUND = '( ALL FUNDS )';	
+		} 
+		return [ header: hdr, items: items ];
+	}
+}

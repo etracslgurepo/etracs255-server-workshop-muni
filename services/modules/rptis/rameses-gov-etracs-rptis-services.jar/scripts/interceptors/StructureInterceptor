@@ -1,0 +1,51 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class StructureInterceptor
+{
+	@ActiveDB('structurematerial')
+	def em
+
+	@DataContext('structurematerial')
+	def structurematerial
+	
+
+	@After(pattern="PersistenceService.read", eval="#{args[0]._schemaname=='structure'}") 
+	public void loadMaterials( evt ) {
+		def structure = evt.result 
+		if (structure){
+			structure.materials = structurematerial.find([structure_objid:structure.objid]).orderBy('idx').list()
+		}
+	}
+
+
+	@After(pattern="PersistenceService.(create|update)", eval="#{args[0]._schemaname=='structure'}") 
+	public void insertMaterials( evt ) {
+		def structure = evt.result 
+		structure.materials?.each{
+			it.display = (it.display == 1)
+			try{
+				structurematerial.create(it)
+			}catch(e) {
+				it.structureid = it.structure.objid 
+				it.materialid = it.material.objid 
+				em.updateMaterial(it)
+			}
+		}
+	}
+
+
+	@Before(pattern="PersistenceService.removeEntity", eval="#{args[0]._schemaname=='structure'}") 
+	public void deleteAllMaterials( evt ) {
+		em.deleteAllMaterials([structureid:evt.args[0].objid])
+	}
+
+	@Before(pattern="PersistenceService.removeEntity", eval="#{args[0]._schemaname=='structurematerial'}") 
+	public void deleteMaterial( evt ) {
+		def item = evt.args[0]
+		def sm = [structureid:item.structure.objid, materialid:item.material.objid]
+		em.deleteMaterial(sm)
+	}
+}
+

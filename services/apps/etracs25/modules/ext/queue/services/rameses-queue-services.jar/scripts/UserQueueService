@@ -1,0 +1,329 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+import com.rameses.util.*;
+
+class UserQueueService { 
+
+    @XConnection('queue_ws_server')
+    def wssender;
+
+	@DataContext(value='queue_group', adapter='queue') 
+	def qg; 
+
+	@DataContext(value='queue_counter', adapter='queue') 
+	def qc; 
+
+	@DataContext(value='queue_section', adapter='queue') 
+	def qs; 
+
+	@DataContext(value='queue_number', adapter='queue') 
+	def qn; 
+
+	@DataContext(value='queue_number_archive', adapter='queue') 
+	def qna; 
+
+	@DataContext(value='queue_number_counter', adapter='queue') 
+	def qnc; 
+
+	@DataContext(value='queue_counter_section', adapter='queue') 
+	def qcs; 
+
+	@Service('DateService')
+	def dateSvc;
+
+	@Service('QueueService')
+	def queueSvc;
+
+	@Service('PagingService')
+	def pagingSvc; 
+
+	@Service 
+	def self; 
+
+	@Env 
+	def env;
+
+	@ProxyMethod 
+	public def getCounter() {
+		return qc.find([ objid: env.TERMINALID ]).first(); 
+	} 
+
+
+	@ProxyMethod 
+	public def init() {
+		def m = qc.find([ objid: env.TERMINALID ]).first(); 
+		if( m == null ) return [objid:env.TERMINALID, sections: [] ];
+
+		if ( !m ) throw new Exception('No queue counter registered for this terminal. Please contact your system administrator');
+
+		m.sections = qcs.getCounterSections([ counterid: m.objid ]); 
+
+		def c = qc.findCurrentNumber([ counterid: env.TERMINALID ]);
+		if ( c ) { 
+			m.current = c; 
+			m.current.currentno = (c.ticketno ? c.ticketno : queueSvc.formatSeriesNumber(c));
+		} 
+		return m;  
+	} 
+
+	/*
+		initiated by operator 
+	*/
+	@ProxyMethod 
+	public def takeNextNumber( o ) { 
+		if ( !o.sectionid ) throw new Exception('sectionid parameter is required');
+		if ( !o.counterid ) throw new Exception('counterid parameter is required');
+
+		def rundate = dateSvc.getServerDate(); 
+		o.startdate = new java.sql.Date( rundate.getTime()).toString(); 
+		o.enddate = o.startdate +' 23:59:59'; 
+		
+		def a = qs.find([ objid: o.sectionid ]).first(); 
+		if ( !a ) throw new Exception('queue section does not exist'); 
+
+		def m = qn.findNextAvailableNumber( o ); 
+		if ( !m ) throw new Exception('No available queue number'); 
+
+		qnc.create([ objid: m.objid, counterid: o.counterid ]); 
+
+		m.prefix = a.prefix; 
+		if ( !m.ticketno ) {
+			m.ticketno = queueSvc.formatSeriesNumber( m ); 
+			qn.find([ objid: m.objid ]).update([ ticketno: m.ticketno ]); 
+		} 
+
+		def dd = qn.find([ objid: m.objid ]).first();
+		dd.ticketno = m.ticketno; 
+		dd.dtfiled = dd.txndate;
+		dd.state = 'PROCESSING'; 
+		dd.startdate = rundate; 
+		dd.servedby = [objid: env.USERID, name: env.FULLNAME ];
+		dd.counter = qc.find([ objid: o.counterid ]).first(); 
+		dd.group = qg.find([ objid: a.groupid ]).first(); 
+		dd.section = a; 
+		qna.create( dd ); 
+
+		try {
+			return dd.ticketno; 
+		} finally { 
+			notify([ 
+				counterid: o.counterid, sectionid: o.sectionid, groupid: a.groupid, 
+				seriesno: m.seriesno, ticketno: dd.ticketno, prefix: a.prefix, 
+				type:'TAKE_NUMBER', countercode: dd.counter?.code  
+			]); 
+		} 
+	} 
+
+	@ProxyMethod 
+	public void consumeNumber( o ) {
+		if ( !o.counterid ) throw new Exception('counterid parameter is required'); 
+
+		def qcdata = qc.find([ objid: o.counterid ]).first(); 
+		if ( !qcdata ) throw new Exception('The specified counter does not exist'); 
+
+		def rundate = dateSvc.getServerDate();
+		def qncdata = qnc.find([ counterid: o.counterid ]).first(); 
+		if ( !qncdata ) return; 
+
+		qnc.find([ objid: qncdata.objid ]).delete(); 
+
+		def qndata = qn.find([ objid: qncdata.objid ]).first(); 
+		qn.find([ objid: qndata.objid ]).delete(); 
+		qna.find([ objid: qndata.objid ]).update([ state: 'CLOSED', enddate: rundate ]); 
+
+		def qsdata = qs.find([ objid: qndata.sectionid ]).first(); 
+		notify([ 
+			counterid: o.counterid, sectionid: qsdata.objid, groupid: qndata.groupid, 
+			seriesno: qndata.seriesno, ticketno: qndata.ticketno, prefix: qsdata.prefix, 
+			type:'CONSUME_NUMBER', countercode: qcdata.code  
+		]); 
+	} 
+
+	@ProxyMethod 
+	public void buzzNumber( o ) { 
+		if ( !o.counterid ) throw new Exception('counterid parameter is required'); 
+
+		def qcdata = qc.find([ objid: o.counterid ]).first(); 
+		if ( !qcdata ) throw new Exception('The specified counter does not exist'); 
+
+		def qncdata = qnc.find([ counterid: o.counterid ]).first(); 
+		if ( !qncdata ) throw new Exception('No available queue number for this counter');
+
+		def qndata = qn.find([ objid: qncdata.objid ]).first(); 
+		def qsdata = qs.find([ objid: qndata.sectionid ]).first(); 
+		notify([ 
+			counterid: o.counterid, sectionid: qsdata.objid, groupid: qndata.groupid, 
+			seriesno: qndata.seriesno, ticketno: qndata.ticketno, prefix: qsdata.prefix, 
+			type:'BUZZ_NUMBER', countercode: qcdata.code  
+		]); 
+	} 
+
+	@ProxyMethod 
+	public void skipNumber( o ) {
+		if ( !o.counterid ) throw new Exception('counterid parameter is required'); 
+
+		def rundate = dateSvc.getServerDate();
+		def m = qnc.find([ counterid: o.counterid ]).first(); 
+		qn.find([ objid: m.objid ]).update([ state: 'SKIP' ]); 
+		qnc.find([ objid: m.objid ]).delete(); 
+		qna.find([ objid: m.objid ]).update([ 
+			servedby: [ objid: env.USERID, name: env.FULLNAME ], 
+			counter: qc.find([ objid: o.counterid ]).first(), 
+			state: 'SKIP', enddate: rundate 
+		]); 
+	} 
+
+	@ProxyMethod 
+	public void forward( o ) {
+		if ( !o.counterid ) throw new Exception('counterid parameter is required'); 
+		if ( !o.sectionid ) throw new Exception('sectionid parameter is required'); 
+		if ( !o.ticketno ) throw new Exception('ticketno parameter is required'); 
+
+		def rundate = dateSvc.getServerDate();
+		def sect = qs.find([ objid: o.sectionid ]).first(); 
+		if ( !sect ) throw new Exception('The specified queue section does not exist'); 
+
+		def qndata = qn.create([ 
+			groupid: sect.groupid, sectionid: sect.objid, seriesno: 0, 
+			txndate: rundate, state: 'PENDING', ticketno: o.ticketno 
+		]); 
+
+		consumeNumber( o );  
+	} 
+
+	@ProxyMethod 
+	public def getQueueSections() {
+		return qs.getList(); 
+	} 
+
+
+	@ProxyMethod 
+	public def getSkipTicketsForTheDay( params ) { 
+		if ( !params.counterid ) throw new Exception('counterid parameter is required'); 
+
+		def startdate = dateSvc.getBasicServerDate(); 
+		def enddate   = new java.sql.Date( dateSvc.findNextFromDate( startdate, '1d' ).getTime());   
+		return qn.getSkipTickets([ startdate: startdate, enddate: enddate, counterid: params.counterid ]);   
+	} 
+
+	@ProxyMethod 
+	public def getStatusList( params ) {
+		if ( !params.counterid ) throw new Exception('counterid parameter is required');
+
+		def startdate = dateSvc.getBasicServerDate(); 
+		def enddate   = new java.sql.Date( dateSvc.findNextFromDate( startdate, '1d' ).getTime());   
+		return qn.getStatusList([ startdate: startdate, enddate: enddate, counterid: params.counterid ]);   
+	}
+
+	@ProxyMethod 
+	public def getSectionStatusList( params ) {
+		return qn.getSectionStatusList( params );    
+	}
+
+	@ProxyMethod 
+	public void requeue( params ) {
+		if ( !params.objid ) throw new Exception('objid parameter is required'); 
+
+		def rundate = dateSvc.getServerDate(); 
+		qn.find([ objid: params.objid ]).update([ txndate: rundate ]); 
+
+		def qndata = qn.find([ objid: params.objid ]).first(); 
+		if ( !qndata.state.toString().equalsIgnoreCase('SKIP')) 
+			throw new Exception('The ticket status must be equal to SKIP in processing requeue'); 
+
+		qn.find([ objid: params.objid ]).update([ state: 'PENDING' ]); 
+
+		def qnadata = qna.find([ objid: params.objid ]).first(); 
+		if ( qnadata ) qna.find([ objid: params.objid ]).delete(); 
+
+		qnadata.objid = 'RNQ' + new java.rmi.server.UID(); 
+		qna.create( qnadata ); 
+	} 
+
+	@ProxyMethod 
+	public def retake( params ) {
+		if ( !params.objid ) throw new Exception('objid parameter is required'); 
+		if ( !params.counterid ) throw new Exception('counterid parameter is required');
+
+		def rundate = dateSvc.getServerDate(); 
+		def qcdata = qc.find([ objid: params.counterid ]).first(); 
+		if ( !qcdata ) throw new Exception('The specified counter does not exist'); 
+
+		qn.find([ objid: params.objid ]).update([ txndate: rundate ]); 
+
+		def qndata = qn.find([ objid: params.objid ]).first(); 
+		if ( !qndata.state.toString().equalsIgnoreCase('SKIP')) 
+			throw new Exception('The ticket status must be equal to SKIP in processing retake transaction'); 
+
+		qnc.create([ objid: qndata.objid, counterid: params.counterid ]); 
+		qn.find([ objid: params.objid ]).update([ state: 'PENDING' ]); 
+
+		def qnadata = qna.find([ objid: params.objid ]).first(); 
+		qnadata.servedby = [objid: env.USERID, name: env.FULLNAME ];
+		qnadata.state = 'PROCESSING'; 
+		qnadata.counter = qcdata; 
+		qnadata.startdate = rundate; 
+		qnadata.enddate = null; 
+		qna.update( qnadata ); 
+		notify([ 
+			counterid: qnadata.counter?.objid, sectionid: qnadata.section?.objid, 
+			groupid: qndata.groupid, ticketno: qnadata.ticketno, 
+			type:'TAKE_NUMBER', countercode: qnadata.counter?.code 
+		]); 
+		return qnadata; 
+	} 
+
+	@ProxyMethod 
+	public def getWaitingList() { 
+		def params = [ counterid: env.TERMINALID ]; 
+		return queueSvc.getWaitingList( params ); 
+	} 
+
+
+	void notify( data ) { 
+		def uuid = ''+ data.sectionid +'_'+ data.counterid; 
+		data.uuid = uuid.toLowerCase(); 
+		if ( data.ticketno ) { 
+			data.formattedseriesno = data.ticketno; 
+		} else { 
+			data.formattedseriesno = formatSeriesNumber( data ); 
+			data.ticketno = data.formattedseriesno; 
+		} 
+		self.notifyWs( data ); 
+	} 
+
+	def formatSeriesNumber( data ) {
+		if ( data.seriesno ) {
+			def prefix = (data.prefix? data.prefix : ''); 
+			def snum = data.seriesno.toString();
+			if ( snum.length() < 3 ) { 
+				snum = snum.padLeft(3,'0'); 
+			} 
+			return ''+prefix+snum; 
+		} else { 
+			return ''; 
+		} 
+	} 
+
+	@Async 
+	@ProxyMethod(local=true) 
+	public void notifyWs( data ) { 
+		if ( !data ) return; 
+
+		data.channel = data.group = 'queue'; 
+
+		wssender.send([ 
+            channel : data.channel, 
+            group   : data.group, 
+            data    : resolveData( data )  
+        ]); 
+	} 	
+
+	def resolveData( data ) {
+        try {
+            return new Base64Cipher().decode( data ); 
+        } catch(Throwable t) { 
+            return data; 
+        } 
+    } 
+} 

@@ -1,0 +1,25 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import java.rmi.server.UID;
+import com.rameses.util.*;
+import com.rameses.io.*;
+import com.rameses.services.extended.*;
+
+class UsergroupLookupService extends ActiveListService {
+
+	@ActiveDB('usergroup')
+	def em;
+
+	String listMethod = "getLookup";
+
+	@ProxyMethod
+	public def getColumns( param ) {
+		return  [
+			[name:'domain', caption:'Domain'],
+			[name:'role', caption:'Role'],
+		] 
+	}
+
+}
+
+

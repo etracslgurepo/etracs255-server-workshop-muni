@@ -1,0 +1,22 @@
+<schema>
+	<element tablename="afrequestitem">
+		<field name="objid" primary="true"/>			
+		<field name="parentid" required="true"/>
+		<field name="item_objid" required="true"/>
+		<field name="item_title" required="true"/>
+
+		<field name="unit" required="true"/>
+		<field name="qty" required="true" type="integer"/>
+		<field name="qtyreceived" required="true" type="integer" defaultValue="0"/>
+
+		<complex name="item" ref="af" jointype="many-to-one" required="false" includefields="code">
+			<key field="item_objid" target="objid" />
+		</complex> 
+
+		<complex name="afunit" ref="vw_afunit" jointype="many-to-one" required="false" includefields="serieslength,denomination,formtype,saleprice,qty">
+			<key field="item_objid" target="itemid" />
+			<key field="unit" target="unit" />
+		</complex> 
+
+	</element>	
+</schema>

@@ -1,0 +1,100 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.services.extended.*;
+
+public class BusinessCaptureService {
+
+	@ActiveDB(value="businesscapture", em="tracs")
+	def em;
+
+	@Service("DateService")
+	def dateSvc;
+
+	@Service("BusinessInfoService")
+	def infoSvc;
+
+	@ProxyMethod
+	public def getYears() {
+		int yr = dateSvc.serverYear-1;
+		def years = [yr];
+		(1..5).each {
+			years << yr-it;
+		}
+		return years;
+	}
+
+	@ProxyMethod
+	public def getList(o) {
+		String s = "";
+		if(o.year == 'CURRENT') {
+			o.activeyear = dateSvc.serverYear-1;
+		}
+		else {
+			o.activeyear = o.year;
+		}		
+		if( o.ownername ) {
+			o.ownername += "%";
+			s+= ''' AND t.strTaxpayer LIKE $P{ownername} ''';
+		}
+		if( o.tradename ) {
+			o.tradename += "%";
+			s+= ''' AND b.strTradeName LIKE $P{tradename} ''';
+		}
+		if( !s ) s = " AND 1 = 2 ";	//do this so that there will be nor results
+		o.filter = s;
+		o._limit = 50;
+		def m = [:];
+		m.list = em.getList(o);
+		m.size = m.list?.size();
+		return m;
+	}
+
+	
+	@ProxyMethod
+	public def open(o) {
+		o = em.findBusinessInfo( o );
+		o.receivables = em.getReceivables(o);
+		o.lobs = em.getLobs(o);
+		o.totaldue = o.receivables.sum{ it.amount - it.amtpaid };
+		def max = o.receivables.max{ it.year };
+		o.pass = false;
+		if(o.totaldue>0) {
+			o.msg = """
+				This record has unpaid obligation. The total amount due below does not reflect the true amount due. To ensure please ask for a bill and clearance from the BPLS tax division.
+             """;  
+		}
+		else if( max.year < (dateSvc.serverYear-1) ) {
+			o.msg = "This account was not updated. Last date of renewal is " + max.year + ". Please ask clearance from the BPLS Tax division";
+		}	
+		else {
+			o.pass = true;
+			o.msg = "This account is up to date. Complete the required information and proceed";
+		}
+		return o;
+	}
+
+	//inserts id in etracs_tracs.registered_business
+	@ProxyMethod
+	public def register(o) {
+		o.state = 'CAPTURED';
+		o.apptype = 'CAPTURE';
+		def biz = infoSvc.create(o);
+		biz.lobs = o.lobs;
+		biz.lobs.each {
+			if(!it.lob?.objid) 
+				throw new Exception("Please map all line of business");
+				
+			it.objid = "BUSLOB"+new UID();	
+			it.businessid = biz.objid;	
+			it.iyear = biz.activeyear;
+			it.lobid = it.lob.objid;
+			it.name = it.lob.name;
+			it.assessmenttype = 'RENEW';
+		};
+		infoSvc.activate( biz );
+		em.insertBusinessID(o);	
+		return biz;
+	}
+
+}

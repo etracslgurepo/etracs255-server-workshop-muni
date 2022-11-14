@@ -1,0 +1,243 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import com.rameses.util.*
+import com.rameses.services.extended.*
+
+
+class FAASStewardshipService
+{
+	@Env 
+	def env
+
+    @ActiveDB('faas_stewardship')
+    def em 
+
+	@Service('FAASService')
+	def faasSvc 
+
+	@ActiveDB('faas_list')	
+	def faasListEm
+
+	@Service('RealPropertyService')
+	def rpSvc 
+
+	@Service('RPTUtil')
+	def util 
+
+	@DataContext('faas_stewardship')
+	def faas_stewardshipDb 
+
+
+
+	def MAX_STEWARDSHIP_NO = 999
+    def SCHEMA_AFFECTED_RPU = 'affectedrpu'
+
+
+	@ProxyMethod
+    public def getNextStewardshipNo(rpumaster) {
+    	def st = faas_stewardshipDb.select(' maxno:{max(stewardshipno)} ')
+    					.find(rpumaster).first()
+    	def val = 1;
+    	if (st && st.maxno )
+    		val = util.toInteger(st.maxno) + 1 
+    	return val 
+    }
+
+
+    @ProxyMethod
+    public def getStewardshipFaases(parentfaas) {
+        return em.getStewardshipFaases(parentfaas.rpu)
+    }
+
+
+    @ProxyMethod
+    public def initStewardship(info){
+        if (info.stewardshipno <= 0 || info.stewardshipno > MAX_STEWARDSHIP_NO) 
+            throw new Exception('Stewardship No. must be between 1 and ' + MAX_STEWARDSHIP_NO + '.')
+
+        rpSvc.checkDuplicateStewardPin(info)
+        
+        def motherfaas = faasSvc.initTransaction(info)
+        motherfaas.txntype = faasSvc.getTxnType('STP')
+        motherfaas.state = 'PENDING'
+        faasSvc.createFaas(motherfaas)
+
+        def stewardfaas = createStewardFaas(info, motherfaas)
+        faasSvc.createFaas(stewardfaas)
+        createFaasStewardship(stewardfaas, motherfaas)
+        createAffectedRpus(stewardfaas, info)
+        return faasSvc.openFaas(stewardfaas)
+    }
+
+    @ProxyMethod
+    public def findStewardFaas(param) {
+        return faas_stewardshipDb.find(param).first()
+    }
+
+    @ProxyMethod
+    public void insertStewardFaas(param) {
+        def st = findStewardFaas(param)
+        if (!st)
+            faas_stewardshipDb.create(param)
+    }
+
+    @ProxyMethod
+    public def getAffectedRpus(objid){
+        return em.getAffectedRpus([objid:objid])
+    }
+
+
+    @ProxyMethod
+    public def saveAffectedRpu( arpu ) {
+        em.save(arpu, SCHEMA_AFFECTED_RPU)
+    }
+
+
+    @ProxyMethod
+    public void deleteAffectedRpuFaas(arpu){
+        em.delete(arpu, SCHEMA_AFFECTED_RPU)
+        faasSvc.deleteFaasById(arpu.newfaasid)
+    }
+
+
+    @ProxyMethod
+    public void deleteAllAffectedRpus(faas) {
+        getAffectedRpus(faas.objid).each{
+            deleteAffectedRpuFaas(it)
+        }
+    }
+
+
+    @ProxyMethod
+    public def saveAffectedRpuAndFaas(arpu){
+        def faas = null
+
+        if (!arpu.newfaasid ) {
+            faas = faasSvc.openFaas([objid:arpu.faasid])
+
+            def info = [
+                faas        : [objid:arpu.prevfaasid],
+                txntype     : [objid:'RE'],
+                datacapture : false,
+            ]
+
+            def newfaas = faasSvc.initTransaction(info)
+            newfaas.rp = faas.rp 
+            newfaas.realpropertyid = faas.rp.objid 
+            newfaas.rpu.realpropertyid = faas.rp.objid
+            newfaas.rpu.suffix = arpu.newsuffix 
+            newfaas.rpu.landrpuid = faas.rpu.objid 
+            newfaas.rpu.fullpin = faas.fullpin + '-' + arpu.newsuffix
+            newfaas.fullpin = newfaas.rpu.fullpin 
+            newfaas.state = 'PENDING'
+            faasSvc.createFaas(newfaas)
+            arpu.newfaasid = newfaas.objid 
+        }
+        else {
+            faas = faasSvc.openFaas([objid:arpu.newfaasid])
+            faas.rpu.suffix = arpu.newsuffix 
+            faas.rpu.fullpin = faas.fullpin + '-' + arpu.newsuffix 
+            faas.fullpin = faas.rpu.fullpin 
+            faasSvc.updateFaas(faas)
+        }
+        em.save(arpu, SCHEMA_AFFECTED_RPU)  
+        return arpu 
+    }
+
+    @ProxyMethod
+    public def reloadImprovements( faas ) {
+         def prevfaas = em.findPreviousFaas([objid:faas.parentfaasid])
+         if (prevfaas){
+            createAffectedRpus(faas, [faas:prevfaas])
+         }
+    }
+
+
+
+    void createAffectedRpus(stewardfaas, info){
+        def arpus = em.getAffectedRpusByLandFaasId(info.faas)
+        arpus.each{
+            def pf = em.findAffectedRpuByPrevFaas(it)
+            if (!pf){
+                it.objid = 'FARPU' + new java.rmi.server.UID()
+                it.faasid = stewardfaas.objid
+                saveAffectedRpu(it)
+            }
+        }
+    }
+
+    void createFaasStewardship(stewardfaas, motherfaas){
+        def stewardinfo = [
+            objid           : 'RS' + new java.rmi.server.UID(),
+            rpumasterid     : motherfaas.rpu.rpumasterid,
+            stewardrpumasterid : stewardfaas.rpu.rpumasterid,
+            ry              : stewardfaas.rpu.ry,
+            stewardshipno   : stewardfaas.rp.stewardshipno.toString().padLeft(3, '0') 
+        ]
+        faas_stewardshipDb.create(stewardinfo)
+    }
+
+    def createStewardFaas(info, motherfaas){
+        info._checkTxnRef = false
+        def faas = faasSvc.initTransaction(info)
+        faas.parentfaasid = motherfaas.objid 
+        faas.taxpayer = null
+        faas.owner = null 
+        faas.prevtdno       = null
+        faas.previousfaases = []
+
+        faas.rp.previd = null;
+
+        faas.rpu.totallandbmv = 0.0
+        faas.rpu.totallandmv = 0.0
+        faas.rpu.totallandav = 0.0
+        faas.rpu.totalplanttreebmv = 0.0
+        faas.rpu.totalplanttreeadjustment = 0.0
+        faas.rpu.totalplanttreemv = 0.0
+        faas.rpu.totalplanttreeav = 0.0
+        faas.rpu.landvalueadjustment = 0.0
+
+        faas.rpu.totalbmv = 0.0
+        faas.rpu.totalmv = 0.0
+        faas.rpu.totalav = 0.0
+        faas.rpu.totalareaha = 0.0
+        faas.rpu.totalareasqm = 0.0
+
+        faas.rpu.landdetails.each{
+            it.area = 0.0 
+            it.areasqm = 0.0 
+            it.areaha = 0.0 
+            it.basemarketvalue = 0.0
+            it.adjustment = 0.0
+            it.landvalueadjustment = 0.0
+            it.actualuseadjustment = 0.0
+            it.marketvalue = 0.0
+            it.assesslevel = 0.0
+            it.assessedvalue = 0.0
+        }
+        faas.rpu.planttrees.each{
+            it.productive = 0.0
+            it.nonproductive = 0.0
+            it.unitvalue = 0.0
+            it.basemarketvalue = 0.0
+            it.adjustment = 0.0
+            it.adjustmentrate = 0.0
+            it.marketvalue = 0.0
+            it.assesslevel = 0.0
+            it.assessedvalue = 0.0
+            it.areacovered = null 
+        }
+        faas.rpu.assessments = []
+
+        //update pin information
+        faas.rp.pin = info.fullpin
+        faas.rp.stewardshipno = info.stewardshipno.toString().padLeft(3,'0')
+        faas.fullpin = info.fullpin 
+        faas.rpu.fullpin = info.fullpin 
+        faas.rpu.rpumasterid = faas.rpu.objid 
+        return faas 
+    }
+}
+
+
+    

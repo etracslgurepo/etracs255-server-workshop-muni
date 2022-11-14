@@ -1,0 +1,71 @@
+
+import com.rameses.annotations.*;
+
+class ForDownloadNotificationTask {
+
+    @ActiveDB(value='notification', em='notification')
+    def em;
+
+    @Service('CloudSettings') 
+    def settings;     
+
+    @Service(value='CloudNotificationService', connection='cloud_notification')
+    def remoteSvc;
+
+	@Schedule(interval=1) 
+	public void download( task ) { 
+        if ( !settings.isEnabled() ) { 
+            //facility is disabled, exit immediately 
+            return;  
+        } 
+        
+		em.getChannelsForDownload().each{ o-> 
+			downloadByChannel( o );  
+		} 
+	} 
+
+	void downloadByChannel( params ) { 
+		def inc = em.findMessageForDownloadByChannel( params ); 
+		if ( !inc ) return; 
+
+		def chksum = em.findCheckSum( inc ); 
+		if ( chksum && chksum.datacount > 0 && chksum.datacount != chksum.maxindexno ) {
+			//the downloaded data are not sync anymore 
+			//update the indexno to re-download the previous batch 
+			em.update([ objid: inc.objid, indexno:chksum.datacount+1 ], 'fordownload'); 
+			return;  
+		}
+		
+		if ( chksum.chunkcount==chksum.datacount && chksum.chunksize==chksum.datalength ) {
+			//downloaded successfully 
+			em.removeForDownload( inc ); 
+			em.create( inc, 'forprocess' ); 
+			remoteSvc.removeMessage([ objid: inc.objid ]);  
+			return; 
+		} 
+
+		inc.parentid = inc.objid; 
+		if ( !inc.indexno ) inc.indexno=1; 
+		if ( inc.indexno <= 0 ) inc.indexno=1;
+
+		inc.startindexno = inc.indexno; 
+		inc.endindexno = inc.indexno+4;
+
+		def datasum = remoteSvc.findDataCount( inc ); 
+		if ( !datasum?.datacount ) { 
+			// this message has no corresponding data, remove right away...
+			em.removeForDownload( inc ); 
+			return; 
+		}
+
+		def list = remoteSvc.getItems( inc ); 
+		if ( !list ) return; 
+
+		list.each{ o-> 
+			def old = em.findData([ objid: o.objid ]); 
+			if ( !old ) em.create( o, 'data' ); 
+		} 
+
+		em.update([ objid: inc.objid, indexno:inc.endindexno+1 ], 'fordownload'); 		
+	}
+} 

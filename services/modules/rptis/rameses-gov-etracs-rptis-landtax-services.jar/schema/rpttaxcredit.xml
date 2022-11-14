@@ -1,0 +1,32 @@
+<schema>
+    <element tablename="rpttaxcredit">
+        <field name="objid" primary="true" prefix="RTC" />
+        <field name="state" required="true" defaultValue="DRAFT" caption="State" searchable="true" indexed="true"/>
+        <field name="type" required="true"  caption="Type" searchable="true" indexed="true"/>
+        <field name="txnno" required="true"  caption="Txn No." searchable="true" />
+        <field name="txndate" required="true"  caption="Txn Date" />
+        <field name="reftype" required="true"  caption="Ref Type" indexed="true" />
+        <field name="refid" />
+        <field name="refno" required="true"  caption="Ref No." searchable="true" indexed="true"/>
+        <field name="refdate" required="true" caption="Ref Date"/>
+        <field name="amount" required="true" type="decimal" caption="Amount" />
+        <field name="amtapplied" required="true" type="decimal" caption="Applied" />
+        <field name="discapplied" type="decimal" caption="Credited Discount" />
+        <field name="rptledger_objid" required="true" />
+        <field name="srcledger_objid" />
+        <field name="remarks" />
+        <field name="approvedby_objid"/>
+        <field name="approvedby_name"/>
+        <field name="approvedby_title"/>
+        <field name="balance" expr="amount - amtapplied" caption="Balance" />
+        <complex name="info" serializer="default" required="false" />
+        <complex name="rptledger" ref="rptledger" jointype="many-to-one"
+            includefields="tdno,fullpin,owner.name,taxpayer.objid,taxpayer.name">
+            <key field="rptledger_objid" target="objid"/>
+        </complex>
+        <complex name="srcledger" ref="rptledger" jointype="many-to-one" required="false"
+            includefields="tdno,fullpin,owner.name">
+            <key field="srcledger_objid" target="objid"/>
+        </complex>
+    </element>
+</schema>

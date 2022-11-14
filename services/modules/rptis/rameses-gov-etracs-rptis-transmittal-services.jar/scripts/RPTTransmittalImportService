@@ -1,0 +1,79 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class RPTTransmittalImportService
+{
+	@Env 
+	def env 
+
+	@DataContext('rpttransmittal')
+	def db_rpttransmittal
+
+	@DataContext('rpttransmittal_item')
+	def db_rpttransmittal_item
+
+
+	@ProxyMethod
+	public void validateImport(transmittal) {
+		if ('APPROVED'.equalsIgnoreCase(transmittal.state)){
+			if (transmittal.lgu.objid != env.ORGID){
+				throw new Exception('Transmittal is not valid for this organization.')
+			}	
+
+			def old = db_rpttransmittal.read(transmittal)
+			if (!old) 
+				throw new Exception('Transmittal does not exist or has already been deleted.')
+			if('APPROVED'.equalsIgnoreCase(old.state))
+				throw new Exception('Transmittal has already been approved.')
+		}
+		else if (transmittal.tolgu.objid != env.ORGID){
+			throw new Exception('Transmittal is not valid for this organization.')
+		}
+		else if (transmittal.tolgu.objid == env.ORGID){
+			def exist = db_rpttransmittal.select('objid').read(transmittal)
+			if(exist){
+				throw new Exception('Transmittal has already been imported.')
+			}
+		}
+
+	}
+
+
+	@ProxyMethod
+	public def importTransmittal(transmittal) {
+		def exist = db_rpttransmittal.select('objid').read(transmittal)
+		if (!exist){
+			db_rpttransmittal.create(transmittal)
+			transmittal.items.each{
+				db_rpttransmittal_item.create(it)
+			}
+		}
+		else{
+			db_rpttransmittal.update(transmittal)
+		}
+	}
+
+
+	@ProxyMethod
+	public def importData(transmittal, data){
+		// to be intercepted 
+		db_rpttransmittal_item.update(data.transmittalitem)
+		return data.transmittalitem	
+	}
+
+
+	@ProxyMethod
+	public void log(item){
+		db_rpttransmittal_item.update(item)
+
+		if ('ERROR'.equalsIgnoreCase(item.status)){
+			def transmittal = db_rpttransmittal.read([objid:item.parentid])
+			if ('FORAPPROVAL'.equalsIgnoreCase(transmittal.type)){
+			    transmittal.state = 'FORAPPROVAL'
+				db_rpttransmittal.update(transmittal)
+			}
+		}
+	}
+}
+

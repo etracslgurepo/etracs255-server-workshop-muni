@@ -1,0 +1,14 @@
+import com.rameses.annotations.*;
+
+/*********************************************************************************************************************************
+*  This will create and post bill
+*********************************************************************************************************************************/
+
+class CreditPaymentService {
+
+	@ProxyMethod
+	public def post( def pp ) {
+		//refer to WaterworksCreditPaymentService 
+		return null; 
+	} 
+}

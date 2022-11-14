@@ -1,0 +1,21 @@
+<schema>
+	<element name="remittance" tablename="subcollector_remittance" >
+		<field name="objid" primary="true"/>
+		<field name="state" required="true"/>
+		<field name="txnno" required="true"/>
+		<field name="dtposted" required="true"/>
+		<field name="collector_objid" required="true"/>
+		<field name="collector_name" required="true"/>
+		<field name="collector_title" required="true"/>
+		<field name="subcollector_objid" required="true"/>
+		<field name="subcollector_name" required="true"/>
+		<field name="subcollector_title" />
+		<field name="amount" required="true"/>
+		<field name="totalcash" required="true"/>
+		<field name="totalnoncash" required="true"/>
+		<complex name="cashbreakdown" required="false" serializer="default" />
+		<complex name="collectionsummaries" required="false" serializer="default" type="list"/>
+	</element>
+
+	
+</schema>

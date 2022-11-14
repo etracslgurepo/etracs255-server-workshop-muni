@@ -1,0 +1,80 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+
+public class MiscRYSettingLookupService
+{
+	@PersistenceContext('main')
+	def em
+    
+
+    @Service('RPTParameterService')
+    def paramSvc
+
+         
+    @Service('LookupUtilService')
+	def lupSvc 
+
+
+
+    @ProxyMethod
+    public def getMiscRySettingById( objid ) {
+    	return em.sqlContext.createNamedQuery('miscrysettinglookup:getMiscRySettingById')
+    			.setParameter('objid', objid).singleResult	
+    }
+
+
+    @ProxyMethod
+    public def lookupAssessLevels(params){
+    	params.searchtext = (params.searchtext ? params.searchtext : '') + '%'
+    	def list = lupSvc.lookup( 'miscrysettinglookup:lookupAssessLevels', params, 'mal.objid' )
+        return filterByBarangay(params, list)
+    }
+
+
+    @ProxyMethod
+    public def lookupAssessLevelById( objid ) {
+    	return em.sqlContext.createNamedQuery('miscrysettinglookup:lookupAssessLevelById')
+    			.setParameter('objid', objid).singleResult	
+    }
+
+
+    @ProxyMethod
+    public def lookupAssessLevelByPrevId( previd ) {
+        return em.sqlContext.createNamedQuery('miscrysettinglookup:lookupAssessLevelByPrevId')
+                .setParameter('previd', previd).singleResult  
+    }
+
+
+    @ProxyMethod
+    public def lookupAssessLevelRange( params ) {
+    	return em.sqlContext.createNamedQuery('miscrysettinglookup:lookupAssessLevelRange')
+    			.setParameters(params).singleResult	
+    }
+
+
+    @ProxyMethod
+    public def lookupMiscItemValues(params){
+    	def list = lupSvc.lookup( 'miscrysettinglookup:lookupMiscItemValues', params, 'miv.objid' )
+        return filterByBarangay(params, list)
+    }
+
+
+    @ProxyMethod
+    public def lookupMiscItemValueByPrevId(previd){
+        return em.sqlContext.createNamedQuery('miscrysettinglookup:lookupMiscItemValueByPrevId')
+                .setParameter('previd', previd).singleResult  
+    }
+
+    
+    @ProxyMethod
+    public def getVariables() {
+        return paramSvc.getRPTParameters([:])    
+    }
+
+    def filterByBarangay(params, list){
+        def res = list.findAll{it.barangayid == params.barangayid}
+        if ( res )
+            return res 
+        return list.findAll{it.barangayid == null} 
+    }
+}

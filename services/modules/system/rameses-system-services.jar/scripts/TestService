@@ -1,0 +1,51 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+
+class TestService  {		
+
+    @Service("TestService2")
+    def test2;
+
+    @Env
+    def env; 
+
+    //@XConnection('async')
+    def async;
+
+    @ProxyMethod
+    public def sayHello(name) {
+       return test2.getName(name);
+    }
+
+    @Async
+    @ProxyMethod
+    public def testAsync( params ) {
+    	println 'entering...';
+    	int i=0;
+    	while (i++ < 5) {
+    		println 'testAsync-> ' + i;
+    		Thread.sleep(1000); 
+    	}
+    	return 'finished';
+    }
+
+    @Async(connection='remote-async')
+    @ProxyMethod 
+    public def testAsyncLoop( params ) {
+    	println 'entering testAsyncLoop: loop=' + env.loop;
+		if (env.loop==null) env.loop = 0;
+		if (env.loop > 3) return 'finished';
+
+		env.loop += 1;		
+		env.varStatus=true;		
+		println 'testAsyncLoop-> ' + env.loop;
+		Thread.sleep(2000); 
+		return [index: env.loop];
+    }
+
+    @ProxyMethod 
+    public void checkMessageQueue() {
+        println 'async-> ' + async;
+        println async.queueMap;
+    }
+}

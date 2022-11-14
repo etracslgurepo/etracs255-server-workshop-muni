@@ -1,0 +1,13 @@
+<schema>
+
+	<element tablename="district" extends="sys_org">
+		<field name="objid" primary="true"/>
+		<field name="state" />
+		<field name="indexno" />
+		<field name="pin" />
+		<field name="name" />
+		<field name="previd" />
+		<field name="parentid" />
+	</element>
+	
+</schema>

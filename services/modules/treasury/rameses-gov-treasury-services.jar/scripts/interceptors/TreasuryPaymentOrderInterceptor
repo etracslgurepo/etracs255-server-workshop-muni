@@ -1,0 +1,32 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+
+class TreasuryPaymentOrderInterceptor {
+
+	@Service("DateService")
+	def dateSvc;
+
+	@Service("SequenceService") 
+	def seqSvc;
+
+	@Env
+	def env;
+
+	@Before(pattern="PersistenceService.create", eval="#{args[0]._schemaname == 'paymentorder'}")
+	public def beforeCreatePaymentOrder(def evt) { 
+		def r = evt.args[0];
+
+		def locid = env.ORGID;
+
+		r.objid =  KeyGen.generateAlphanumKey( "", 6 );
+		r.txndate = dateSvc.getServerDate();
+		r.controlno =  locid.padRight( 5, "0" ) + seqSvc.getNextFormattedSeriesA("PAYORDER", 10);
+		r.org = [objid:env.ORGID, name:env.ORGNAME];
+
+		def cal = Calendar.instance;
+		cal.setTime( r.txndate );
+		cal.add( Calendar.HOUR, 24 );
+		r.expirydate = new java.sql.Timestamp( cal.getTimeInMillis() );
+		r.issuedby = [objid:env.USERID, name:env.FULLNAME];
+	} 
+}

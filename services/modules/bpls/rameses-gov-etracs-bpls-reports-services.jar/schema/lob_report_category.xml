@@ -1,0 +1,9 @@
+<schema>
+	<element tablename="lob_report_category">
+		<field name="objid" primary="true" caption="ID" visible="true" searchable="true"/>
+		<field name="parentid" required="true" caption="Parent" visible="false"/>
+		<field name="groupid" required="true" caption="Report Group"  visible="false"/>
+		<field name="title" required="true" caption="Title" searchable="true"/>
+		<field name="itemtype"  visible="false"/>
+	</element>
+</schema>

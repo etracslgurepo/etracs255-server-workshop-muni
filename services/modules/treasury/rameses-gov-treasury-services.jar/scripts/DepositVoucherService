@@ -1,0 +1,218 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+
+class DepositVoucherService  {
+
+	@DataContext("collectionvoucher")
+	def cvEm;
+
+	@DataContext("collectionvoucher_fund")
+	def cvfEm;
+
+	@DataContext("depositvoucher")
+	def dvEm;
+
+	@DataContext("depositvoucher_fund")
+	def dvfEm;
+
+	@DataContext("itemaccount")
+	def itemAcctEm;
+
+	@DataContext("cashreceiptpayment_noncash")
+	def ncpEm;
+
+	@DataContext("checkpayment")
+	def chkPmtEm;
+
+	@DataContext("depositslip")
+	def depositSlipEm;
+
+	@Service("DateService")
+	def dateSvc;
+
+	@Service('ControlService') 
+	def controlSvc;	
+
+	@Service("Var")
+	def var;
+
+	@Service("JevService")
+	def jevSvc;	
+
+
+	@Env
+	def env;
+
+	@ProxyMethod
+	public def create( def o ) {
+		def txncode = [ "DV", env.TXNCODE, env.ORGTXNCODE ].findAll{( it )}.join("-");
+
+		def m = [:];
+		m.state = "OPEN";
+		m.dtcreated = dateSvc.getServerDate();
+		m.controldate = m.dtcreated;
+		m.createdby = [objid:env.USERID, name: env.FULLNAME, title: env.JOBTITLE ];
+		m.controlno = controlSvc.formatTxnno([ txncode: txncode, txndate: m.dtcreated, format: var.deposit_format, sequenceid_format: var.deposit_sequenceid_format ]); 
+		m.amount = o.amount;
+		m = dvEm.create( m );
+
+		def dvparam =  [ depositvoucherid: m.objid ] ;
+
+		def str = "('" + o.items.join( "','") + "')";
+		cvEm.where( "objid IN " + str ).update( dvparam );
+
+		// get all collection voucher funds 
+		def cvfs = dvEm.getCollectionVoucherFunds( dvparam ); 
+		if ( !cvfs ) throw new Exception('Cannot find the associated Collection Voucher Funds'); 
+
+		//  validate the correctness of data 		
+		cvfs.each{ 
+			def totalamt = (it.totalcash + it.totalcheck + it.totalcr); 
+			if ( totalamt != it.amount ) { 
+				def msg = new StringBuilder(); 
+				msg.append('Amount not balance for '+ it.fund?.title).append('.\n'); 
+				msg.append('Please verify the data of Collection Voucher ').append( it.controlno );
+				throw new Exception( msg.toString()); 
+			} 
+
+			if ( !it.depositoryfundid ) {
+				def msg = new StringBuilder(); 
+				msg.append('Please specify a Depository Fund for ').append( it.fund?.title ); 
+				throw new Exception( msg.toString()); 
+			}
+		}
+
+		def dvf = [:];
+		cvfs.groupBy{ it.depositoryfundid }.each{ k, v-> 
+			def amt = v.sum{( it.totalcash + it.totalcheck )} 
+
+			dvf.clear(); 
+			dvf.parentid = m.objid;
+			dvf.parent = [ objid: m.objid ];
+			dvf.fundid = k;
+			dvf.fund = [ objid: k ];
+			dvf.amount = amt;
+			dvf.amountdeposited = 0;
+			dvf.totaldr = 0;
+			dvf.totalcr = 0;
+			dvf.state = 'OPEN';
+			dvfEm.create( dvf );			
+		}
+
+		def uu = [:]; 
+		dvEm.getChecksForDeposit( dvparam ).groupBy{ it.checkid }.each{ k,v-> 
+			uu.clear();
+			uu.depositvoucherid = m.objid;
+			if ( v.size() == 1 ) { 
+				uu.fundid = v.first().fundid; 
+				if ( !uu.fundid ) {
+					uu.findid = '{NULL}'; 
+				}
+			}
+			chkPmtEm.find([ objid: k ]).update( uu ); 
+		}
+
+		dvEm.getChecksForVerification( dvparam ).each{
+			if ( !it.bank?.objid ) {
+				def msg = new StringBuilder(); 
+				msg.append('Check Reference No. ').append( it.refno ).append(' ');
+				msg.append('does not have a Bank record mapping. Please verify.')
+				throw new Exception( msg.toString()); 
+			}
+		}
+		return m;
+	}
+
+	@ProxyMethod
+	public void addChecks( def o ) {
+		def str = " ('" + o.list.join("','") + "')";
+		chkPmtEm.where( "objid IN " + str ).update([ fundid: o.fundid ]);
+	}
+
+	@ProxyMethod
+	public void removeCheck( def o ) {
+		chkPmtEm.where( "objid = :objid", o ).update([ fundid: "{NULL}" ]);
+	}
+
+
+	@ProxyMethod
+	public def post( def o ) {
+		//check first if all checks associated with the deposit voucher is accounted for
+		def chkList = chkPmtEm.find([ depositvoucherid : o.objid ]).where(" depositslipid IS NULL").list();  	
+		if( chkList ) {
+			def str = chkList*.refno.join(",");
+			throw new Exception("All checks associated with this deposit voucher must be deposited. Please review the ff checks: \n" + str )
+		}
+
+		//check all deposit slips associated with the deposit voucher must be validated
+		def depList = depositSlipEm.where( "depositvoucherfund.parentid = :id AND validation.refno IS NULL ", [id: o.objid] ).list();
+		if( depList ) {
+			throw new Exception("All deposit slips must be validated");
+		}
+
+		//check all deposit voucher deposited and transferred must balance.
+		def dvfList = dvfEm.find([parentid : o.objid ]).list();
+		if( dvfList.find{ (it.amount - it.totaldr) != (it.amountdeposited - it.totalcr) } ) {
+			throw new Exception("Amount deposited and transferred are not balanced");
+		}
+		//retrieve the depost voucher
+		def m = [ state: 'POSTED' ]; 
+		dvEm.find([ objid: o.objid ]).update( m ); 
+		dvfEm.find([ parentid: o.objid ]).update( m ); 
+		return m;
+	}
+
+	@ProxyMethod 
+	public void postJev( def o ) { 
+		//post to jev
+		def dv = dvEm.find( [objid: o.objid ]).first();
+		def ref = [refid:o.objid,refno:dv.controlno,reftype:'depositvoucher', refdate:dv.controldate, txntype:'DEPOSIT'];
+
+		def jevBatch = [:];
+		jevBatch.ref = ref;
+		jevBatch.funds = [];
+		jevBatch.items = [];
+
+		dvfEm.find([ parentid: o.objid ]).select('objid,fund.*,amount').list().each{ 
+			jevBatch.funds << [ objid: it.objid, refno:o.controlno, fund: it.fund, amount: it.amount  ];	 
+		} 
+		def pm = [depositvoucherid: o.objid ];
+		jevBatch.items.addAll( dvEm.getBankAccountLedgerItems( pm ) );
+		jevBatch.items.addAll( dvEm.getCashLedgerItems( pm ) );
+
+		//fund transfers 
+		def ftList = [];
+		ftList.addAll( dvEm.getOutgoingItems( pm ) );
+		ftList.addAll( dvEm.getIncomingItems( pm ) );
+
+		//search account if not exists create the item
+		ftList.each {
+			def z = it.item;
+			z.code = '-';
+			z.tags = [];
+			if(! itemAcctEm.find( [objid: z.objid ] ).exists() ) {
+				z.state = 'DRAFT';
+				itemAcctEm.create( z );
+			}
+			it.itemacctid = z.objid;
+			it.itemacctcode = z.code;
+			it.itemacctname = z.title;
+		}
+
+		jevBatch.items.addAll( ftList );
+		jevBatch.items.each{
+			it.acctid = it.itemacctid; 
+			it.acctcode = it.itemacctcode; 
+			it.acctname = it.itemacctname;
+		}
+
+		jevSvc.createBatch( jevBatch );
+	}
+
+
+	@ProxyMethod 
+	public def getReportData( params ) { 
+		return params; 
+	}
+}

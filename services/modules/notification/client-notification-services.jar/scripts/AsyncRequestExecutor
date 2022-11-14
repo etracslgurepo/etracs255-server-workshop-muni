@@ -1,0 +1,86 @@
+
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+import com.rameses.util.*;
+import com.rameses.osiris3.core.AppContext;
+import com.rameses.osiris3.core.OsirisServer;
+import com.rameses.osiris3.script.*;
+import com.rameses.osiris3.xconnection.XConnection;
+import java.rmi.server.UID;
+import java.io.PrintWriter;
+import java.io.StringWriter;
+
+class AsyncRequestExecutor
+{	
+    @Service('AsyncNotificationService') 
+    def asyncNotificationSvc; 
+
+	@Context 
+	def currentContext;
+
+	@Env 
+	def sysEnv; 
+
+	@ProxyMethod 
+	public void process( params ) { 
+		try { 
+			def asyncReq = null; 
+			def data = (params.asyncdata? params.asyncdata: params.data); 
+			if ( data instanceof String ) {
+				asyncReq = new Base64Cipher().decode( data.toString() ); 
+			} else {
+				asyncReq = (AsyncRequest) data; 
+			} 
+
+			if (!asyncReq.contextName) asyncReq.contextName='default'; 
+
+			def envmap = (sysEnv? sysEnv: [:]);
+			envmap.REQUESTER = (asyncReq.env? asyncReq.env: [:]); 
+			envmap.ASYNC = [ID:asyncReq.id, CONNECTION:asyncReq.connection]; 
+
+			def xconn = currentContext.getResource( XConnection.class, asyncReq.contextName+'_proxy' ); 
+			def proxy = xconn.create( asyncReq.serviceName, envmap ); 
+			def result = proxy.invokeMethod( asyncReq.methodName, asyncReq.args ); 
+			if (result instanceof AsyncToken) { 
+				asyncNotificationSvc.markAsDelivered([ objid: params.objid ]); 
+			} else { 
+				processResult(asyncReq, result, params.objid); 
+			} 
+		} catch(e) { 
+			e.printStackTrace(); 
+			processError( e, params.objid ); 
+ 		} 
+	} 
+
+	private void processResult( asyncReq, result, msgid ) { 
+		def connName = asyncReq.connection; 
+		if (connName) {
+			def xconn = currentContext.getResource( XConnection.class, connName ); 
+			if (xconn) { 
+				def queue = xconn.register( asyncReq.id ); 
+				queue.push( result ); 
+				queue.push( new AsyncToken(closed:true) ); 
+			} else {
+				println "[AsyncRequestExecutor] '"+ connName + "' connection not found"; 
+			} 
+		} 
+		//update the message status 
+		asyncNotificationSvc.markAsDelivered([ objid: msgid ]); 
+	} 
+
+	private void processError( exception, msgid ) {
+		try { 
+			if ( !exception ) return; 
+			if ( !asyncNotificationSvc.containsMessage( msgid ) ) return; 
+
+			def buffer = new StringWriter();
+			exception.printStackTrace(new PrintWriter(buffer)); 
+			asyncNotificationSvc.markAsFailed([ 
+				objid 		 : msgid, 
+				errormessage : buffer.toString()  
+			]); 
+		} catch( Throwable t ) { 
+			t.printStackTrace(); 
+		} 
+	} 
+} 

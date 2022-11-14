@@ -1,0 +1,94 @@
+import com.rameses.annotations.*;
+
+class CashReceiptQueryService {
+
+	@ActiveDB("cashreceipt_query")
+	def em;
+	
+	@ProxyMethod
+	public def getColumns( m ) {
+		return [
+			[name:"formno", caption:"FormNo."],
+			[name:"receiptno", caption:"ReceiptNo."],
+			[name:"receiptdate", caption:"ReceiptDate"],
+			[name:"txnmode", caption:"Mode"],
+			[name:"paidby", caption:"Payer"],
+			[name:"amount", caption:"Amount", type:"decimal"],
+			[name:"collector.name", caption:"Collector"],
+			[name:"collectiontype.name", caption:"CollectionType"],
+			[name:"voided", caption:"Voided", type:'checkbox', checkedValue:1, uncheckedValue: 0],
+			[name:"remitted", caption:"Remitted", type:'checkbox', checkedValue:1, uncheckedValue: 0],
+			[name:"liquidated", caption:"Liquidated", type:'checkbox', checkedValue:1, uncheckedValue: 0]
+		];
+	}
+
+	@ProxyMethod
+	public def getList( params ) { 
+		def qbuff = [];
+		qbuff << " c.state IN ('POSTED','DELEGATED','CAPTURED','CAPTURE') "; 
+
+		int filterCount = 0; 
+
+		def startdate = params.fromreceiptdate; 
+		def enddate = params.toreceiptdate; 
+		if ( !enddate ) enddate = startdate; 
+		if ( startdate && enddate ) {
+			params.startdate = java.sql.Date.valueOf(startdate); 
+			params.enddate = com.rameses.util.DateUtil.add( java.sql.Date.valueOf(enddate), '1d' );
+			qbuff << ''' c.receiptdate >= $P{startdate} AND c.receiptdate < $P{enddate} '''; 
+			filterCount++;
+		}
+
+		if ( params.paidby ) {
+			qbuff << "c.paidby like '${params.paidby}'".toString();
+			filterCount++;
+		}
+		else {
+			qbuff << "c.paidby like '%'";
+		}
+
+		if ( params.collectorname ) {
+			qbuff << "c.collector_name like '${params.collectorname}'".toString();
+			filterCount++;
+		}
+		else {
+			qbuff << "c.collector_name like '%'";
+		}
+
+		if ( params.receiptno ) { 
+			qbuff << "c.receiptno like '${params.receiptno}'".toString();
+			filterCount++;
+		} 
+		else {
+			qbuff << "c.receiptno like '%'";
+		}
+
+		if ( params.formno ) { 
+			qbuff << "c.formno like '${params.formno}'".toString();
+		} 
+
+
+		if ( params.searchtext ) {
+			params.receiptno = params.searchtext.toString()+'%';  
+			qbuff << ''' c.receiptno like $P{receiptno} '''; 
+			filterCount++;
+		} 
+
+		if ( filterCount <= 0 ) return []; 
+		
+		params.filter = qbuff.join(" AND "); 
+
+		if ( params.sortfield ) {
+			params.orderby = ["c."+ params.sortfield.replace('.','_'), params.sorttype].findAll{( it )}.join(' '); 
+		} 
+		else {
+			params.orderby = 'c.receiptdate, c.receiptno';
+		}
+
+		def list = em.getList( params ); 
+		if ( !list ) return list;
+
+		def objids = "'"+ list.collect{ it.objid }.findAll{( it )}.join("', '") +"'"; 
+		return em.getListByIds([ objids: objids, orderby: params.orderby ]); 
+	} 
+}

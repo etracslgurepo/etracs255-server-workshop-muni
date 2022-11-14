@@ -1,0 +1,18 @@
+<schema >
+	<element tablename="faas_previous">
+		<field name="objid" primary="true"/>
+		<field name="faasid" required="true"/>
+		<field name="prevfaasid" />
+		<field name="prevrpuid" />
+		<field name="prevtdno" />
+		<field name="prevpin" />
+		<field name="prevowner" />
+		<field name="prevadministrator" />
+		<field name="prevav" />
+		<field name="prevmv" />
+		<field name="prevareasqm" />
+		<field name="prevareaha" />
+		<field name="preveffectivity" />
+		<field name="prevtaxability" />
+	</element>
+</schema>

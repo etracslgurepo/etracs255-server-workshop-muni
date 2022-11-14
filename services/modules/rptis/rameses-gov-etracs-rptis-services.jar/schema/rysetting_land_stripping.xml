@@ -1,0 +1,13 @@
+<schema adapter="main">
+	<element tablename="lcuvstripping">
+		<field name="objid" primary="true"/>
+		<field name="landrysettingid" required="true"/>
+		<field name="classification_objid" required="true" />
+		<field name="striplevel"  required="true" caption="Strip" searchable="true" indexed="true" width="100"/>
+		<field name="rate"  type="decimal" required="true" width="100"/>
+		<field name="previd" />
+		<complex name="classification" ref="propertyclassification" jointype="many-to-one" required="true">
+			<key field="classification_objid" target="objid" />
+		</complex>
+	</element>
+</schema>

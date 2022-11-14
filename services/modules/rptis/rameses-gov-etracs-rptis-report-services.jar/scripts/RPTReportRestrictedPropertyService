@@ -1,0 +1,105 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class RPTReportRestrictedPropertyService
+{
+    @Env 
+    def env 
+
+    @Service('RPTUtil')
+    def util 
+
+    @Service('DateService')
+    def dtSvc
+
+    @ActiveDB('rptreport_restrictedproperty')
+    def em
+
+   
+    @ProxyMethod
+    public def getRestrictedProperties(params) {
+        buildParams(params)
+
+        def list = em.getRestrictedProperties(params)
+        if (!list) throw new Exception('There are no records found.')
+
+        list.each{
+            if (it.administrator && it.administrator.name){
+                it.owner.name += ' \nAdministrator: ' + it.administrator.name 
+            }
+            it.reason = it.restrictiontype 
+        }
+
+        def p = [
+            TITLE    : buildTitle('Restricted', params),
+            SUBTITLE : buildSubtitle(params), 
+        ]
+
+        return [
+            parameters  : p,
+            reportdata  : list
+        ]
+    }
+
+
+    @ProxyMethod
+    public def getUnrestrictedProperties(params) {
+        buildParams(params)
+        
+        def list = em.getUnrestrictedProperties(params)
+        if (!list) throw new Exception('There are no records found.')
+
+        list.each{
+            if (it.administrator && it.administrator.name){
+                it.owner.name += ' \nAdministrator: ' + it.administrator.name 
+            }
+            it.reason = 'Tax due paid up to ' + it.lastqtrpaid + 'Q, ' + it.lastyearpaid 
+            it.reason += ' under OR # ' + it.receiptno 
+            it.reason += ' Dated ' + dtSvc.format('MM-dd-yyyy', it.receiptdate)
+        }
+
+        def p = [
+            TITLE    : buildTitle('Unrestricted', params),
+            SUBTITLE : buildSubtitle(params), 
+        ]
+
+        return [
+            parameters  : p,
+            reportdata  : list
+        ]
+    }    
+
+    void buildParams(params) {
+        params.lguid = (params.lgu ? params.lgu.objid :'%')
+        params.barangayid = (params.barangay ? params.barangay.objid : '%')
+        params.restrictiontypeid = (params.restrictiontype ? params.restrictiontype.objid : '%')
+    }
+
+
+    def buildTitle(type, params){
+        def title = 'List of ' + type + ' Properties'
+        if (params.lgu){
+            if ('city'.equalsIgnoreCase(env.ORGCLASS))
+                title += ' (' + 'CITY OF ' + params.lgu.name + ')'
+            else 
+                title += ' (' + 'MUNICIPALITY OF ' + params.lgu.name + ')'
+        }
+        return title
+    }
+
+    def buildSubtitle(params){
+        def subtitle = ''
+        if (params.barangay){
+            subtitle = 'Barangay ' + params.barangay.name 
+            if (params.section && params.section != '%')
+            subtitle += ' (Section ' + params.section + ')' 
+        }
+        if (subtitle) {
+            subtitle += '\n'
+        }
+        subtitle += 'As of ' + dtSvc.format('MMMMM dd, yyyy', dtSvc.serverDate)
+        return subtitle
+    }
+
+}

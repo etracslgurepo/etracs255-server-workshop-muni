@@ -1,0 +1,85 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class ConsolidationListService extends ActiveListService
+{
+    @Env 
+    def env 
+    
+	@ActiveDB('consolidation')
+	def em
+	
+	@Service('ListUtilService')
+	def listSvc 
+
+
+    @Service('NumberService')
+    def numSvc
+	
+    @ProxyMethod
+    public def getColumns(params) {
+        return [
+          [name:"state", caption:"State", width:100],
+          [name:"txnno", caption:"Txn No.", width:100],
+          [name:"txndate", caption:"Txn Date", width:100],
+          [name:"ry", caption:"RY", width:50, type:'integer', format:'0000'],
+          [name:"newtdno", caption:"New TD No.", width:100],
+          [name:"rp.pin", caption:"New PIN", width:180],
+          [name:"owner.name", caption:"New Owner Name", width:250],
+          [name:"owner.address", caption:"New Owner Address", width:250],
+          [name:"rpu.totalareasqm", caption:"New Area (sqm)", width:120, type:'decimal', format:'#,##0.00'],
+          [name:"rpu.totalareaha", caption:"New Area (ha)", width:120, type:'decimal', format:'#,##0.0000'],
+        ]
+    }
+
+    @ProxyMethod
+    public def getNodes(o) {
+        def nodes = []
+        nodes << [name:'all', caption:'All']
+        nodes << [name:'mytask', caption:'My Tasks']
+        nodes += em.getNodes();
+        nodes << [name:'unassigned', caption:'Unassigned Tasks']
+
+        nodes.each{
+            it.leaf = true
+            it.folder = true 
+            it.allowSearch = true 
+        }
+        return nodes
+    }   
+
+    void beforeList( params ) {
+        params.state = (params.state ? params.state : '%')
+        params.lguid = (params.lgu ? params.lgu.objid : '%')
+        params.barangayid = (params.barangay ? params.barangay.objid : '%')
+        params.searchtext = (params.searchtext ? params.searchtext : '%')
+ 		params._pagingKeys = ' c.objid '
+ 		params.filters = '';
+		
+		def whereclause = ''
+
+        switch(params.name) {
+            case 'all':
+                break;
+            case 'mytask':
+                params.userid = env.USERID 
+                if (whereclause) whereclause += ' AND ' 
+                whereclause += ' tsk.assignee_objid = $P{userid} '
+                break;
+            case 'unassigned':
+                if (whereclause) whereclause += ' AND ' 
+                whereclause += " tsk.state like 'assign%'"
+                break;
+            default:
+                params.taskstate = params.name
+                if (whereclause) whereclause += ' AND ' 
+                whereclause += ' tsk.state = $P{taskstate} AND tsk.enddate IS NULL  '
+        }
+
+        if (whereclause) {
+            params.filters = ' AND ' + whereclause
+        }
+    }   
+}
+

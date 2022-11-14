@@ -1,0 +1,63 @@
+
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+
+class BPTaxFeeTopListingReportService
+{	
+	@ActiveDB("bpreport")
+	def em;
+
+	@ProxyMethod
+	public def getReport( params ) { 
+		if ( !params.topsize ) throw new Exception("topsize parameter is required"); 
+		if ( !params.year ) throw new Exception("year parameter is required"); 
+		if ( !params.permittype ) throw new Exception("permittype parameter is required"); 
+
+		if ( params.apptypes ) {
+			params.apptypefilter = params.apptypes.findAll{( it?.objid )}.collect{"'"+ it.objid +"'"}.join(','); 
+		} else {
+			throw new Exception("Please specify at least 1 application type"); 
+		} 
+
+		if ( params.appstates ) {
+			params.appstatefilter = params.appstates.findAll{( it?.objid )}.collect{"'"+ it.objid +"'"}.join(','); 
+		} else {
+			throw new Exception("Please specify at least 1 application status"); 
+		} 
+
+		params.permittypeid = params.permittype.objid; 
+
+		def filters = []; 
+		if ( params.withpayment.toString().matches('true|1') ) {
+			filters << " paymentcount > 0 "; 
+		}
+
+		if ( filters ) { 
+			params.filter = " AND "+ filters.join(" AND "); 
+		} else {
+			params.filter = ""; 
+		}
+
+		def list = em.getBPTaxFeeTopList( params );
+		if ( !list ) throw new Exception('No records found')
+
+		list.eachWithIndex { o,idx->  
+			o.rankno = idx+1;	
+		} 
+
+		return [
+			title : buildTitle( params ), 
+			reportdata : list 
+		]; 
+	}
+
+	def buildTitle( param ) { 
+		def buff = new StringBuilder("TOP ");
+		buff.append( param.topsize.toString() );
+		if ( param.txntype ) {
+			buff.append( " " + param.txntype.toString() ); 
+		}
+		buff.append( " BUSINESSES" );
+		return buff.toString(); 
+	} 
+} 

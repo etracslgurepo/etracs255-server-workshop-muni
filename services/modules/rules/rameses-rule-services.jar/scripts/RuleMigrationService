@@ -1,0 +1,150 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.common.*
+import com.rameses.services.extended.*;
+
+
+class RuleMigrationService {
+
+	@ActiveDB("rulemigration")
+	def em;
+	
+	@ActiveDB("rule")
+	def target;
+
+	@DataContext('sys_ruleset_fact')
+	def rsfactdb;
+
+	@DataContext('sys_ruleset_actiondef')
+	def rsactiondefdb;
+
+	@DataContext("sys_rule_fact")
+	def factEm;
+
+	@Service("RuleFactService")
+	def factSvc;
+
+	@DataContext("sys_rule_actiondef")
+	def actionDefEm;
+
+	@Service("RuleActionDefService")
+	def actionDefSvc;
+
+	@ProxyMethod
+	public def downloadDefByRuleset( def p ) {
+		if(!p.ruleset) throw new Exception("Please add ruleset in parameter");
+
+		def pkg = [rulesets: [] ];
+		def rs = em.findRuleset( p );
+		rs.rulegroups = em.getRulegroups(p);
+		rs.facts = em.getFactRulesets(p);
+		rs.actiondefs = em.getActionDefRulesets(p);
+		pkg.rulesets << rs;
+
+		//load facts
+		pkg.facts = [];
+		rs.facts.each {
+			def f = em.findRuleFactById( [objid: it.rulefact] ); 
+			if ( !f ) return;
+			
+			f.fields = em.getRuleFactFields(f);
+			pkg.facts << f;
+		};
+
+		pkg.actiondefs = [];
+		rs.actiondefs.each {
+			def ad = em.findRuleActionDefById( [objid: it.actiondef] );
+			if ( !ad ) return;
+			
+			ad.params = em.getRuleActionDefParams(ad);
+			pkg.actiondefs << ad;
+		};
+		return pkg;
+	}
+
+
+	@ProxyMethod
+	public def downloadDef( def o ) {
+		if(!o.domain)
+			throw new Exception("Please specify a domain");
+
+		def pkg = [:];
+		//load facts	
+		pkg.facts = em.getRuleFacts(o);	
+		pkg.facts.each {
+			it.fields = em.getRuleFactFields(it);
+		}		
+
+		//load action defs
+		pkg.actiondefs = em.getRuleActionDefs(o);
+		pkg.actiondefs.each {
+			it.params = em.getRuleActionDefParams(it);
+		}		
+		pkg.rulesets = em.getDomainRulesets(o);
+		for( rs in pkg.rulesets ) {
+			def p = [ruleset: rs.name]
+			rs.rulegroups = em.getRulegroups(p);
+			rs.facts = em.getFactRulesets(p);
+			rs.actiondefs = em.getActionDefRulesets(p);
+		}
+		return pkg;
+	}
+	
+	def refactorFacts( def factClass ) {
+		if(!factClass) return [];
+		def itemList = [];
+		factEm.find([factclass: factClass]).list().each {
+			def tmpId = "FACT" + new UID();
+			itemList << tmpId;
+			factSvc.refactor( [oldid: it.objid , newid: tmpId] );
+		}
+		return itemList;
+	}
+
+	def refactorActionDefs( def actionClass ) {
+		if(!actionClass) return [];
+		def itemList = [];
+		actionDefEm.find([actionclass: actionClass]).list().each {
+			def tmpId = "ACTIONDEF" + new UID();
+			itemList << tmpId;
+			actionDefSvc.refactor( [oldid: it.objid , newid: tmpId] );
+		}
+		return itemList;
+	}
+
+	@ProxyMethod
+	public void uploadDef( def pkg ) {
+		for( f in pkg.facts) {
+			target.save( f, "fact" );
+			for( ff in f.fields )  {
+				target.save( ff, "fact_field" );
+			} 
+		} 	
+
+		for( ad in pkg.actiondefs ) {
+			target.save( ad, "actiondef" );
+			for( adp in ad.params ){
+				target.save( adp, "actiondef_param" );
+			}
+		} 	
+
+		for( rs in pkg.rulesets ) {
+			target.save( rs, "ruleset" );
+
+			for ( rg in rs.rulegroups ) {
+				target.save( rg, "rulegroup" );
+			}
+
+			rsfactdb.find([ ruleset: rs.name ]).delete(); 
+			rsactiondefdb.find([ ruleset: rs.name ]).delete(); 	
+
+			for( f in rs.facts ) {
+				rsfactdb.create([ ruleset: f.ruleset, rulefact: f.rulefact ]);
+			}
+			for( ad in rs.actiondefs ) {
+				rsactiondefdb.create([ ruleset: ad.ruleset, actiondef: ad.actiondef ]);	
+			}
+		}
+	}
+}

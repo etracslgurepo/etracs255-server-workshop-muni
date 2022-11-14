@@ -1,0 +1,32 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+
+
+/**********************************************************
+* This routine is hooked in the CashReceiptService and 
+* CashReceiptVoidService services. It will update each
+* receivable based on amount paid. It will update billing.
+* Billing is the key to determine if license can be
+* released.     
+**********************************************************/
+public class BusinessCashReceiptInterceptor {
+
+	@Service("BusinessPostPaymentService")
+	def pmtSvc;
+
+	@After(pattern="CashReceiptService.post", eval="#{result.collectiontype?.handler == 'bpls'}")
+	public void postBusinessPayment(def evt) {
+		def a = evt.args[0]; 
+		a.reftype = 'cashreceipt'; 
+		pmtSvc.postPayment( a );
+	} 
+
+	@After(pattern="CashReceiptVoidService.post",index=0,eval="#{result.receipt.collectiontype.handler=='bpls'}")
+	public void voidTxn( evt ) {
+		//check if permit is already issued.
+		def r = evt.args[0].receipt;
+		pmtSvc.postVoidPayment( r );
+	}
+	
+}

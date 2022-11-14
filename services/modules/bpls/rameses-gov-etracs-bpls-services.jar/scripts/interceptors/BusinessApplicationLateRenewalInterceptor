@@ -1,0 +1,94 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.services.extended.*;
+
+public class LastRenewalBusinessApplicationInterceptor {
+
+	@ActiveDB('business_application')
+	def bpdb;
+
+	@Env
+	def env;
+
+	@Service("DateService")
+	def dateSvc;
+
+	@Service("BusinessMasterService")
+	def bizSvc;
+
+	@Service("BusinessInfoService")
+	def infoSvc;
+
+	@Service("BusinessLobService")
+	def lobSvc;
+
+	@Service("BusinessRequirementService")
+	def reqSvc;
+
+	@Service("BusinessReceivableService")
+	def receivableSvc;
+
+	@After(pattern="BusinessApplicationService.initNew", eval="#{args[0].apptype=='LATERENEWAL'  }")
+	public void initNew(def evt) { 
+		def app = evt.result;
+		if(!app.business.objid) throw new Exception("Please specify a business");
+
+		//retrieve business first
+        def b = bizSvc.open(app.business); 
+		if ( b.state == 'CANCELLED') throw new Exception("Business already cancelled");	
+		else if ( b.state == 'RETIRED') throw new Exception("Business already retired"); 
+        else if ( b.state != 'ACTIVE' ) throw new Exception("An application for this business is currently being processed"); 
+
+		def currentYear = dateSvc.getServerYear();
+		def activeYear = b.activeyear;
+		if( activeYear == currentYear ) 
+			throw new Exception("Business is already renewed for current year"); 
+		if ( activeYear == currentYear-1 ) 
+			throw new Exception("This business is not yet delinquent but requires renewal"); 
+
+		app.appyear = activeYear+1;	
+		app.business =  b;
+        app.lobs = lobSvc.getActiveLobs([businessid:b.objid]);
+        app.appinfos = infoSvc.getActiveAppInfos([businessid:b.objid]);
+        app.assessmentinfos = [];		
+		app.lobs.each {
+			it.assessmenttype = 'RENEW';
+		}	
+	}
+
+	@Before(pattern="BusinessApplicationService.create", eval="#{args[0].apptype=='LATERENEWAL' }")
+	public void beforeCreate(def evt) { 
+		def app = evt.args[0];
+		def b = bizSvc.open(app.business);
+		b.appcount = b.appcount + 1; 
+		app.appno = b.bin +  "-" + b.appcount + "L";
+		bizSvc.updateOnApply( b );
+		app.state = 'COMPLETED';
+		app.objid = "BALTR"+ new UID(); 
+		app.yearstarted = b.yearstarted;
+	}
+
+	@After(pattern="BusinessApplicationService.create", eval="#{args[0].apptype=='LATERENEWAL'  }")
+	public void afterCreate(def evt) { 
+		def o = evt.result;
+
+		//add the lobs and app infos
+		def b = [businessid: o.business.objid, activeyear: o.appyear, applicationid: o.objid];
+		b.lobs = o.lobs;
+
+		lobSvc.addAppLobs( b ); 
+		lobSvc.updateActiveLOBHistory([ businessid: o.business.objid, appyear: o.appyear ]);  
+
+		def biz = bizSvc.open(o.business);
+		biz.state = 'ACTIVE';
+		biz.activeyear = o.appyear;
+		biz.currentapplicationid = o.objid; 
+		bizSvc.update( biz );
+
+		def appinfo = bpdb.read([ objid: o.objid ]); 
+		appinfo.txnmode = 'LATERENEWAL'; 
+		appinfo.apptype = 'RENEW'; 
+		bpdb.update( appinfo ); 
+	}
+}

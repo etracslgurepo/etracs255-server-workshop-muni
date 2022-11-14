@@ -1,0 +1,20 @@
+import com.rameses.annotations.*;
+
+class EntityLookupService {
+
+	@Service('QueryService') 
+	def querySvc; 
+	
+	@ProxyMethod 
+	public List getList( params ) { 
+		if ( !params.searchtext ) return []; 
+
+		def m = [:]; 
+		m._start = ( params._start? params._start: 0 );
+		m._limit = ( params._limit? params._limit: 10 );
+		m._schemaname = 'entity';
+		m.where = [' entityname like :ename and type = :etype AND state=:state', [ename: params.searchtext+'%', etype: params.type, state:'ACTIVE']]; 
+		m.orderBy = 'entityname'; 
+		return querySvc.getList( m ); 
+	} 
+}

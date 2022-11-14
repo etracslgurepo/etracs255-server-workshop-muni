@@ -1,0 +1,7 @@
+<schema>
+    <element tablename="rptledger_tag">
+        <field name="objid" primary="true" prefix="RLT"/>
+        <field name="parent_objid" required="true" />
+        <field name="tag" required="true" />
+    </element>
+</schema>

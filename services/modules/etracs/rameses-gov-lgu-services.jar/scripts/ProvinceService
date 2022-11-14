@@ -1,0 +1,33 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+import java.rmi.server.UID
+import com.rameses.services.extended.*;
+
+class ProvinceService extends ActiveCrudService {
+	
+	@ActiveDB('province')	
+	def em
+	
+	@Service("OrgService")
+	def org;
+
+	
+	public void afterOpen(o) {
+		def m = org.open(o);
+		o.putAll(m);
+		if( !o.assessor ) o.assessor = [:];
+		if( !o.governor ) o.governor = [:];
+		if( !o.treasurer ) o.treasurer = [:];
+	}
+
+	public void beforeUpdate(o) {
+		org.update(o);
+	}	
+
+	public void beforeRemoveEntity(o) {
+		if (o.root == 1 || o.root == true)
+			throw new Exception("Province cannot be removed");	
+	}	
+	
+
+}

@@ -1,0 +1,27 @@
+<schema>
+
+	<element name="mobile_user" tablename="sys_user">
+		<field name="objid" primary="true"/>	
+		<field name="username" />
+		<field name="pwd" />
+		<field name="firstname" />
+		<field name="lastname" />
+		<field name="state" type="integer"/>
+		<field name="name" />		
+		<field name="jobtitle" />
+	</element>
+
+    <element name="lock" tablename="sys_user">
+        <field name="objid" primary="true" />
+        <field name="lockid" />
+    </element> 	
+
+    <element name="password" tablename="sys_user">
+        <field name="objid" primary="true" />
+        <field name="pwd" />
+        <field name="pwdlogincount" />
+        <field name="pwdexpirydate" />
+        <field name="usedpwds" />
+    </element>  
+
+</schema>

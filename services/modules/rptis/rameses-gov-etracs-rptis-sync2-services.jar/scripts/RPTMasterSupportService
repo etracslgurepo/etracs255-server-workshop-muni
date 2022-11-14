@@ -1,0 +1,98 @@
+import com.rameses.annotations.*
+import com.rameses.util.*
+import com.rameses.services.extended.*
+
+class RPTMasterSupportService
+{
+	@Env
+	def env 
+
+    @DataContext('sys_org') 
+    def em_org
+
+    @DataContext(dynamic=true)
+    def dynamicEm
+
+    @DataContext('structure') 
+    def em_structure
+
+    @DataContext('structurematerial') 
+    def em_structurematerial
+
+
+    def handlers = [
+        structure: [
+            getData: { 
+                def structures = getItems(em_structure);
+                structures.each{
+                    it.materials = em_structurematerial.where('structure_objid = :objid', it).list()
+                }
+                return structures;
+            },
+            saveData: { items -> 
+                items.each{structure ->
+                    em_structure.save(structure)
+                    structure.materials.each {material ->
+                        em_structurematerial.save(material)
+                    }
+                }
+            }
+        ],
+    ]
+
+    @ProxyMethod
+    public def getMasterData(params) {
+        def handler = handlers[params.name]
+        if (!handler) {
+            handler = getDynamicMasterHandler(params)
+        }
+        
+        def master = [:]
+        master.objid = 'SM' + new java.rmi.server.UID();
+        master.name = params.name;
+        master.items = handler.getData();
+        return master;
+    }
+
+    @ProxyMethod
+    public void saveMasterData(master) {
+        def handler = handlers[master.name]
+        if (!handler) {
+            handler = getDynamicMasterHandler(master)
+        }
+        handler.saveData(master.items)
+        println 'Master ' + master.name + ' has been successfully updated.'; 
+    }
+
+    @ProxyMethod
+    public def getRemoteOrg(data) {
+        def org = em_org.select('orgid: {objid}, orgcode: {code}, orgclass')
+                .find([objid: data.remote.orgid])
+                .first()
+        if (org) {
+            org.orgcode = org.orgcode.replace('-', '')
+        }
+        return org
+    }
+
+
+    def getItems(db) {
+        return db.find([state: 'APPROVED']).list()
+    }
+
+    def saveItems(db, items) {
+        items.each{
+            db.save(it)
+        }
+    }
+
+    def getDynamicMasterHandler(params) {
+        def em = dynamicEm.lookup(params.name)
+        return [
+            getData: { getItems(em) },
+            saveData: { items -> saveItems(em, items)}
+        ]
+    }
+
+}
+ 

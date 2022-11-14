@@ -1,0 +1,16 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class CancelledFAASServiceInterceptor
+{
+	@Service('LogService')
+	def logSvc 
+
+	@After(pattern="CancelledFAASService.(init|create|update|submitForApproval|disapprove|approve|onlineApprove)") 
+	public void logActions( evt ) {
+		def cancelledfaas = evt.result 
+		logSvc.log( evt.methodName, 'CancelledFAAS', cancelledfaas.objid)
+	}
+}
+

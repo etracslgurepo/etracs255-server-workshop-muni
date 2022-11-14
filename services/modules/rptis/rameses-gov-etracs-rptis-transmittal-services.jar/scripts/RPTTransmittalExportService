@@ -1,0 +1,66 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class RPTTransmittalExportService
+{
+	@ActiveDB('rpttransmittal_export')
+	def em
+
+	@ActiveDB(value='rpttransmittal_export', em='image')
+	def imageDb
+
+
+	@Service('FAASService')
+	def faasSvc
+
+	@Service('EntityService')
+	def entitySvc
+
+	@ProxyMethod
+	public def getFaas( faas ) {
+		faas = faasSvc.openFaas(faas)
+		loadTaxpayer(faas)
+		return faas
+	}
+
+	@ProxyMethod
+	public def getSignatories( entity ) {
+		return em.getSignatories(entity)
+	}
+
+	@ProxyMethod
+	public def getTransmittalItems( entity ) {
+		return em.getTransmittalItems(entity)	
+	}
+
+	@ProxyMethod
+	public def getRequirements( entity) {
+		return em.getRequirements(entity)
+	}
+
+	@ProxyMethod
+	public def getImageHeaders( entity ) {
+		def headers = []
+		headers += imageDb.getImageHeaders(entity)
+		em.getRequirements(entity).each{
+			headers += imageDb.getImageHeaders(it)
+		}
+		return headers 
+	}
+
+	@ProxyMethod
+	public def getImageChunks( entity ) {
+		return imageDb.getImageChunks(entity)	
+	}
+
+	void loadTaxpayer(faas){
+		try{
+			faas.taxpayer = entitySvc.open(faas.taxpayer)
+		}
+		catch(e){
+			//
+		}
+	}
+}
+

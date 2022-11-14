@@ -1,0 +1,87 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*
+import com.rameses.util.*;
+
+class AccountingCrosstabReportService  {
+
+	@DataContext('account_maingroup') 
+	def acctgroup_db;
+
+	@ActiveDB('accountingreport') 
+	def accountingreport_db; 
+
+	@Service('AccountingReportUtil')
+	def reportUtil;
+
+	@Service('DateService')
+	def dtSvc;
+
+	@Service('NumberService')
+	def numSvc;
+
+
+	@ProxyMethod 
+	public def init() {
+		def p = [ fields:[], rowfields:[], columnfields:[], measurefields:[] ];
+		p.accountgroups = acctgroup_db.where(' 1=1 ').list();  
+
+		p.fields << [name:'inc.refdate', caption:'Reference Date', type:'date']; 
+		p.fields << [name:'inc.refyear', caption:'Reference Year', type:'integer']; 
+		p.fields << [name:'inc.refmonth', caption:'Reference Month', type:'integer']; 
+		p.fields << [name:'inc.refqtr', caption:'Reference Qtr', type:'integer']; 
+		p.fields << [name:'inc.remittancedate', caption:'Remittance Date', type:'date']; 
+		p.fields << [name:'inc.remittanceyear', caption:'Remittance Year', type:'integer']; 
+		p.fields << [name:'inc.remittancemonth', caption:'Remittance Month', type:'integer']; 
+		p.fields << [name:'inc.remittanceqtr', caption:'Remittance Qtr', type:'integer']; 
+		p.fields << [name:'inc.liquidationdate', caption:'Liquidation Date', type:'date']; 
+		p.fields << [name:'inc.liquidationyear', caption:'Liquidation Year', type:'integer']; 
+		p.fields << [name:'inc.liquidationmonth', caption:'Liquidation Month', type:'integer']; 
+		p.fields << [name:'inc.liquidationqtr', caption:'Liquidation Qtr', type:'integer']; 
+		p.fields << [name:'inc.fundid', caption:'Fund', type:'list', schemaname:'fund', lookupkey:'objid', lookupvalue:'title']; 
+		p.fields << [name:'m.acctid', caption:'Account', type:'list', schemaname:'account', lookupkey:'objid', lookupvalue:'title']; 
+		p.fields << [name:'inc.acctid', caption:'Item Account', type:'list', schemaname:'itemaccount', lookupkey:'objid', lookupvalue:'title']; 
+
+		p.rowfields << [name:'refdate', caption:'Reference Date', type:'date']; 
+		p.rowfields << [name:'refyear', caption:'Reference Year', type:'integer']; 
+		p.rowfields << [name:'refmonth', caption:'Reference Month', type:'integer']; 
+		p.rowfields << [name:'refqtr', caption:'Reference Qtr', type:'integer']; 
+		p.rowfields << [name:'remittancedate', caption:'Remittance Date', type:'date']; 
+		p.rowfields << [name:'remittanceyear', caption:'Remittance Year', type:'integer']; 
+		p.rowfields << [name:'remittancemonth', caption:'Remittance Month', type:'integer']; 
+		p.rowfields << [name:'remittanceqtr', caption:'Remittance Qtr', type:'integer']; 
+		p.rowfields << [name:'liquidationdate', caption:'Liquidation Date', type:'date']; 
+		p.rowfields << [name:'liquidationyear', caption:'Liquidation Year', type:'integer']; 
+		p.rowfields << [name:'liquidationmonth', caption:'Liquidation Month', type:'integer']; 
+		p.rowfields << [name:'liquidationqtr', caption:'Liquidation Qtr', type:'integer']; 
+		p.rowfields << [name:'fundid' , caption:'Fund'];
+		p.rowfields << [name:'acctcode' , caption:'Account Code'];
+		p.rowfields << [name:'itemcode' , caption:'ItemAccount Code'];
+		
+		p.columnfields << [name:'fundid' , caption:'Fund'];
+		p.columnfields << [name:'acctcode' , caption:'Account Code'];
+		p.columnfields << [name:'itemcode' , caption:'ItemAccount Code'];
+		p.columnfields << [name:'refyear', caption:'Reference Year', type:'integer']; 
+		p.columnfields << [name:'refmonth', caption:'Reference Month', type:'integer']; 
+		p.columnfields << [name:'refqtr', caption:'Reference Qtr', type:'integer']; 
+		
+		p.measurefields << [name:'amount' , caption:'Amount', type:'decimal', pattern:'#,##0.00']; 	
+		return p; 
+	}
+
+	@ProxyMethod 
+	public def getReport( params ) { 
+		def arr = reportUtil.buildFilters( params.filters ); 
+		if ( arr != null && arr.size() > 0 ) params.filter = ' AND '+ arr[0]; 
+		if ( arr != null && arr.size() > 1 ) params.putAll( arr[1] ); 
+		if ( !params.filter ) params.filter = '';
+
+
+
+		def resp = [:]; 
+		resp.reportdata = accountingreport_db.getAccountSummaryForCrosstab( params ); 
+		if ( !resp.reportdata ) throw new Exception('No available records that matches your criteria.'); 
+
+		resp.reportparam = [:]; 
+		return resp; 
+	}
+}

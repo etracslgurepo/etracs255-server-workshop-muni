@@ -1,0 +1,19 @@
+<schema>
+	<element tablename="business_lessor">
+		<field name="objid" primary="true"/>
+		<field name="lessor_orgtype" />
+		<field name="lessor_objid" />
+		<field name="lessor_name" />
+		<field name="lessor_address_text" />
+		<field name="lessor_address_objid" />
+		<field name="government" required="true"/>
+		<field name="bldgno" />
+		<field name="bldgname" required="true"/>
+		<field name="street"  required="true"/>
+		<field name="subdivision" />
+		<field name="barangay_objid" />
+		<field name="barangay_name"/>
+		<field name="pin" />
+	</element>
+</schema>			
+

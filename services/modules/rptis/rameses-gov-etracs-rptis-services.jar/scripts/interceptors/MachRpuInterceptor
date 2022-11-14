@@ -1,0 +1,77 @@
+import com.rameses.annotations.*
+import com.rameses.eserver.*;
+import com.rameses.common.*;
+
+class MachRpuInterceptor
+{
+	@Service('MachRPUService')
+	def svc 
+
+	@Service('MachRPUGRService')
+	def grSvc 
+
+
+	@Service('RPTUtil')
+	def util 
+
+
+	@After(pattern="RPUService.initRpu", eval="#{result.rputype == 'mach'}") 
+	public void initMachRpu( evt ) {
+		svc.initMachRpu(evt.result)
+	}
+
+
+	@After(pattern="RPUService.generateNewIds", eval="#{result.rputype == 'mach'}") 
+	public void generateNewIds( evt ) {
+		svc.generateNewIds(evt.result)
+	}
+
+
+	@After(pattern="RPUService.calculateAssessment", eval="#{result.rputype == 'mach'}") 
+	public void calculateAssessment( evt ) {
+		svc.calculateAssessment(evt.result)
+	}
+
+	
+	@After(pattern="RPUService.openRpu", eval="#{result.rputype == 'mach'}") 
+	public void openMachRpu( evt ) {
+		def rpu = evt.result
+		rpu.putAll( svc.openMachRpu(rpu.objid) )	
+	}
+	
+
+	@After(pattern="RPUService.createRpu", eval="#{result.rputype == 'mach'}") 
+	public void createMachRpu( evt ) {
+		svc.createMachRpu(evt.result)
+	}
+
+
+	@After(pattern="RPUService.updateRpu", eval="#{result.rputype == 'mach'}") 
+	public void updateMachRpu( evt ) {
+		svc.updateMachRpu(evt.result)
+	}
+
+	@Before(pattern="RPUService.deleteRpu", eval="#{args[0].rputype == 'mach'}") 
+	public void deleteMachRpu( evt ) {
+		svc.deleteMachRpu(evt.args[0])
+	}
+
+	@Before(pattern="RPUService.deleteItems", eval="#{args[0].rputype == 'mach'}") 
+	public void deleteRpuItems( evt ) {
+		def rpu = evt.args[0]
+		svc.deleteItems(rpu)
+	}	
+
+	@After(pattern="RPUService.reviseRpu", eval="#{result.rputype == 'mach'}") 
+	public void reviseRpu( evt ) {
+		try {
+			grSvc.reviseMachRpu(evt.result)
+		}
+		catch(Exception e) {
+			throw e			
+		}
+		
+	}
+
+}
+

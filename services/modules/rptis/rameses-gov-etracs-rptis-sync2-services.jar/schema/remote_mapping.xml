@@ -1,0 +1,12 @@
+<schema>
+    <element tablename="remote_mapping">
+        <field name="objid" primary="true" prefix="RM"/>
+        <field name="doctype"/>
+        <field name="orgcode" />
+        <field name="remote_objid"/>
+        <field name="remote_orgcode" />
+        <field name="createdby_name" />
+        <field name="createdby_title" />
+        <field name="dtcreated" required="true" type="date" />
+    </element>  
+</schema>

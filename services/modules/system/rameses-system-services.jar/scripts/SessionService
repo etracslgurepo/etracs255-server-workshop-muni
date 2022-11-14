@@ -1,0 +1,24 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.UID;
+
+class SessionService 
+{		
+    @ProxyMethod
+    public Map createSession( Map params ) {
+		if (!params.userid) throw new Exception('Please specify userid'); 
+		if (!params.username) throw new Exception('Please specify username'); 
+
+    	return [sessionid: 'SESS'+new java.rmi.server.UID()];
+    }
+	
+	@ProxyMethod 
+	public Map getSession( String sessionid ) {
+		return [:]; 
+	}
+
+	@ProxyMethod
+	public Map getUserInfo( String sessionid ) {
+		return [:]; 
+	}
+}

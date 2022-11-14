@@ -1,0 +1,138 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+
+class RPTTaxIncentiveService extends ActiveCrudListService 
+{
+	@Env
+	def env
+
+	@ActiveDB('rpttaxincentive')
+	def em
+
+	@DataContext('rptledger')
+	def em_rptledger
+
+	@Service('DateService')
+	def dtSvc
+
+	@Service('SequenceService')
+	def seqSvc
+
+	@Service('RPTLedgerService')
+	def ledgerSvc
+
+
+	def SCHEMA_INCENTIVE 	= 'rpttaxincentive'
+	def SCHEMA_ITEM  		= 'rpttaxincentiveitem'
+	def MAX_SEARCH_LEN 		= 100
+
+
+	void beforeList(params){
+		if (params == null) params = [:]
+		params.searchtext = (params.searchtext ? params.searchtext :'')+'%'
+	}
+
+
+	@ProxyMethod
+	public def getColumns( params ) {
+		return [
+			[name:"state", caption:"State", width:100],
+			[name:"txnno", caption:"Txn No.", width:80],
+			[name:"txndate", caption:"Txn Date", width:100],
+			[name:"taxpayer.name", caption:"Taxpayer", width:250],
+			[name:"remarks", caption:"Remarks", width:200],
+		]	
+	}
+
+
+	@ProxyMethod
+	public def deleteItem( item ) {
+		em.delete(item, SCHEMA_ITEM)	
+	}
+
+
+	void saveItems(entity){
+		entity.items.each{
+			em.save(it, SCHEMA_ITEM)
+		}
+	}
+
+
+	void beforeCreate(entity){
+		entity.createdby = [
+			objid 	: env.USERID,
+			name   	: env.NAME,
+			title   : env.JOBTITLE,
+			date    : dtSvc.serverDate,
+		]
+
+		updateNameInfo(entity)
+		validateItems(entity)
+	}
+
+
+	void afterCreate(entity){
+		saveItems(entity)
+	}
+
+
+	void beforeUpdate(entity){
+		updateNameInfo(entity)
+		validateItems(entity)
+	}
+
+
+	void afterUpdate(entity){
+		saveItems(entity)
+	}
+
+
+	void afterApprove(entity){
+		entity.txnno = env.ORGID.replace('-','') + seqSvc.getNextFormattedSeries('RPTTAXINCENTIVE')
+		em.updateTxnNo(entity)
+
+		def cy = dtSvc.serverYear
+
+		entity.items.each{
+			em_rptledger.find([objid:it.rptledgerid]).update([nextbilldate:null])
+			def ledger = ledgerSvc.open([objid:it.rptledgerid])
+			ledgerSvc.postLedgerItems(ledger, cy)
+		}
+	}
+
+
+	void afterOpen(entity){
+		entity.items = em.getIncentiveItems(entity)
+	}
+
+
+	void beforeRemoveEntity(entity){
+		em.deleteAllItems(entity)
+	}
+
+	void validateItems(entity){
+		entity.items.each{
+			if (it.fromyear > it.toyear) 
+				throw new Exception('From Year must be less than To Year for item with TD No. ' + it.tdno + '.')
+			if (it.basicrate < 0 ) 
+				throw new Exception('Basic Incentive Rate for item with TD No. ' + it.tdno + ' must be greater than or equal to zero.')
+			if (it.sefrate < 0 ) 
+				throw new Exception('SEF Incentive Rate for item with TD No. ' + it.tdno + ' must be greater than or equal to zero.')
+			if (it.basicrate == 0 && it.sefrate == 0) 
+				throw new Exception('Basic or SEF Incentive Rate greater than zero for item with TD No. ' + it.tdno + ' is required.')
+		}
+	}
+
+
+	void updateNameInfo(entity){
+		entity.name = entity.taxpayer.name
+		entity.taxpayer.address 
+		if (entity.taxpayer.name.length() > MAX_SEARCH_LEN){
+			entity.name = entity.taxpayer.name.substring(0, MAX_SEARCH_LEN)
+		}
+	}
+
+
+}

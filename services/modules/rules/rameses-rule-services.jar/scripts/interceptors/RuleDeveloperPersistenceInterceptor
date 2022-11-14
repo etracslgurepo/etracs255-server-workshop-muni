@@ -1,0 +1,30 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.common.*
+import com.rameses.services.extended.*;
+
+class RuleDeveloperPersistenceInterceptor  {
+
+	@DataContext("sys_ruleset_fact")
+	def rfact;
+
+	@DataContext("sys_ruleset_actiondef")
+	def ractiondef;
+
+	@Before(pattern="PersistenceService.removeEntity",  eval="#{args[0]._schemaname == 'sys_rule_fact' }" )
+	public void removeFact(evt) {
+		def o = evt.args[0];
+		def t = rfact.find( [rulefact: o.objid] ).exists();
+		if(t) throw new Exception("Remove first all ruleset associations");		
+	}
+
+
+	@Before(pattern="PersistenceService.removeEntity",  eval="#{args[0]._schemaname == 'sys_rule_actiondef' }" )
+	public void removeActionDef(evt) {
+		def o = evt.args[0];
+		def t = ractiondef.find( [actiondef: o.objid] ).exists();
+		if(t) throw new Exception("Remove first all ruleset associations");
+	}
+
+}

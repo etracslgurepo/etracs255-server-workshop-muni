@@ -1,0 +1,103 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+
+class MobileUserInterceptor 
+{
+	@Service('DefaultMobileUserService')
+	def svc;
+
+	@Service('DefaultMobileOrgService')
+	def orgSvc;
+
+	@ActiveDB('mobile_var')
+	def var;
+
+	@Env 
+	def env;
+
+	@After(pattern="UserService.getInfo", eval="env.CLIENTTYPE=='mobile'") 
+	public void loadUserInfo( evt ) {
+		def username = evt.args[0]; 
+		def resmap = getInfo( username ); 
+		evt.result.putAll(resmap);
+	}
+	
+	private Map getInfo( username ) {
+		def info = null;		
+		def isSA = username.toString().equalsIgnoreCase("sa");
+		if (isSA) { 
+			info = [objid:username, username: username, name: 'System Administrator']; 
+		} else { 
+			info = svc.getInfo(username); 
+		} 
+
+		if (!info) throw new Exception("'"+username+"' user account does not exist"); 
+
+		def fullname = new StringBuffer();
+		fullname.append(info.firstname);
+		if (info.middlename) fullname.append(" " + info.middlename);
+		fullname.append(" "+info.lastname);
+
+		def result = [:]; 
+		result.username = info.username;
+		result.USERID = info.objid;
+    	result.env = [
+            USER: info.username, 
+            USERID: info.objid, 
+            NAME: info.name, 
+            FULLNAME: fullname.toString(), 
+            JOBTITLE: info.jobtitle,
+            EMAIL: info.email,
+            TERMINALID: env.TERMINALID,              
+			ROLES: [ALLOWED: 'system.*'] 
+		];
+
+		if (isSA) {
+			result.env.FULLNAME = info.name; 
+			result.env.ROLES['ADMIN.SYSADMIN'] = null; 
+		} 
+		def rootOrg = orgSvc.getRoot([:]);
+		def orginfo = null; 
+		if (env.CLIENTCODE) orginfo = orgSvc.getInfo([name: env.CLIENTCODE]); 
+		if (!orginfo) orginfo = rootOrg;
+
+		result.env.ORGID = orginfo?.objid;
+		result.env.ORGNAME = orginfo?.name; 
+
+		def permissions = svc.getPermissions([userid: info.objid, orgname:env.CLIENTCODE]); 
+
+		if (env.CLIENTCODE != null && permissions.isEmpty()) 
+			throw new Exception("You don't have enough permissions for client code "+env.CLIENTCODE+". Please verify.");  
+		
+		permissions?.each {
+			def key = it.domain+'.'+it.role; 
+			def lst = [];
+			if (it.security?.exclude) lst << it.security?.exclude;
+			if (it.custom?.exclude) lst << it.custom?.exclude;
+			if (lst) 
+				result.env.ROLES[key] = lst.join('|'); 
+			else 
+				result.env.ROLES[key] = null; 
+		} 
+
+		def settings = [:]; 
+		var.getDeviceSettings().each {
+			if (it.name == 'device_host_online') { 
+				settings.ONLINE_HOST = it.value; 
+			} else if (it.name == 'device_host_offline') {  
+				settings.OFFLINE_HOST = it.value;
+			} else if (it.name == 'device_host_port') { 
+				settings.PORT = it.value; 
+			} else if (it.name == 'device_timeout_session') { 
+				settings.SESSION_TIMEOUT = it.value; 
+			} else if (it.name == 'device_timeout_tracker') { 
+				settings.TRACKER_DELAY = it.value; 
+			} else if (it.name == 'device_timeout_upload') { 
+				settings.UPLOAD_DELAY = it.value; 
+			} 
+		}
+		result.env.SETTINGS = settings;
+		return result;
+	}	
+}  
+

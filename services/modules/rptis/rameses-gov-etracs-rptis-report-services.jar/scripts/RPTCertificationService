@@ -1,0 +1,388 @@
+import com.rameses.annotations.*
+import com.rameses.eserver.*;
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class RPTCertificationService 
+{
+    @PersistenceContext('main')
+    def em;
+
+    @ActiveDB('rptcertification')
+    def db;
+
+    @DataContext('rptcertification')
+    def em_certification;
+
+    @DataContext('rptcertification_item')
+    def em_certification_item;
+
+    @DataContext('rptcertification_online')
+    def em_certification_online;
+
+		@DataContext('rptcertification_task')
+    def em_certification_task;
+    
+    @Env
+    def env 
+
+    @Service('DateService')
+    def dtSvc;
+	
+	@Service('SequenceService')
+	def seqSvc;
+
+	@Service('RPTUtil')
+	def util;
+
+	@Service('FAASService')
+    def faasSvc
+
+    @DataContext('sys_org')
+    def em_org
+
+    @DataContext('entitymember')
+    def em_member
+
+    @DataContext('entity_mapping')
+    def em_mapping
+
+    @Service('SignatureService')
+	def sigSvc 
+
+
+	def SCHEMA_NAME = 'rptcertification'
+	def SCHEMA_ITEM = 'rptcertification:item'
+
+	def TEMP_KEY = "RPTCERTIFICATION-TEMP"
+	def CERTIFICATION_KEY = "RPTCERTIFICATION"
+
+
+	@ProxyMethod
+	public def getList( params ) {
+    	params.searchtext = (params.searchtext ? params.searchtext : '') + '%'
+    	params.office = (params.office ? params.office : '') + '%'
+        def filters = [
+            ' and office LIKE $P{office} and txnno LIKE $P{searchtext}',
+            ' and office LIKE $P{office} and requestedby LIKE $P{searchtext}',
+            ' and office LIKE $P{office} and opener LIKE $P{searchtext}',
+        ]
+        return util.getListFromQuery( 'rptcertification:getList' , filters, params, 'objid' )
+	}
+
+
+	@ProxyMethod
+	public def createCertification( cert ) {
+		if (!cert.txnno){
+			if (cert.online) {
+				cert.txnno = 'TMP-' + getNextSequence(TEMP_KEY)
+			} else {
+				cert.txnno = getNextSequence(CERTIFICATION_KEY)
+			}
+			
+		}
+		cert.txndate = dtSvc.serverDate
+		cert.createdbyid = env.USERID
+		cert.createdby = (env.FULLNAME ? env.FULLNAME : 'system')
+		cert.createdbytitle = (env.JOBTITLE ? env.JOBTITLE : 'system')
+		if (cert.official) {
+			cert.amount = 0.0
+			cert.stampamount = 0.0
+		}
+		if (cert.taxpayer){
+			if (cert.taxpayer.address)
+				cert.taxpayer.address = cert.taxpayer.address.replaceAll('[^\\S]',' ')
+			else 
+				cert.taxpayer.address = ''
+		}
+		cert.givenday = util.formalizeDate(cert.txndate, 'd' )
+		cert.givenmonth = util.formalizeDate(cert.txndate, 'MMMMM' )
+		cert.givenyear = util.formalizeDate(cert.txndate, 'yyyy' )
+		if (!cert.properties) cert.properties = [:]
+		cert.properties.includemembers = (cert.includemembers ? cert.includemembers : false)
+		validate(cert)
+		def online = cert.online
+        cert.properties.online = cert.online
+		cert = em.create(SCHEMA_NAME, cert)
+		cert = openCertification(cert.objid)
+		cert.online = online;
+		return cert
+	}
+
+	@ProxyMethod
+	public def createItem( item ) {
+		em.create(SCHEMA_ITEM, item)	
+	}
+
+
+	@ProxyMethod
+	public def openCertification(param) {
+		def objid = (param instanceof Map ? param.objid : param);
+		def cert = em.read(SCHEMA_NAME, [objid:objid])
+		if (!cert) throw new Exception('Record does not exist or has already been deleted.')
+		cert.taxpayerid = cert.taxpayer?.objid
+		cert.official = util.toBoolean(cert.official, false)
+		cert.givenday = util.formalizeDate(cert.txndate, 'd' )
+		cert.givenmonth = util.formalizeDate(cert.txndate, 'MMMMM' )
+		cert.givenyear = util.formalizeDate(cert.txndate, 'yyyy' )
+		if (cert.ordate){
+			cert.ordate = dtSvc.parse('yyyy-MM-dd', cert.ordate)
+		}
+		cert.includemembers = cert.properties?.includemembers ? cert.properties.includemembers : false
+		cert.online = cert.properties?.online ? cert.properties.online : false
+		makeHtmlSafe(cert)
+		openTask(cert)
+		return cert 
+	}
+
+	@ProxyMethod
+	public def update(cert) {
+		if (!cert.txnno) throw new Exception('Certification No. is required.')
+		def entity =  em_certification.read([objid: cert.objid])
+		if (!entity) throw new Exception('Record does not exist or has been deleted.')
+		validate(entity, cert)
+
+		entity.putAll(cert)
+		em_certification.update(entity)
+		return entity
+	}
+
+	@ProxyMethod
+	public def approve(cert) {
+		cert.txnno = getNextSequence(CERTIFICATION_KEY)
+		cert.txndate = dtSvc.serverDate
+
+		def updateinfo = [
+			txnno : cert.txnno,
+			txndate: cert.txndate,
+		]
+		em_certification.find([objid: cert.objid]).update(updateinfo)
+		return cert
+	}
+
+	@ProxyMethod
+	public void deleteCertification(cert) {
+		db.deleteItems(cert)
+		em_certification_task.find([refid: cert.objid]).delete()
+		em_certification_online.find([objid: cert.objid]).delete()
+		em_certification.find([objid: cert.objid]).delete()
+	}
+
+	@ProxyMethod
+	public void makeHtmlSafe(cert){
+		if (cert.owner?.name) {
+			cert.owner.name = htmlSafe(cert.owner.name)
+		}
+		if (cert.taxpayer?.name) {
+			cert.taxpayer.name = htmlSafe(cert.taxpayer.name)
+		}
+		
+		cert.requestedby = htmlSafe(cert.requestedby)
+		cert.purpose = htmlSafe(cert.purpose)
+		cert.addlinfo = htmlSafe(cert.addlinfo)
+	}
+
+	@ProxyMethod
+	public def getFaasInfo(faasid){
+		return em.sqlContext.createNamedQuery('rptcertification:getFaasInfo')
+					.setParameter('faasid', faasid ).singleResult
+	}
+
+	@ProxyMethod
+	public void validateFaas(cert){
+		util.required('TD No.', cert.faasid)
+		def state = faasSvc.getState(cert.faasid)
+
+		if (state == 'CANCELLED')
+			throw new Exception('FAAS has already been cancelled.')
+		if (state != 'CURRENT')
+			throw new Exception('FAAS is not current.')
+	}
+
+
+	@ProxyMethod
+	public void buildFilter(cert) {
+		cert.taxpayerid = cert.taxpayer?.objid
+		cert.taxpayerids = getTaxpayerIds(cert)
+		cert.asoffilter = " AND f.state = 'CURRENT' "
+	}
+
+	void validate(cert){
+		validateORInfo(cert)
+		em.validate(SCHEMA_NAME, cert)
+	}
+
+	void validateORInfo(cert){
+		if (! cert.official && !cert._online){
+			if (cert.oramount <= 0.0)
+			throw new Exception('Amount must be greater than zero.')
+
+			def cdate = dtSvc.parseCurrentDate()
+			def ordate = dtSvc.parseDate(cert.ordate, null)
+			if (ordate.year < cdate.year)
+				throw new Exception('O.R. must be issued within this year.')
+			if (dtSvc.parse('yyyy-MM-dd', cert.ordate) > dtSvc.serverDate )
+				throw new Exception('O.R. Date must not be later than current date.')
+		}
+		if (cert.ordate != null) {
+			cert.ordate = dtSvc.parse('yyyy-MM-dd', cert.ordate)
+		}
+	}	
+
+
+	@ProxyMethod
+	public void buildFootNotes( cert ) {
+		if (!cert.items) return;
+		def i = 0
+		cert.footnote = cert.items.findAll{ it.owner.name != cert.taxpayer.name }.groupBy{ it.owner.name}
+		cert.footnote = cert.footnote.collect{ [footnote: ++i, owner:[name: it.key]] }
+		
+		cert.items = cert.items.each(){ o ->
+			cert.footnote.each(){
+				if( o.owner.name == it.owner.name && o.owner.name != cert.taxpayer.name )
+					o.footnote = it.footnote + ''
+			}  
+		}
+		i = 0
+		
+		cert.footnotes = cert.items.findAll{ !it.owner.name.equals(cert.taxpayer.name) }
+		cert.footnotes = cert.footnotes.groupBy{ it.owner.name }.collect{ [footnote: it.key] }
+		cert.footnotes.each(){
+			it.footno = ++i + '';
+		}
+			
+	}
+
+	@ProxyMethod
+	public def getSignatories(certification) {
+		def tasks = em_certification_task.select('state')
+										.find([refid: certification.objid])
+										.where("state <> 'approved' AND signature is not null")
+										.list()
+										.unique();
+        if (!tasks) return [];
+
+		def signatories = [];
+        tasks.each{task ->
+            signatories << em_certification_task
+                                .find([refid: certification.objid, state: task.state])
+                                .orderBy('startdate DESC')
+                                .first()
+        }
+
+        // [signatories, signaturetampered, tamperedsigmsg]
+        return sigSvc.decodeSignatories(signatories);
+	}
+
+	@ProxyMethod
+	public def checkUserAllowedAction(param) {
+        return util.checkUserAllowedAction(param)
+	}
+
+	def htmlMapping = [
+		'&' : '&amp;',
+		'<' : '&lt;',
+		'>' : '&gt;',
+	]
+
+	def htmlSafe(val) {
+		if (!val) return val 
+
+		htmlMapping.each{k, v ->
+			if (val.indexOf(v) < 0) {
+				val = val.replaceAll(k, v)
+			}
+		}
+		return val
+	}
+
+
+	def getTaxpayerIds(cert) {
+		def ids = []
+		if (cert.taxpayer && cert.taxpayer.objid) {
+			ids << cert.taxpayer.objid
+			ids += em_mapping.select('objid').find([parent_objid: cert.taxpayer.objid]).list().objid
+
+			def multipleids = getMultipleOwnershipIds(ids)
+			ids += multipleids
+
+			if (cert.includemembers) {
+				ids += getMemberIds(ids)
+			}
+		} 
+		def idsfilter = '';
+		if (ids) {
+			idsfilter = "'" + ids.unique().join("','") + "'"
+		}
+		return idsfilter
+	}
+
+	def getMultipleOwnershipIds(ids) {
+		def idlist = []
+		ids.each {
+			idlist += em_member.select('memberid: {member_objid}').find([entityid: it]).list().memberid
+		} 
+		return idlist.unique()
+	}
+
+	def getMemberIds(ids) {
+		def idlist = []
+		def memberids = []
+		ids.each{
+			memberids += em_member.select('entityid').find([member_objid: it]).list().entityid
+		}
+		idlist += memberids.unique() 
+		return idlist;
+	}
+
+
+	void validate(entity, cert) {
+		checkDuplicate(entity, cert)
+
+		def ordate = dtSvc.parse('yyyy-MM-dd', cert.ordate)
+		if (ordate > dtSvc.serverDate) {
+			throw new Exception('O.R. Date must be on or before current date')
+		}
+
+		if (cert.properties?.transferordate) {
+			def transferordate = dtSvc.parse('yyyy-MM-dd', cert.properties.transferordate)
+			if (transferordate > dtSvc.serverDate) {
+				throw new Exception('Transfer Tax O.R. Date must be on or before current date')
+			}
+		}
+
+		if (cert.oramount <= 0) {
+			throw new Exception('O.R. Amount should be greater than zero')
+		}
+
+		if (entity.properties?.transferorno) {
+			if (entity.properties.transferoramount <= 0) {
+				throw new Exception('Transfer Tax O.R. Amount should be greater than zero')
+			}
+		}
+	}
+
+	void checkDuplicate(entity, cert) {
+		if (!entity.txnno.equalsIgnoreCase(cert.txnno)) {
+			def dupCert = em_certification.select('objid').find([txnno: cert.txnno]).first()
+			if (dupCert) {
+				def msg = 'Certification No. ' + cert.txnno + ' is already assigned.\n'
+				msg += 'Verify the log book or the number you entered.'
+				throw new Exception(msg)
+			}
+		}
+	}
+
+	def getNextSequence(key) {
+		def org = em_org.find([root: 1]).first()
+		def orgkey = org.code.replaceAll('-', '')
+		return orgkey + seqSvc.getNextFormattedSeries(key)
+	}
+
+	void openTask(cert) {
+		cert.task = em_certification_task.find([refid: cert.objid]).where('enddate is null').first();
+		cert.taskid = cert.task?.objid;
+	}
+}
+
+

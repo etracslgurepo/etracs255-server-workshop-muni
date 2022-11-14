@@ -1,0 +1,27 @@
+import com.rameses.annotations.*;
+import com.rameses.services.extended.*;
+
+class BusinessRequirementTypeService extends ActiveCrudListService {
+
+	@ActiveDB("businessrequirementtype")
+	def em;
+
+	@ProxyMethod
+	public def getColumns( def p ) {
+		return [
+			[name:"code", caption:"Code", width:200, resizable:false],
+			[name:"title", caption:"Title"],
+			[name:'handler', caption:'Handler']
+		]
+	}
+
+	void beforeCreate(o) {
+		o.objid = o.code;
+	}
+
+	//this is called by BPInfoRuleService.execute ~ AddRequirement
+	@ProxyMethod
+	def findEntry( def o ) {
+		return em.read( [objid: o.objid ]);
+	}
+}

@@ -1,0 +1,15 @@
+<schema>
+	<element tablename="af">
+		<field name="objid" primary="true" visible="true" searchable="true"/>
+		<field name="title" required="true"/>
+
+		<field name="usetype" required="true"/>
+		<field name="serieslength" required="true"/>
+		<field name="system" required="true"/>
+		<field name="denomination" required="true"/>
+		<field name="formtype" required="true"/>
+			
+	</element>
+</schema>
+
+

@@ -1,0 +1,66 @@
+<schema adapter="main">
+	<element name="landrpu"	tablename="landrpu" >
+		<field name="objid" primary="true" />
+		<field name="idleland" required="true" type="boolean" />
+		<field name="publicland" required="true" type="boolean" />
+		<field name="totallandbmv" required="true" type="decimal" />
+		<field name="totallandmv" required="true" type="decimal" />
+		<field name="totallandav" required="true" type="decimal" />
+		<field name="totalplanttreebmv" required="true" type="decimal" />
+		<field name="totalplanttreeadjustment" required="true" type="decimal" />
+		<field name="totalplanttreemv" required="true" type="decimal" />
+		<field name="totalplanttreeav" required="true" type="decimal" />
+		<field name="landvalueadjustment" required="true" type="decimal" />
+		<field name="distanceawr" type="decimal" />
+		<field name="distanceltc" type="decimal" />
+	</element>
+
+
+	<element name="landdetail"	tablename="landdetail" >
+		<field name="objid" primary="true" />
+		<field name="landrpuid" required="true" />
+		<field name="subclass_objid" />
+		<field name="landspecificclass_objid" />
+		<field name="specificclass_objid" />
+		<field name="actualuse_objid" />
+		<field name="stripping_objid" />
+		<field name="addlinfo" />
+		<field name="striprate" type="decimal" />
+		<field name="areatype" required="true" />
+		<field name="area" type="decimal" required="true" />
+		<field name="areasqm" type="decimal" required="true" />
+		<field name="areaha" type="decimal" required="true" />
+		<field name="basevalue" type="decimal" required="true" />
+		<field name="unitvalue" type="decimal" required="true" />
+		<field name="taxable" required="true" type="boolean" />
+		<field name="basemarketvalue" type="decimal" required="true" />
+		<field name="adjustment" type="decimal" required="true" />
+		<field name="landvalueadjustment" type="decimal" required="true" />
+		<field name="actualuseadjustment" type="decimal" required="true" />
+		<field name="marketvalue" type="decimal" required="true" />
+		<field name="assesslevel" type="decimal" required="true" />
+		<field name="assessedvalue" type="decimal" required="true" />
+	</element>
+
+
+	<element name="landadjustment"	tablename="landadjustment" >
+		<field name="objid" primary="true" />
+		<field name="landrpuid"/>
+		<field name="landdetailid"/>
+		<field name="adjustmenttype_objid" required="true"/>
+		<field name="expr" required="true"/>
+		<field name="adjustment" required="true" type="decimal" />
+		<field name="basemarketvalue"  type="decimal" />
+		<field name="marketvalue"  type="decimal" />
+		<field name="type"/>
+	</element>
+
+    
+    <element name="parameter"	tablename="landadjustmentparameter" >
+		<field name="objid" primary="true" />
+		<field name="landadjustmentid" required="true"/>
+		<field name="landrpuid"/>
+		<field name="param_objid" required="true"/>
+		<field name="value" />
+	</element>
+</schema>

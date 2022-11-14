@@ -1,0 +1,93 @@
+import com.rameses.annotations.*;
+
+class CollectionVoucherModifyService {
+
+	@DataContext('collectionvoucher') 
+	def cv_db; 
+
+	@DataContext('collectionvoucher_fund') 
+	def cv_fund_db; 
+
+	@ActiveDB('collectionvoucher_modify')
+	def cv_mod_db;
+
+	@ProxyMethod
+	public def changeLiqOfficer( param ) {
+		if (!param.objid) throw new Exception('objid parameter is required'); 
+		if (!param.liquidatingofficer?.objid) throw new Exception('liquidatingofficer.objid parameter is required'); 
+		if (!param.liquidatingofficer?.name) throw new Exception('liquidatingofficer.name parameter is required'); 
+		if (!param.liquidatingofficer?.title) throw new Exception('liquidatingofficer.title parameter is required'); 
+
+		def findby = [ objid: param.objid ]; 
+		def old = cv_db.find( findby ).select('objid').first(); 
+		if ( !old ) throw new Exception('Collection Voucher record cannot be found'); 
+
+		// execute update to begin the record-locking
+		cv_db.find( findby ).update([ liquidatingofficer: [name: new java.rmi.server.UID().toString()]]); 
+
+		def strcols = 'objid,state,liquidatingofficer.*';
+		def cvdata = cv_db.find( findby ).select( strcols ).first(); 		
+
+		if ( !cvdata.state.toString().toUpperCase().matches('OPEN')) 
+			throw new Exception('Change Liq.Officer is allowed only when status is OPEN'); 
+
+		cvdata.liquidatingofficer = param.liquidatingofficer; 
+		cv_db.find( findby ).update( cvdata ); 
+		return cvdata; 
+	}
+
+
+	@ProxyMethod
+	public void updateCashBreakdown( param ) {
+		if ( !param.objid ) throw new Exception('objid parameter is required');  
+		if ( !param.cashbreakdown ) throw new Exception('cashbreakdown parameter is required');  
+
+		def findby = [ objid: param.objid ]; 
+		def rem = cv_db.find( findby ).select('objid,totalcash').first(); 
+		if ( !rem ) throw new Exception('Collection Voucher record cannot be found'); 
+
+		def cashbreakdown = param.cashbreakdown.findAll{( it.qty > 0 )}
+		def newtotalcash = cashbreakdown.sum{( it.amount ? it.amount : 0.0 )}
+		if ( newtotalcash == null ) newtotalcash = 0.0; 
+
+		if ( newtotalcash != rem.totalcash ) 
+			throw new Exception('Total Cash breakdown must be equal to '+ rem.totalcash ); 
+
+	    cv_db.find( findby ).update([ cashbreakdown: cashbreakdown ]); 
+	}
+
+
+	@ProxyMethod 
+	public void rebuildFund( param ) {
+		if ( !param.objid ) throw new Exception('objid parameter is required'); 
+
+		def findby = [ objid: param.objid ]; 
+		def cv = cv_db.find( findby ).select('objid').first(); 
+		if ( !cv ) throw new Exception('Collection Voucher record cannot be found'); 
+
+		def newfunds = cv_mod_db.getBuildFunds( findby ); 
+
+		findby.clear(); 
+		findby.parentid = param.objid; 
+		cv_fund_db.find( findby ).delete(); 
+
+		def uu = [:]; 
+		uu.amount = uu.totalcash = uu.totalcheck = uu.totalcr = 0.0; 
+
+		newfunds.each{ o-> 
+			o.objid = o.parentid +'|'+ o.fund.objid; 
+			o.controlno = o.parent.controlno +'-'+ o.fund.code; 
+			o.cashbreakdown = []; 
+			cv_fund_db.create( o ); 
+
+			uu.amount += o.amount; 
+			uu.totalcash += (o.totalcash ? o.totalcash : 0.0); 
+			uu.totalcheck += (o.totalcheck ? o.totalcheck : 0.0); 
+			uu.totalcr += (o.totalcr ? o.totalcr : 0.0); 
+		} 
+
+		findby.clear(); 
+		findby.objid = param.objid; 
+		cv_db.find( findby ).update( uu ); 
+	}
+}

@@ -1,0 +1,51 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+import com.rameses.util.*;
+import java.io.*;
+
+class CloudNotificationData { 
+
+    @ActiveDB(value='notification', em='notification')
+    def em;
+
+    @ProxyMethod 
+    public void save( params ) { 
+		def oos = null; 
+        def baos = new ByteArrayOutputStream(); 
+        try { 
+            oos = new ObjectOutputStream( baos );
+            oos.writeObject( params.data? params.data : [:] ); 
+            oos.flush(); 
+        } finally {
+            try { oos.close(); }catch(Throwable t){;} 
+        } 
+
+        int counter = 1; 
+        int read = -1;
+        int bytesize = 64*1024;
+        def bytes = new byte[ bytesize ];
+        def bais = null;
+        try {
+            bais = new ByteArrayInputStream( baos.toByteArray() ); 
+            while ((read=bais.read(bytes)) != -1) {
+                def dest = new byte[ read ]; 
+                System.arraycopy( bytes, 0, dest, 0, read ); 
+                saveItem( dest, counter, params.objid ); 
+                counter += 1;
+            }
+        } finally {
+            try { bais.close(); }catch(Throwable t){;} 
+            try { baos.close(); }catch(Throwable t){;} 
+        }
+    } 
+    
+    void saveItem( byte[] dest, counter, msgid ) { 
+        def data = [:];
+        data.objid =  msgid +'-'+ counter; 
+        data.parentid = msgid; 
+		data.indexno = counter; 
+		data.content = new Base64Cipher().encode( dest ); 
+		data.contentlength = dest.length; 
+		em.create( data, 'data' ); 
+    }
+} 

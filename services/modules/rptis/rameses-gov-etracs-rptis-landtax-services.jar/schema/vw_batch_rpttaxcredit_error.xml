@@ -1,0 +1,10 @@
+<schema>
+    <element tablename="vw_batch_rpttaxcredit_error">
+        <field name="objid" primary="true" />
+        <field name="parentid" />
+        <field name="state" caption="State" />
+        <field name="error" caption="Error" />
+        <field name="barangayid" caption="" />
+        <field name="tdno" caption="TD No." />
+    </element>
+</schema>

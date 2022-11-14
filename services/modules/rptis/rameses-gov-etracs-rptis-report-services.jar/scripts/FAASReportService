@@ -1,0 +1,335 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.util.*;
+import com.rameses.services.extended.*;
+import com.rameses.rcp.draw.*;
+import java.awt.image.*;
+import java.io.ByteArrayOutputStream;
+import javax.imageio.ImageIO;
+
+class FAASReportService
+{
+	@Env 
+	def env 
+
+	@ActiveDB('faasreport')
+	def em
+	
+	@Service('FAASService')
+	def faasSvc
+
+	@Service('LGUService')
+	def lguSvc 
+
+	@Service('DateService')
+	def dtSvc
+
+	@Service('NumberService')
+	def numberSvc
+
+	@Service('SignatureService')
+	def sigSvc 
+
+	@Service('Var')
+	def var
+
+	@Service('RPTUtil')
+	def util
+
+	@Service('DBImageService')
+	def imgSvc
+
+	@DataContext('faas_previous')
+	def em_faas_previous 
+
+
+
+	@ProxyMethod 
+	public def getFaasIds(params) {
+		if (!params.selectiontype)
+			throw new Exception('Selection Type is required.')
+
+		params.barangayid = params.barangay?.objid
+		if(!params.barangayid) params.barangayid = '%'
+
+		if (!params.state)
+			params.state = '%'
+
+		params.sectionfilter = ''
+		if (params.selectiontype.type == 'bysection')
+			params.sectionfilter = ' and rp.section like $P{section} '
+
+		params.starttdnofilter = ''
+		params.endtdnofilter = ''
+
+		if (params.selectiontype.type == 'bytdrange'){
+			params.starttdnofilter = ' and f.tdno >= $P{starttdno} '
+			params.endtdnofilter = ' and f.tdno <= $P{endtdno} '
+		}
+
+		return em.getFaasIds(params)
+	}
+
+	@ProxyMethod
+	public void buildLandReference( faas ) {
+		def landref = [landrpuid:faas.rpu.landrpuid]
+		def info = em.findLandReference(landref)
+		if (!info) info = [:]
+		faas.putAll(info)
+
+    	def areas = em.getLandAreas(landref)
+    	def areatypes = areas.areatype.unique()
+    	def totalarea = 0.0 
+    	if (areatypes.size() == 1){
+    		if (areatypes[0] == 'SQM'){
+    			totalarea = areas.areasqm.sum()
+    			faas.totalareatext = numberSvc.format('#,##0.00', totalarea)
+    			faas.totalareatext += ' sqm';
+    		}
+    		else{
+    			totalarea = areas.areaha.sum()
+    			faas.totalareatext = numberSvc.format('#,##0.0000', totalarea)
+    			faas.totalareatext += ' Ha.';
+    		}
+    	}
+    	else{
+    		totalarea = areas.areaha.sum()
+    		faas.totalareatext = numberSvc.format('#,##0.0000', totalarea)
+    		faas.totalareatext += ' Ha.';
+    	}
+	}
+
+	
+	@ProxyMethod
+	public def getReportData( param ) {
+		def faas = em.findFaasById(param)
+		if( !faas ) {
+			throw new Exception('Cannot open FAAS with ID No. ' + param.objid + '.')
+		}
+
+		faas.rpu = em.findRpuById(faas.rpu)
+		faas.rp = em.findRealPropertyById(faas.rp)
+		faas.rpu.fullpin = faas.fullpin 
+		buildCancelNote(faas)
+		buildEffectivity(faas)
+		buildLocationInfo(faas)
+		buildOwnerContactNo(faas)
+		buildSignatories(faas)
+		buildPreviousInfo(faas)
+		//buildMultiClaimInfo(faas)
+		faas.annotations = em.getActiveAnnotations(faas)
+		faas.show_interim_watermark = util.toBoolean(var.show_interim_watermark, false)
+		return faas
+	}
+
+	def getPreviousInfo(list, fieldname){
+		return getPreviousInfo(list, fieldname, null)
+	}
+
+	def getPreviousInfo(list, fieldname, pattern){
+		def info = ''
+		list[fieldname].each{
+			if (it){
+				if (info) info += ' / '
+				if (pattern && it.matches('^[+-]?\\d*.?\\d+$')){
+					//valid number 
+					info += formatNumber(pattern, it)
+				}
+				else{
+					info += it 
+				}
+			}
+		}
+		return info 
+	}
+
+	def formatNumber(pattern, sval){
+		try{
+			return numberSvc.format(pattern, new BigDecimal(sval))
+		}
+		catch(Exception ex){
+			return sval
+		}
+	}
+	
+
+	void buildPreviousInfo(faas){
+		def list = em_faas_previous.find([faasid:faas.objid]).orderBy('prevtdno').list()
+		faas.prevtdno = getPreviousInfo(list, 'prevtdno')
+		faas.prevpin = getPreviousInfo(list, 'prevpin')
+		faas.prevowner = getPreviousInfo(list, 'prevowner')
+		faas.prevadministrator = getPreviousInfo(list, 'prevadministrator')
+		faas.prevav = getPreviousInfo(list, 'prevav', '#,##0.00')
+		faas.prevmv = getPreviousInfo(list, 'prevmv', '#,##0.00')
+		faas.prevareasqm = getPreviousInfo(list, 'prevareasqm', '#,##0.00')
+		faas.prevareaha = getPreviousInfo(list, 'prevareaha', '#,##0.000000')
+		faas.preveffectivity = getPreviousInfo(list, 'preveffectivity')
+		faas.prevtaxability = getPreviousInfo(list, 'prevtaxability')
+	}
+
+	void buildSignatories(faas){
+		faasSvc.loadSignatories(faas)
+
+		// if recommender and approver are the same 
+		// then the municipal assessor is authorized 
+		// by the provincial assessor to approve the faas record 
+		if (isRecommenderAuthorized(faas)){
+			faas.authorized = true
+			if ('MUNICIPALITY'.equalsIgnoreCase(env.ORGCLASS)) {
+				faas.byauthority = 'By Authority of the Provincial Assessor.'
+			} else if ('CITY'.equalsIgnoreCase(env.ORGCLASS)) {
+				faas.byauthority = 'By Authority of the City Assessor.'
+			}
+		}
+
+		faas.signatories = [:]
+		def retval = sigSvc.decodeSignatories(em.getSignatories(faas))
+		faas.signatories = retval.signatories 
+		faas.signaturetampered = retval.tampered
+		faas.tamperedsigmsg = retval.tamperedsigmsg
+		faas.esigned = em.findEsigned(faas) != null
+
+	}
+
+	def isRecommenderAuthorized(faas){
+		if (faas.recommender && faas.recommender.name && 
+			   faas.recommender.name.equalsIgnoreCase(faas.approver?.name)){
+			faas.recommender = [name:null, dtsigned:null]
+			return true 
+		}
+
+		if (faas.approver && userHasRole(faas.approver.objid, 'RECOMMENDER')){
+			return true 
+		}
+
+		return false 
+	}
+
+	def userHasRole(userid, role){
+		def user = em.findUserByRole([userid:userid, role:role])
+		return user != null 
+	}
+	
+	private void buildOwnerContactNo( faas ) {
+		if (faas.taxpayer){
+			def contact = em.findEntityContactInfo(faas.taxpayer)
+			if (contact)
+				faas.owner += contact
+		}
+	}
+
+	void buildCancelNote(faas){
+		if (faas.state == 'CANCELLED'){
+			def notes = ''
+			def cfaas = em.getCancellingFaasInfo(faas)
+			if (cfaas){
+				notes  =  'Cancelled By TD/ARP No. ' + cfaas.tdno.join(',') + '.  ' 
+				notes += 'PIN No. ' + cfaas.fullpin.join(',') + '.  ' 
+				notes += 'Effective Year ' + cfaas.first().effectivityyear + '.  ' 
+				notes += 'Date ' + dtSvc.format('MMMMM dd, yyyy' ,faas.canceldate) + '.  ' 
+			}
+			else {
+				//cancel faas transaction
+				def reason = em.findCancelFaasReason(faas)
+				if (reason){
+					notes  = 'Cancelled due to ' + reason.reason + '. '
+					notes += 'Date ' + dtSvc.format('MMMMM dd, yyyy' ,reason.txndate) + '.  ' 
+				}
+			}
+			faas.cancelnote = notes + (faas.cancelnote ? faas.cancelnote : '')
+		}
+	}
+
+	void buildEffectivity(faas){
+		faas.taxeffectivity = faas.effectivityyear + ''
+		if (faas.effectivityqtr != 1)
+			faas.taxeffectivity = faas.effectivityqtr + 'Q, '+ faas.taxeffectivity
+
+		faas.taxability = ( faas.rpu.taxable ? "TAXABLE" : "EXEMPT" )
+	}
+
+	void buildLocationInfo(faas){
+		def muni = lguSvc.lookupMunicipalityById(faas.rp.barangay.parentid)
+		def district = lguSvc.lookupDistrictById(faas.rp.barangay.parentid)
+		def prov = lguSvc.lookupProvinceById(muni?.parentid)
+		def city = lguSvc.lookupCityById(district?.parentid)
+		faas.propertylocation = ( muni ? muni.name + ', ' : '') + ( prov ? prov.name : city.name )
+		faas.munidistrict = (muni ? muni.name : district.name)
+		faas.provcity = (prov  ? prov.name : city.name)
+	}
+
+	void buildMultiClaimInfo(faas){
+		if (faas.rpu.rputype != 'land') return
+
+		def claims = em.getActiveClaims(faas)
+		if (claims){
+			claims.each{
+				it.info = it.owner.name + ' under TD No. ' + it.tdno 
+			}
+			def claim = claims.info.join(' and ')
+			def msg = 'Property is also declared in the name of ' + claim + '.'
+			faas.claiminfo = msg 
+
+			faas.memoranda += '\n\n' + faas.claiminfo 
+		}
+
+	}	
+
+	@ProxyMethod 
+	public def getSketch( params ) { 
+		def NO_IMAGE = new byte[0];
+
+		def mf = new MediaFile(); 
+		mf.content = NO_IMAGE; 
+		mf.contentType = 'image/jpg'; 
+
+		if ( params.objid ) { 
+			def image_bytes = null;
+
+			def sketch = faasSvc.openSketch(params)
+			if (sketch && sketch.drawing && sketch.drawing.figures){
+				image_bytes = getDrawingSketchBytes(sketch)
+			}
+			else{
+				image_bytes = imgSvc.getImageBytes(params)
+			}
+
+			if ( image_bytes ) {
+				mf.content = image_bytes
+			} else {
+				mf.content = NO_IMAGE; 
+			} 
+		} 
+		return mf; 
+	} 
+
+
+	def getDrawingSketchBytes(sketch){
+		try{
+			def editor = new DrawingEditor(new StdDrawing())
+	        editor.loadDrawing(null, sketch.drawing)
+	        return toByteArray(editor.getImage())
+		}
+		catch(e){
+			e.printStackTrace()
+			return null
+		}
+	}
+
+	def toByteArray(image){
+		def baos = null
+		try{
+			baos = new ByteArrayOutputStream()
+			ImageIO.write(image, "png", baos)
+		}
+		finally{
+			try{
+				baos.close()
+			}catch(e){
+				//ignore 
+			}
+		}
+		return (baos ? baos.toByteArray() : null )
+	}
+
+}

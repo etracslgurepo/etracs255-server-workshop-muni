@@ -1,0 +1,31 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.common.*
+import com.rameses.services.extended.*
+
+/**
+* This controls all transactions in a cashbook entry
+*/
+class RevenueItemLookupInterceptor {
+
+	@ActiveDB("cashbook")
+	def cashbook;
+
+	@After(pattern="RevenueItemLookupService.getList")
+	public void getCashBook( def evt ) { 
+		def param = evt.args[0];
+		def list = evt.result;
+		def funds = list.groupBy{ it.fund.objid };
+		funds.each { k,v->
+			//check fund per collector. attach fund code in each item.
+			def p = [subacctid: param.collectorid, type:'COLLECTOR'];
+			p.fundid = k; 
+			def cb = cashbook.findBySubAcctFund(p);
+			if(cb) {
+				v.each { it.cashbookid = cb.objid }
+			}
+		}
+	}
+	
+}

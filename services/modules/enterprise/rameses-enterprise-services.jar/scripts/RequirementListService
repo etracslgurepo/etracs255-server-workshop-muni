@@ -1,0 +1,62 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.common.*
+import com.rameses.services.extended.*
+
+class RequirementListService  {
+
+	
+	@DataContext("sys_requirement_type")
+	def req_type;
+
+	@DataContext(dynamic=true)
+	def db;
+
+	@Env
+	def env;
+
+	@Service("DateService")
+	def dateSvc;
+
+	@ProxyMethod
+	public def getList( def o ) {
+		if(!o._schemaname) throw new Exception("schema name is required in RequirementListService.getList");
+		if(!o.refid) throw new Exception("refid is required in RequirementListService");
+
+		String ref = o._schemaname + "_requirement";
+
+		def em = db.lookup(ref);
+		def list = em.find( [parentid: o.refid ]).list();
+
+		def map = [:];
+		def handlerLookup = { code->
+			if( !map.containsKey(code)) {
+				def handler = req_type.find( [code: code] ).select("handler").val();
+				map.put( code, handler);		
+			}
+			return map.get( code );
+		}
+
+		list.each {
+			it.handler = handlerLookup(it.code);
+		}
+
+		return list;
+	}
+
+	@ProxyMethod
+	public void update( def o ) {
+		if(!o._schemaname) throw new Exception("schema name is required in RequirementListService.update");
+		if(!o.objid) throw new Exception("objid is required in RequirementListService.update");
+
+		String ref = o._schemaname + "_requirement";
+		o.verifier = [objid:env.USERID, name:env.FULLNAME];
+		o.dtcomplied = dateSvc.getServerDate();
+		o.complied = 1;
+		def em = db.lookup(ref);
+		em.find( [objid: o.objid] ).update( o );
+	}
+
+		
+}

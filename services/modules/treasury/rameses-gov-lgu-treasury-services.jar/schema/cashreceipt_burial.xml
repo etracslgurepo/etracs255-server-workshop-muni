@@ -1,0 +1,18 @@
+<schema>
+	<element  tablename="cashreceipt_burial">
+		<field name="objid" primary="true"/>
+		<field name="tocitymuni" />
+		<field name="toprovince" />
+		<field name="permissiontype" required="true" />
+		<field name="name" required="true" />
+		<field name="nationality" />
+		<field name="age" />
+		<field name="sex" required="true" />
+		<field name="dtdeath" />
+		<field name="deathcause" />
+		<field name="cemetery" required="true" />
+		<field name="infectious" />
+		<field name="embalmed" />
+		<field name="disposition" />
+	</element>
+</schema>

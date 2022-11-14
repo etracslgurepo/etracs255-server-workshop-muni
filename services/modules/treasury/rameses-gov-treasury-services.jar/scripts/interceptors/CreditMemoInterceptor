@@ -1,0 +1,18 @@
+import com.rameses.annotations.*;
+
+class CreditMemoPersistenceInterceptor {
+
+	@Env
+	def env;
+
+	@DataContext('creditmemo')
+	def creditmemo_db;
+
+	@After(pattern="CreditMemoService.post", index=-9999)
+	public void afterPost( evt ) { 
+		def param = evt.args[0]; 
+		if ( param.objid ) { 
+			creditmemo_db.postIncomeSummary([ objid: param.objid, orgid: env.ORGID ]); 
+		} 
+	} 
+}

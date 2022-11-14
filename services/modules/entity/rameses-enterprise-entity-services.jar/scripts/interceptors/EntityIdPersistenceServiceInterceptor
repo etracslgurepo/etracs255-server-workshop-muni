@@ -1,0 +1,19 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import java.rmi.server.UID;
+import com.rameses.util.*;
+
+class EntityIdPersistenceServiceInterceptor  {
+
+	
+	@Before( pattern="PersistenceService.(create|update)", eval="#{args[0]._schemaname == 'entityid1'}" )
+	public void beforeSaveEntitId(def evt) {
+		def o = evt.args[0];
+		o.entity?.each { k,v->
+			println k+"="+v;
+		}
+		throw new Exception("stopit ");
+	}
+
+
+}

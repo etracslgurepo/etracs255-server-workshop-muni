@@ -1,0 +1,267 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+import com.rameses.util.*
+import java.io.*;
+
+class LandTaxBuildDelinquencyService
+{
+	@Env
+	def env 
+
+	@Service('RPTBillingService')
+	def billSvc
+
+	@Service('DateService')
+	def dtSvc 
+
+
+	@DataContext('report_rptdelinquency')
+	def em_delinquency 
+
+	@DataContext('report_rptdelinquency_barangay')
+	def em_delinquency_barangay 
+
+	@DataContext('report_rptdelinquency_item')
+	def em_delinquency_item 
+
+	@DataContext('report_rptdelinquency_forprocess')
+	def em_delinquency_forprocess
+
+	@DataContext('report_rptdelinquency_error')
+	def em_delinquency_error
+
+	@DataContext('barangay')
+	def em_barangay 
+
+
+	@ProxyMethod 
+	public def build(entity){
+		def build = openBuild()
+		if (build){
+			return build
+		}
+
+		validate(entity)
+		entity.state = 'PROCESSING'
+		entity.dtgenerated = dtSvc.serverDate
+		entity.generatedby = [name: env.NAME, title: env.JOBTITLE]
+		entity.barangays = []
+
+		//create barangay
+		em_barangay.where('1=1').list().eachWithIndex{b, idx ->
+			def brgy = [:]
+			brgy.parentid = entity.objid 
+			brgy.barangay = [objid:b.objid, name:b.name]
+			brgy.barangayid = b.objid 
+			brgy.count = 0
+			brgy.processed = 0 
+			brgy.errors = 0
+			brgy.ignored = 0
+			brgy.idx = (idx + 1) 
+			entity.barangays << brgy 
+		}
+
+		em_delinquency.create(entity)
+		return em_delinquency.read(entity)
+	}
+
+	@ProxyMethod
+	public def openBuild(){
+		def entity = em_delinquency.where('1=1').first()
+		if (entity){
+			closeBuild(entity)
+			entity = em_delinquency.read(entity)
+			entity.completedbrgys = entity.barangays.findAll{ it.count == it.processed + it.ignored }
+			entity.ignoredbrgys = entity.barangays.findAll{ it.ignored  > 0 }
+			entity.barangays.removeAll(entity.completedbrgys)
+		}
+		return entity
+	}
+
+	@ProxyMethod
+	public def delete(entity){
+		def retval = [status:'ok']
+		try{
+			em_delinquency.deleteTaxpayerSummary()
+			em_delinquency.deleteErrors()
+			em_delinquency.deleteForProcess()
+			em_delinquency.deleteItems()
+			em_delinquency.deleteBarangays()
+			em_delinquency.deleteDelinquency()
+		}
+		catch(e){
+			retval.status = 'error'
+		}
+		return retval
+	}
+
+
+	@ProxyMethod
+	@Async
+	public def loadLedgers(params){
+		def build = em_delinquency.find(params.entity).first()
+		if (!build){
+			return params.item
+		}
+
+		em_delinquency.insertForProcess([barangayid: params.item.barangayid, cy: dtSvc.serverYear])
+		return params.item 
+	}
+
+	@ProxyMethod
+	public def getDelinquentBarangayInfo(item){
+		item.count = em_delinquency.findCount([barangayid: item.barangayid]).count 
+		em_delinquency_barangay.find([objid:item.objid]).update([count:item.count])
+		return item 
+	}
+
+
+	@ProxyMethod
+	public def closeBuild(build){
+		def error = em_delinquency_error.find([ignored: 0]).first()
+		def completed = em_delinquency_barangay.where('count <> processed + ignored').first() == null 
+		if (completed && !error){
+			build.state = 'COMPLETED'	
+			em_delinquency.find([objid:build.objid]).update([state:build.state])
+		}
+
+		return build
+	}
+
+
+	@ProxyMethod
+	public def getLedgersForProcess( item ) {
+		return em_delinquency_forprocess.find([barangayid:item.barangayid]).list(0,50)
+	}		
+
+	@ProxyMethod
+	public def buildDelinquency( rptledger) {
+		def retval = [processed:0, errors:0]
+		def bitem = rptledger.builditem
+
+		try{
+			def items = getBillingByLedger(rptledger)
+			if (items){
+				items.each{ item ->
+					item.parentid = rptledger.parentid 
+					item.rptledgerid = rptledger.objid 
+					item.barangayid = rptledger.barangayid
+					em_delinquency_item.create(item)
+				}
+				logProcessed(retval, rptledger, bitem)
+			}
+		}
+		catch(Exception ex){
+			rptledger.error = getErrorMessage(ex)
+			if (rptledger.error.toString().matches('.*paid.*')) {
+				logProcessed(retval, rptledger, bitem)
+			} else {
+				retval.errors = 1
+				rptledger.ignored = 0
+				em_delinquency_forprocess.find([objid:rptledger.objid]).delete()
+				em_delinquency_error.save(rptledger)
+				em_delinquency_barangay.find([objid:bitem.objid]).update([errors:'{errors + 1}'])
+			}
+		}
+
+		return retval 
+	}	
+
+	void logProcessed(retval, rptledger, bitem) {
+		em_delinquency_barangay.find([objid:bitem.objid]).update([processed:'{processed + 1}'])
+		em_delinquency_forprocess.find([objid:rptledger.objid]).delete()
+		retval.processed = 1;
+	}
+
+
+	@ProxyMethod
+	public void rescheduleErrors(items){
+		items.each{error -> 
+			em_delinquency.rescheduleError(error)
+			em_delinquency_error.find([objid: error.objid]).delete()
+		}
+		em_delinquency.getBarangayCountInfo().each{
+			em_delinquency_barangay.find([barangayid: it.barangayid]).update(it)
+		}
+	}
+
+	@ProxyMethod
+	public def ignoreErrors(items){
+		items.each{ error ->
+			em_delinquency_error.find([objid: error.objid]).update([ignored:1])
+		}
+
+		em_delinquency.getBarangayCountInfo().each{
+			em_delinquency_barangay.find([barangayid: it.barangayid]).update(it)
+		}
+
+		def entity = [state:'PROCESSING']
+
+		def completed = em_delinquency_barangay.where('count <> processed + ignored').first() == null 
+		if (completed){
+			entity = [state:'COMPLETED']			
+			em_delinquency.where('1=1').update(entity)
+		}
+		
+		return entity
+	}
+
+	@ProxyMethod
+	public def getBuildErrors(params){
+		return em_delinquency_error.find([barangayid: params.barangayid, ignored:0])
+								   .orderBy('rptledger.tdno')
+								   .list()
+								   .each{ it.selected = false }
+	}
+
+
+	@ProxyMethod
+	public def getIgnoredErrors(params){
+		return em_delinquency_error.find([barangayid: params.barangayid, ignored:1])
+								   .orderBy('rptledger.tdno')
+								   .list()
+								   .each{ it.selected = false }
+	}
+
+	@ProxyMethod
+    public void buildSummaries(entity) {
+        em_delinquency.deleteTaxpayerSummary(entity)
+        em_delinquency.insertTaxpayerSummary(entity)
+    }
+
+
+
+	private def getBillingByLedger(rptledger){
+		def bill = billSvc.initBill([_generate_barcode:false])
+		bill.billdate = dtSvc.parse('yyyy-MM-dd', rptledger.billdate)
+		bill.ledgers = [[objid:rptledger.objid]]
+		bill._save = false 		// not save billing information
+		bill._forpayment = true 	// computes postingitems 
+		billSvc.generateBill(bill)
+		return bill.ledgers[0].postingitems
+	}		
+
+	
+
+	private void validate(entity) {
+		if (!entity.dtcomputed)
+			throw new Exception('Date Computed is required.')
+		/*
+		dtcomputed = dtSvc.parse('yyyy-MM-dd', dtcomputed)
+		if ( dtSvc.add(dtcomputed, '1d') < dtSvc.serverDate )
+			throw new Exception('Date Computed must be greater than or equal to current date.')
+		*/
+	}
+
+	private def getErrorMessage(e){
+		def c = e;
+		while (c.cause){
+			c = c.cause 
+		}
+		return c.message 
+	}
+
+
+}
+

@@ -1,0 +1,15 @@
+<schema>
+
+	<element name="terminal" tablename="sys_terminal">
+		<field name="terminalid" primary="true" caption="Terminal Key" visible="true"/>
+		<field name="parentid" />
+		<field name="parentcode" />
+		<field name="parenttype" />
+		<field name="macaddress" caption="Mac Address"/>
+		<field name="dtregistered" caption="Date Registered"/>
+		<field name="registeredby" caption="Registered By"/>
+		<field name="info" />
+		<field name="state" caption="State"/>
+	</element>
+
+</schema>

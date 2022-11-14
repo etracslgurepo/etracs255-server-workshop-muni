@@ -1,0 +1,17 @@
+provider=connectionfactory
+
+[sender]
+provider=script
+app.host=${cloud.host}:8170
+app.cluster=osiris3
+app.context=sms
+readTimeout=60000
+
+env.acctname=XXX
+env.apikey=XXXXXXX
+
+[receiver]
+provider=websocket
+ws.host=${cloud.host}:8160
+ws.protocol=XXX
+ws.enabled=false

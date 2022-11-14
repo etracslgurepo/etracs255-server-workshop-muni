@@ -1,0 +1,38 @@
+import com.rameses.annotations.*;
+
+class CashReceiptVoidInterceptor {
+
+	@ActiveDB('cashreceipt') 
+	def cashreceipt;
+
+	@ActiveDB('af_control') 
+	def af_control;
+
+	@ActiveDB('af') 
+	def af;
+
+	@After(pattern="CashReceiptVoidService.post")
+	public void afterPost( evt ) { 
+		def result = evt.result; 
+		def receipt = result.receipt; 
+		if ("cashticket".equalsIgnoreCase( receipt?.formtype.toString() )) {
+			cashreceipt.removeReceiptVoid([ receiptid: receipt.objid ]); 
+			cashreceipt.removeReceiptItems([ receiptid: receipt.objid ]); 
+			cashreceipt.removeReceipt([ receiptid: receipt.objid ]); 
+
+			def afcobj = af_control.read([ objid: receipt.controlid ]);
+			def afobj = af.read([ objid: afcobj.afid ]); 
+			def currentseries = afcobj.startseries; 
+			cashreceipt.getReceipts([ controlid: receipt.controlid ]).each{ o-> 
+				def crobj = cashreceipt.read([ objid: o.objid ]);
+				crobj.series = currentseries; 
+				cashreceipt.update( crobj );  
+
+				def qty = (int) (o.amount / afobj.denomination); 
+				currentseries += qty; 
+			} 
+			afcobj.currentseries = currentseries; 
+			af_control.update( afcobj );  
+		} 
+	} 
+}

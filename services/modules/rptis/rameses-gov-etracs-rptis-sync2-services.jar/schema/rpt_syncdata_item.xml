@@ -1,0 +1,16 @@
+<schema>
+	<element tablename="rpt_syncdata_item">
+		<field name="objid" primary="true" prefix="SYNCI" />
+		<field name="parentid" required="true" />
+		<field name="state" required="true" />
+		<field name="refid" required="true" />
+		<field name="reftype" required="true" caption="Ref Type" />
+		<field name="refno" caption="Ref No." />
+		<field name="action" required="true" caption="Action" />
+		<field name="idx" required="true" type="integer" />
+		<complex name="info" serializer="default" />
+		<complex name="parent" ref="rpt_syncdata" jointype="many-to-one" >
+			<key field="parentid" target="objid" />
+		</complex>
+	</element>
+</schema>

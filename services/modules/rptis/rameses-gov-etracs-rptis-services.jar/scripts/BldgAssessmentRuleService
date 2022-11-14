@@ -1,0 +1,177 @@
+import com.rameses.annotations.*;
+import com.rameses.rules.common.*;
+import com.rameses.util.*;
+
+import rptis.facts.*;
+import rptis.actions.*;
+
+import rptis.bldg.facts.*;
+import rptis.bldg.actions.*;
+
+public class BldgAssessmentRuleService  
+{
+	@Env 
+	def env
+
+	@ActiveDB('bldgrpu')
+	def em
+
+	@Resource("RuleService")	
+	def ruleSvc
+
+	@ActiveDB("rule")
+	def ruleDB
+
+	@Service('NumberService')
+	def numSvc
+
+	@Service('DateService')
+	def dtSvc
+
+	@Service('RPTUtil')
+	def util
+
+	@Service('BldgRYSettingLookupService')
+	def bldgSettingSvc 
+
+	
+
+	String RULESET = "bldgassessment";
+
+	@ProxyMethod
+	public def execute(rpu) throws Exception {
+		resetValues(rpu);
+
+		rpu.yrappraised = 0
+		rpu.yrcompleted = 0
+		rpu.yroccupied = 0
+
+		if (rpu.predominant == null)
+			rpu.predominant = 0
+
+		if (! rpu.dtappraised){
+			rpu.dtappraised = dtSvc.serverDate 
+		}
+
+		rpu.dtappraised = dtSvc.parse( 'yyyy-MM-dd', rpu.dtappraised )
+		rpu.yrappraised = dtSvc.getYear( rpu.dtappraised)
+
+		if (rpu.dtcompleted){
+        	rpu.dtcompleted = dtSvc.parse( 'yyyy-MM-dd', rpu.dtcompleted)
+			rpu.yrcompleted = dtSvc.getYear( rpu.dtcompleted )
+		}
+        if (rpu.dtoccupied){
+        	rpu.dtoccupied = dtSvc.parse( 'yyyy-MM-dd', rpu.dtoccupied)
+        	rpu.yroccupied = dtSvc.getYear( rpu.dtoccupied )
+        }
+
+		def request = [rpu:rpu, variables:[], assessments:[]]; 
+		request.facts = createFacts(request);
+		request.actions = buildActions( request );
+
+		def grps = ruleDB.getRulegroups( [ruleset: RULESET] );
+		grps.each{g ->
+			ruleSvc.execute( RULESET, request.facts, request.actions, g.name);
+		}
+
+		rpu.totalbmv = 0.0
+		rpu.structuraltypes.each{
+			rpu.totalbmv += util.sum(it.bldguses, 'basemarketvalue')
+		}
+        rpu.totalmv  = util.sum(rpu.assessments, 'marketvalue')
+        if (rpu.totalav == 0){
+        	rpu.totalav  = util.sum(rpu.assessments, 'assessedvalue')
+        }
+
+		return rpu;
+	}
+
+	def createFacts(request){
+		def rpu = request.rpu
+		def facts = []
+
+		/*-------------------------------------
+		* DATE FACTS
+		-------------------------------------*/
+		def currDate = dtSvc.serverDate;
+		def dt = currDate;
+		if (rpu.issuedate){
+			dt = java.sql.Date.valueOf( rpu.issuedate );
+		}
+		facts << new EffectiveDate( dt );
+		facts << new CurrentDate(currDate);
+
+		/*-------------------------------------
+		* RPU
+		-------------------------------------*/
+		def rpufact = new BldgRPU(rpu)
+		facts << rpufact
+
+		facts << new rptis.facts.RPU(rpu)
+
+		rpu.structuraltypes.each{bs ->
+			def bsfact = new BldgStructure(rpufact, bs)
+			facts << bsfact
+
+			bs.bldguses.each{bu ->
+				bu.swornamount = rpu.swornamount
+				bu.useswornamount = util.toBoolean(rpu.useswornamount, false)
+				def bufact = new BldgUse(bsfact, bu)
+				facts << bufact 
+
+				bu.floors.each{bf ->
+					def bffact = new BldgFloor(bufact, bf)
+					facts << bffact 
+
+					bf.additionals.each{ addl ->
+						facts << new BldgAdjustment(bufact, bffact, addl)
+					}
+				}
+			}
+		}
+
+		return facts
+	}
+
+	def buildActions(request) {
+		def actions = new RuleAction();
+		actions.addCommand( "calc-bldg-age", new CalcBldgAge( request:request ));
+		actions.addCommand( "calc-bldg-effectiveage", new CalcBldgEffectiveAge( request:request ));
+		actions.addCommand( "calc-floor-bmv", new CalcFloorBMV( request:request, NS:numSvc ));
+		actions.addCommand( "summarize-floor-area", new SummarizeFloorArea( request:request, NS:numSvc));
+		actions.addCommand( "summarize-bldguse-bmv", new SummarizeBldgUseBMV( request:request));
+		actions.addCommand( "calc-adj", new CalcAdjustment( request:request, NS:numSvc ));
+		actions.addCommand( "summarize-adjustment", new SummarizeBldgAdjustment( request:request));
+		actions.addCommand( "summarize-adjustment-for-depreciation", new SummarizeAdjustmentForDepreciation( request:request));
+		actions.addCommand( "calc-depreciation-sked", new CalcDepreciationFromSked( request:request, bldgSettingSvc:bldgSettingSvc));
+		actions.addCommand( "calc-depreciation-range", new CalcDepreciationByRange( request:request, bldgSettingSvc:bldgSettingSvc));
+		actions.addCommand( "calc-depreciation-diminishing", new CalcDepreciationDiminishing( request:request, bldgSettingSvc:bldgSettingSvc, NS:numSvc));
+		actions.addCommand( "calc-bldguse-depreciation", new CalcBldgUseDepreciation( request:request, NS:numSvc ));
+		actions.addCommand( "summarize-depreciation", new SummarizeDepreciation( request:request));
+		actions.addCommand( "calc-floor-mv", new CalcFloorMV( request:request));
+		actions.addCommand( "calc-bldguse-bmv", new CalcBldgUseBMV( request:request));
+		actions.addCommand( "calc-bldguse-mv", new CalcBldgUseMV( request:request));
+		actions.addCommand( "summarize-rpu-bmv", new SummarizeRpuBMV( request:request));
+		actions.addCommand( "summarize-rpu-mv", new SummarizeRpuMV( request:request));
+		actions.addCommand( "summarize-rpu-av", new SummarizeRpuAV( request:request));
+		actions.addCommand( "adjust-uv", new AdjustUnitValue( request:request, NS:numSvc ));
+		actions.addCommand( "reset-adj", new ResetAdjustment( request:request, NS:numSvc));
+		actions.addCommand( "add-derive-var", new AddDeriveVariable( request:request));
+		actions.addCommand( "add-assessment-info", new AddAssessmentInfo( request:request, NS:numSvc));
+		actions.addCommand( "calc-assess-level", new CalcAssessLevel( request:request, bldgSettingSvc:bldgSettingSvc));
+		actions.addCommand( "calc-assess-value", new CalcAssessValue( request:request));
+		actions.addCommand( "recalc-rpu-totalmv", new CalcTotalRPUMarketValue( request:request, NS:numSvc));
+		actions.addCommand( "recalc-rpu-totalav", new CalcTotalRPUAssessValue( request:request, NS:numSvc));
+		actions.addCommand( "recalc-rpuassessment", new CalcRPUAssessValue( request:request, NS:numSvc));
+		actions.addCommand( "recalc-rpuassessment-mv", new CalcRPUMarketValue( request:request, NS:numSvc));
+		return actions;
+	}
+
+	void resetValues(rpu){
+		rpu.assessments = []
+		rpu.bldguses.each{bu ->
+			bu.adjfordepreciation = 0.0
+		}
+	}
+}
+

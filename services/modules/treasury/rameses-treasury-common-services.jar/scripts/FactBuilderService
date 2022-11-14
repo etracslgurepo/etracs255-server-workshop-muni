@@ -1,0 +1,21 @@
+import com.rameses.annotations.*;
+
+import treasury.utils.*;
+import treasury.facts.*;
+import enterprise.utils.*;
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import java.util.*;
+import com.rameses.rules.common.RuleExecutionContext;
+
+public class FactBuilderService {
+	
+	@ProxyMethod
+	public FactBuilder getFacts( def m ) {
+		if ( !m.rulename ) throw new Exception("'rulename' parameter is required in FactBuilderService.getFacts"); 
+		if ( !m.params ) throw new Exception("'params' parameter is required in FactBuilderService.getFacts"); 
+		return new FactBuilder();
+	}
+
+}

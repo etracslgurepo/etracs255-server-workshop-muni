@@ -1,0 +1,23 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class RPTISMasterExportService 
+{
+
+	@Service("QueryService")
+    def qrySvc;
+
+
+	@Async
+	@ProxyMethod
+	public def exportData(params) {
+		def items = qrySvc.getList([_schemaname:params.schemaname, where:'1=1']) 
+		if (!items) throw new Exception('No record(s) found.')
+		return [
+			schemaname  : params.schemaname,
+			filetype	: params.schemaname,
+			items		: items, 
+		] 
+	}
+}

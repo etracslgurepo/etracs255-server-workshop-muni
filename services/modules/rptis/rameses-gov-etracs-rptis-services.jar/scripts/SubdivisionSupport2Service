@@ -1,0 +1,373 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+import com.rameses.util.*
+
+
+class SubdivisionSupport2Service
+{
+    @Env
+    def env
+    
+    @Service('DateService')
+    def dtSvc
+
+    @Service('SubdivisionService')
+    def svc 
+
+    @ActiveDB('subdivision')
+    def em 
+
+    @Service('ExaminationService')
+    def examinationSvc
+
+    @Service('RPTRequirementService')
+    def reqSvc 
+
+    @Service('FAASService')
+    def faasSvc
+
+    @Service('DBImageService')
+    def imageSvc
+
+    @Service('EntityService')
+    def entitySvc 
+
+    @Service('TxnRefService')
+    def txnRef
+
+    @Service('SubdivisionService')
+    def subdivisionSvc
+
+    @Service('NotificationService')
+    def notifySvc   
+
+    @DataContext('subdivision')
+    def em_subdivision
+
+    @DataContext('subdivision_subdividedland')
+    def em_subdividedland 
+
+    @DataContext('subdivision_affectedrpu')
+    def em_affectedrpu
+
+    @DataContext('subdivision_motherland')
+    def em_motherland
+
+    @DataContext('subdivision_cancelledimprovement')
+    def em_cancelled_improvement 
+
+    @DataContext('subdivision_task')
+    def em_subdivision_task 
+
+
+    @DataContext('faas')
+    def em_faas 
+
+    @DataContext('faas_task')
+    def em_faas_task
+
+
+
+
+    /* new sync support */
+    @ProxyMethod
+    public def getForApproval(subdivision){
+        subdivision.putAll(subdivisionSvc.open(subdivision))
+        subdivision.subdividedlands = subdivisionSvc.getSubdividedLands(subdivision.objid)
+        subdivision.motherlands = subdivisionSvc.getMotherLands(subdivision)
+        subdivision.affectedrpus = subdivisionSvc.getAffectedRpus(subdivision.objid)
+        subdivision.cancelledimprovements = subdivisionSvc.getCancelledImprovements(subdivision.objid)
+        subdivision.tasks = em_subdivision_task.where('refid = :objid and enddate is not null', subdivision).list()
+        return subdivision
+    }
+
+    @ProxyMethod
+    public def getApprovedFaas(faas){
+        faas = faasSvc.openFaas(faas)
+        faas.taxpayer = entitySvc.open(faas.taxpayer)
+        faas.tasks = em_faas_task.where('refid = :refid AND enddate IS NOT NULL', [refid: faas.objid]).list()
+        return faas
+
+    }
+
+    @ProxyMethod
+    public def postApprovedFaas(faas){
+        def currfaas = em_faas.select('state').find([objid:faas.objid]).first()
+        if (currfaas && currfaas.state == 'CURRENT') {
+            saveFaasTask(faas)
+            return
+        }
+        faas.state = 'PENDING'
+        postFaasData(faas)
+        faasSvc.approveFaas(faas)
+        saveFaasTask(faas)
+    }
+
+    void saveFaasTask(faas) {
+        faas.tasks.each{
+            em_faas_task.save(it)
+        }
+    }
+
+    @ProxyMethod
+    public def postApprovedSubdivision(subdivision){
+        def state = svc.getState( subdivision )
+        if (!state) {
+            postSubdivisionData(subdivision)
+        } else if (! state.equalsIgnoreCase('APPROVED')){
+            subdivision.tasks.each{
+                em_subdivision_task.save(it)
+            }
+            em_subdivision_task.where('refid = :objid and enddate is null', subdivision).delete()
+            svc.insertFaasSignatories(subdivision)
+            svc.approve(subdivision)
+
+            notifyRecommender(subdivision)
+        } 
+    }
+
+
+    @ProxyMethod
+    public def postDisapprovedSubdivision(subdivision){
+        def state = svc.getState( subdivision )
+        if (state  && state.equalsIgnoreCase('FORAPPROVAL')){
+            em_subdivision_task.where('refid = :refid and enddate is null', [refid: subdivision.objid]).delete()
+            def recommendertask = em_subdivision_task.find([refid: subdivision.objid, state: 'recommender'])
+                                            .orderBy('startdate desc')
+                                            .first()
+            if (recommendertask) {
+                def message = 'Subdivision has been disapproved.'
+                recommendertask.objid = 'TSK' + new java.rmi.server.UID()
+                recommendertask.startdate = dtSvc.serverDate
+                recommendertask.enddate = null
+                recommendertask.signature = null 
+                recommendertask.message = message
+                em_subdivision_task.create(recommendertask)
+
+
+                def msg = [
+                    objid     : recommendertask.refid,
+                    recipientid : (recommendertask.assignee.objid ? recommendertask.assignee.objid : '-'),
+                    recipienttype : 'user',
+                    senderid  : '-',
+                    sender    : '-',
+                    message   : message,
+                    filetype  : 'subdivision',
+                    data      : [objid: subdivision.objid],
+                ]
+                notifySvc.addMessage(msg)
+            }
+        }
+    }
+
+
+
+
+
+
+
+
+    @ProxyMethod
+    public def buildSubdivisionData(subdivision){
+        subdivision.putAll(subdivisionSvc.open(subdivision))
+        subdivision.subdividedlands = subdivisionSvc.getSubdividedLands(subdivision.objid)
+        subdivision.motherlands = subdivisionSvc.getMotherLands(subdivision)
+        subdivision.affectedrpus = subdivisionSvc.getAffectedRpus(subdivision.objid)
+        subdivision.cancelledimprovements = subdivisionSvc.getCancelledImprovements(subdivision.objid)
+
+        def data = subdivision        
+        data.tasks = em_subdivision_task.where('refid = :objid and enddate is not null', subdivision).list()
+        data.image = getImageData(data.objid)
+        return data 
+    }
+
+
+    @ProxyMethod
+    public def buildExaminations(subdivision){
+        def data = [:]
+        data.images = []
+        data.examinations = examinationSvc.getFindings( subdivision.objid ).each{
+            it.putAll(examinationSvc.open(it))
+            data.images << getImageData(it.objid)
+        }
+        return data 
+    }
+
+
+    @ProxyMethod
+    public def getRequirements(subdivision){
+        return reqSvc.getRequirements(subdivision.objid)
+    }
+
+    @ProxyMethod
+    public def buildRequirement(requirement){
+        def data = [:]
+        data.requirement = requirement 
+        data.image = getImageData(requirement.objid)
+        return data 
+    }
+
+
+    @ProxyMethod
+    public def buildFaasData(item){
+        def faas = faasSvc.openFaas([objid:item.newfaasid])
+        faas.taxpayer = entitySvc.open(faas.taxpayer)
+        if (item._includetask == null || item._includetask == true){
+            faas.tasks = em_faas_task.where('refid = :objid and enddate is not null', faas).list()
+        }
+        if (item._includeimage == null || item._includeimage == true){
+            faas.image = getImageData(faas.objid)
+        }
+        return faas 
+    }    
+
+
+    @ProxyMethod
+    public def postSubdivisionData(subdivision){
+        println 'Saving subdivision'
+        def oldsub = em_subdivision.find([objid:subdivision.objid]).first()
+        if (!subdivision._resubmitted || !oldsub){
+            txnRef.delete(subdivision.objid)
+            em_subdivision.save(subdivision)
+        }
+
+        println 'processing subdivision.motherlands'
+        subdivision.motherlands.each{
+            txnRef.delete(it.landfaasid)
+            em_motherland.save(it)
+            txnRef.insertRef(it.landfaasid, subdivision.objid, 'FAAS is currently referenced by Subdivision No. ' + subdivision.txnno +'.')
+        }
+
+        println 'processing subdivision.subdividedlands'
+        subdivision.subdividedlands.each{
+            em_subdividedland.save(it)
+        }
+
+        println 'processing subdivision.affectedrpus'
+        subdivision.affectedrpus.each{
+            em_affectedrpu.save(it)
+        }
+
+        println 'processing subdivision.cancelledimprovements'
+        subdivision.cancelledimprovements.each{
+            def ci = em_cancelled_improvement
+                            .select('objid')
+                            .find([objid:it.objid])
+                            .first()
+            if (ci)
+                em_cancelled_improvement.update(it)
+            else
+                em_cancelled_improvement.create(it)
+        }
+
+        subdivision.tasks.each{
+            em_subdivision_task.save(it)
+        }
+
+        saveImageData(subdivision.image)
+    }
+
+
+    @ProxyMethod
+    public void postExaminations(data) {
+        data.examinations.each{
+            examinationSvc.save(it)
+        }
+
+        data.images.each{
+            saveImageData(it)
+        }       
+    }
+
+
+    @ProxyMethod
+    public void postRequirements(data) {
+        data.requirements.each{
+            reqSvc.save(it)
+        }
+
+        data.images.each{
+            saveImageData(it)
+        }       
+    }
+
+    @ProxyMethod
+    public void postRequirement(data) {
+        reqSvc.save(data.requirement)
+        saveImageData(data.image)
+    }
+
+
+    @ProxyMethod
+    public void postFaasData(faas) {
+        def oldfaas = em_faas.select('state').find([objid:faas.objid]).first()
+        if (oldfaas?.state != 'CURRENT'){
+            //old faas is not yet approved, 
+            //set province faas state to pending 
+            faas.state = 'PENDING'
+        }
+
+        entitySvc.save(faas.taxpayer)
+
+        faas.taxpayer.address = faas.taxpayer.address?.text
+        faas._checkTxnRef = false;
+
+        if (faasSvc.faasExist(faas))
+            faasSvc.updateFaas(faas)
+        else
+            faasSvc.createFaas(faas)
+
+        faas.tasks.each{
+            em_faas_task.save(it)
+        }
+
+        saveImageData(faas.image)
+    }
+
+    void saveImageData(image){
+        if (!image) return
+        
+        image.headers.each{
+            imageSvc.saveHeader(it)
+        }
+        image.chunks.each{
+            imageSvc.saveItem(it)
+        }
+    }
+
+
+    def getImageData(objid){
+        def headers = imageSvc.getImages([refid:objid])
+        def chunks = []
+        headers.each{
+            chunks += imageSvc.getImageItems(it)
+        }       
+        return [headers:headers, chunks:chunks]
+    }
+
+
+    void notifyRecommender(subdivision){
+        def recommendertask = em_subdivision_task.where('refid = :objid and state = :state', [objid:subdivision.objid, state:'recommender'])
+                                        .orderBy('enddate desc')
+                                        .first()
+
+        def approvertask = subdivision.tasks.find{it.state.matches('approver|provapprover')}
+        if (recommendertask && approvertask){
+            def sendername = (approvertask.actor.name ? approvertask.actor.name : 'Province')
+            def msg = [
+                objid     : recommendertask.refid,
+                recipientid : (recommendertask.assignee.objid ? recommendertask.assignee.objid : '-'),
+                recipienttype : 'user',
+                senderid  : '-',
+                sender    : sendername,
+                message   : 'Subdivision ' + subdivision.txnno + ' has already been approved by ' + sendername + '.',
+                filetype  : 'subdivision',
+                data      : [:],
+            ]
+            notifySvc.addMessage(msg)
+        }       
+    }
+}
+
+

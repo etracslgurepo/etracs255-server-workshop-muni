@@ -1,0 +1,160 @@
+import com.rameses.annotations.*;
+
+class DepositVoucherRCDReportService {
+
+	@DataContext('depositvoucher')
+	def dv_em; 
+				
+	@DataContext('sys_user')
+	def user_em; 
+		
+	@ActiveDB('depositvoucher_rcd_report') 
+	def rcd_em; 
+
+	@Service('NumberService')
+	def numSvc; 
+
+	@Service('Var') 
+	def var; 	
+
+	@ProxyMethod 
+	def initReport( param) { 
+		def resp = [:]; 
+		resp.funds = rcd_em.getFunds( param ); 
+		resp.bankaccounts = rcd_em.getBankAccounts( param ); 
+		resp.bankaccounts.each{
+			it.title = ''+ it.code +' - '+ it.title +' - '+ it.accttype; 
+		}
+		return resp; 
+	} 
+
+	@ProxyMethod 
+	def getRCDByFund( param ) { 
+		if ( !param.depositvoucherid ) throw new Exception("depositvoucherid parameter is required"); 
+		if ( !param.fund?.objid ) throw new Exception("fund.objid parameter is required"); 
+
+		def result = [:]; 		
+		def dvinfo = dv_em.find([ objid: param.depositvoucherid ]).first(); 
+		if ( !dvinfo ) return result; 
+
+		result.putAll( dvinfo ); 
+
+		result.fund = param.fund; 
+		boolean is_all_funds = ( result.fund.objid == 'all' );
+
+		def p = [ depositvoucherid: dvinfo.objid ]; 
+		if ( is_all_funds ) { 
+			result.remove('fund'); 
+			p.fundid = '%'; 
+		} 
+		else {
+			p.fundid = result.fund.objid; 
+		}
+		
+		def templateid = param.template?.objid; 
+		if ( !templateid ) templateid = 'a'; 
+
+		def dvfinfo = rcd_em.findDepositVoucherFund( p ); 
+		result.fund = dvfinfo?.fund; 
+
+		result.remittances = rcd_em.getRemittances( p ); 
+		resolveRemittances( result.remittances ); 
+
+		result.amount = result.remittances.sum{ it.amount } 
+		result.amount = (result.amount ? result.amount : 0.0); 
+		result.amountinwords = numSvc.doubleToWords( result.amount ).toUpperCase() + " PESOS"; 
+
+//		def dtbean = new com.rameses.util.DateBean( dvinfo.controldate ); 
+//		p.startdate = new java.sql.Date( dtbean.date.time ); 
+//		p.enddate   = new java.sql.Date( dtbean.add('1d').time ); 
+
+		if ( templateid == 'b' ) {
+			result.collectiontypes = rcd_em.getReceipts( p ); 
+		} else {
+			result.collectiontypes = rcd_em.getLiquidations( p ); 
+		}
+
+		result.collectionamount = result.collectiontypes.sum{ it.amount } 
+		result.cashier = result.createdby;
+		result.afnonserials = [[:]]; 
+		result.afserials = [[:]]; 
+
+		def userinfo = user_em.find([ objid: result.cashier.objid ]).select('objid,jobtitle').first(); 
+		result.cashier.title = userinfo?.jobtitle; 
+
+		if ( param.version.toString() != '255') {
+			resolveCompatibility( result ); 
+		}
+		return result; 
+	} 
+
+
+	@ProxyMethod 
+	def getRCDByBankAccount( param ) { 
+		if ( !param.depositvoucherid ) throw new Exception("depositvoucherid parameter is required"); 
+		if ( !param.bankaccount?.objid ) throw new Exception("bankaccount.objid parameter is required"); 
+
+		def result = [:]; 		
+		def dvinfo = dv_em.find([ objid: param.depositvoucherid ]).first(); 
+		if ( !dvinfo ) return result; 
+
+		result.putAll( dvinfo ); 
+
+		result.bankaccount = param.bankaccount; 
+		boolean is_all_accounts = (result.bankaccount.objid == 'all');
+		
+		def p = [ depositvoucherid: dvinfo.objid ]; 
+		if ( is_all_accounts ) { 
+			result.remove('bankaccount'); 
+			p.bankacctid = '%'; 
+		} 
+		else { 
+			p.bankacctid = result.bankaccount.objid; 	
+		}
+
+		result.remittances = rcd_em.getRemittancesByBankAcct( p ); 
+		resolveRemittances( result.remittances ); 
+		
+		result.amount = result.remittances.sum{ it.amount } 
+		result.amountinwords = numSvc.doubleToWords( result.amount ).toUpperCase() + " PESOS"; 
+
+		def templateid = param.template?.objid; 
+		if ( !templateid ) templateid = 'a'; 
+
+		if ( templateid == 'b' ) {
+			result.collectiontypes = rcd_em.getReceiptsByBankAcct( p ); 
+		} else {
+			result.collectiontypes = rcd_em.getLiquidationsByBankAcct( p ); 
+		}
+
+		result.collectionamount = result.collectiontypes.sum{ it.amount } 
+		result.afnonserials = [[:]]; 
+		result.afserials = [[:]]; 
+		result.cashier = result.createdby;
+
+		def userinfo = user_em.find([ objid: result.cashier.objid ]).select('objid,jobtitle').first(); 
+		result.cashier.title = userinfo?.jobtitle; 
+
+		if ( param.version.toString() != '255') {
+			resolveCompatibility( result ); 
+		}
+		return result; 
+	} 
+
+
+	private void resolveCompatibility( result ) {
+		result.txnno = result.controlno; 
+		result.dtposted = result.controldate;
+		result.txndate = result.dtcreated;  
+
+		if ( result.totalcr == null ) result.totalcr = 0.0;
+		if ( result.totalcheck == null ) result.totalcheck = 0.0;
+		
+		result.totalnoncash = result.totalcheck + result.totalcr; 
+		result.totalcash = result.amount - result.totalnoncash; 
+	}
+
+	private void resolveRemittances( list ) {
+
+	}
+} 

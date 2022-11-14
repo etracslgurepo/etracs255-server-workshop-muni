@@ -1,0 +1,29 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.services.extended.*;
+import com.rameses.rules.common.*;
+import bpls.facts.*;
+import bpls.actions.*;
+
+public class BusinessPermitTypeService  {
+
+	@ActiveDB("business_permit_type")
+	def em;
+
+	@ProxyMethod
+	public def getList() {
+		def list = [];
+		def l1 = em.getList();
+		l1.each {
+			if(!it.options) it.options = [:];
+			else it.options = em.serializer.read( it.options );
+		}
+		if(!l1.find{it.objid=='BUSINESS'}) {
+			list << [objid:'BUSINESS', title: 'BUSINESS PERMIT', options:[address_type:'basic', show_office:true]];
+		}
+		list.addAll( l1 );
+		return list;
+	}
+
+}	

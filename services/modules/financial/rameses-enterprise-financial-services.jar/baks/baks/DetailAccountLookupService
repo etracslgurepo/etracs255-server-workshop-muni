@@ -1,0 +1,37 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class DetailAccountLookupService extends ActiveListService {
+
+	@ActiveDB('account')
+	def em;
+
+	String listMethod = "getLookup";
+
+	@ProxyMethod
+	public def getColumns( def o ) {
+		return[
+			[name:'code', caption:'Acct Code' ],
+			[name:'title', caption:'Acct Title' ] 
+		];
+	}
+	
+	public void beforeList(params) {
+		params.searchtext = removeLeadingChar(params.searchtext, '%')+'%'; 
+		params.type = 'detail';
+	}
+
+    private String removeLeadingChar(String text, def ch) {
+    	if (text == null) return "";
+
+        while (true) { 
+            if (!text.startsWith(ch+"")) break; 
+            
+            text = text.substring(1); 
+        } 
+        return text; 
+    } 
+}

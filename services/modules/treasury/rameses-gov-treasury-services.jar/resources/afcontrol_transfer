@@ -1,0 +1,18 @@
+
+CREATE TABLE `afcontrol_transfer` (
+  `objid` varchar(50) NOT NULL,
+  `txnno` varchar(50) default NULL,
+  `dtposted` datetime default NULL,
+  `controlid` varchar(50) default NULL,
+  `user_objid` varchar(50) default NULL,
+  `user_name` varchar(50) default NULL,
+  `from_objid` varchar(50) default NULL,
+  `from_name` varchar(100) default NULL,
+  `to_objid` varchar(50) default NULL,
+  `to_name` varchar(50) default NULL,
+  PRIMARY KEY  (`objid`),
+  KEY `FK_afcontrol_transfer_afcontrol` (`controlid`),
+  CONSTRAINT `FK_afcontrol_transfer_afcontrol` FOREIGN KEY (`controlid`) REFERENCES `afcontrol` (`objid`)
+) ENGINE=InnoDB DEFAULT 
+
+

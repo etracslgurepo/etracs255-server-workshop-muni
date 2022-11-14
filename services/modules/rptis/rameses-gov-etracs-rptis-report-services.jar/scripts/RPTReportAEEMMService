@@ -1,0 +1,140 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class RPTReportAEEMMService
+{
+	@Env 
+	def env 
+
+    @ActiveDB('rptreport_aeemm')
+    def em
+
+    @Service('Var')
+    def var 
+
+    @DataContext('propertyclassification')
+    def propertyclassification
+
+    @DataContext('exemptiontype')
+    def exemptiontype
+
+    @Service('RPTUtil')
+    def util
+
+    @Service('ReportParameterService')
+    def paramSvc 
+
+    @Service('DateService')
+    def dtSvc 
+
+
+    @Async
+	@ProxyMethod
+	public Map buildReport( params ) {
+		def title = 'AEEMM Form No. 2 Report'
+		util.buildReportTitlePeriod(title, params)
+		util.buildStartEndDateFilter(params)
+
+		params.filter = ''
+		
+		if (params.ry){
+			params.filter += ' AND rp.ry =  $P{ry} ' 
+		}
+
+		if (params.lgu){
+			params.filter += ' AND f.lguid = $P{lguid} ' 
+			params.lguid = params.lgu.objid 
+		}
+
+		if (params.barangay){
+			params.filter += ' AND rp.barangayid = $P{barangayid} ' 
+			params.barangayid = params.barangay.objid 
+		}
+
+		def taxables = em.getTaxablesByClassification(params)
+
+		int lineno = 1
+		int charindex = 'a' 
+		def taxableclasses = getClassifications()
+		def firstspecial = taxableclasses.find{ it.special == 1 }
+		taxableclasses.add( taxableclasses.indexOf( firstspecial), [objid:'SPECIAL', name:'SPECIAL', special:0] )
+		
+		taxableclasses.each{ item ->
+			def taxable = taxables.find{ it.classid == item.objid }
+			if( taxable ) {
+				item.putAll( taxable )
+			}
+			item.taxability = 'TAXABLE' 
+			if( item.special == 0 ) {
+				item.class = lineno + '. ' + item.name 
+				lineno += 1
+			}
+			else {
+				item.class = '   ' + ((char)charindex) + '. ' + item.name 
+				charindex += 1;
+			}
+		}
+		
+		def exempts = em.getExemptsByClassification(params)
+
+		lineno = 1 
+		def exemptclasses  = getExemptionTypes();
+		exemptclasses.each { item -> 
+			def exempt = exempts.find{ it.classid == item.objid }
+			if( exempt ) {
+				item.putAll( exempt )
+			}
+			item.class = lineno + '. ' + item.name 
+			item.taxability = 'EXEMPT'
+			lineno += 1
+		}
+
+		def p = [
+			PERIOD 		: "AS OF " + params.period,
+			PERIODTYPE 	: params.periodtype,
+			TITLE 		: params.title,
+			FORLGUNAME  : (params.lgu ? params.lgu.name : (env.ORGCLASS + ' OF ' + env.ORGNAME)),
+			LGUTYPE     : (params.lgu ? params.lgu.lgutype : env.ORGCLASS), 
+		]
+
+		def reportdata = [:]
+		reportdata.landuses = taxableclasses + exemptclasses
+		reportdata.properties = getProperties(params) 
+		reportdata.taxmappings = em.getTaxmappings(params)
+		return [
+			parameters  : p, 
+			reportdata  : reportdata,
+		]
+	}
+
+	def getProperties(params){
+		def list = em.getPropertiesByType(params)
+		if (!list.find{it.idx == 1}){
+			list << [kind:'LAND']
+		}
+		if (!list.find{it.idx == 2}){
+			list << [kind:'BUILDING']
+		}
+		if (!list.find{it.idx == 3}){
+			list << [kind:'MACHINERY']
+		}
+		if (!list.find{it.idx == 4}){
+			list << [kind:'OTHERS']
+		}
+		return list
+	}
+
+
+    @ProxyMethod
+    public def getClassifications(){
+    	return propertyclassification.find([state:'APPROVED']).orderBy('orderno').list()
+    }
+
+    
+    @ProxyMethod
+    public def getExemptionTypes(  ) {
+    	return 	exemptiontype.find([state:'APPROVED']).orderBy('orderno').list()
+    }
+
+}

@@ -1,0 +1,31 @@
+<schema>
+
+	<element tablename="checkpayment_deadchecks">
+		<field name="objid" primary="true" prefix="CHKPMT"/>	
+		<field name="state" required="true" />	
+		<field name="bankid" required="true" />	
+		<field name="refno" required="true" searchable="true"  caption="Check No"/>	
+		<field name="refdate" required="true"  caption="Check Date"/>
+		<field name="amount" required="true" type="decimal"  caption="Amount"/>	
+		<field name="bank_name" required="true"  caption="Bank Name"/>
+		<field name="receivedfrom" required="true"  caption="Received From"/>
+		
+		<!-- amount issued. If this becomes equal to amount then this check is already closed. This starts at 0 --> 
+		<field name="amtused" required="true" type="decimal" defaultValue="0"/>	
+
+		<!-- these fields refer to deposit -->
+		<field name="depositvoucherid" />
+		<field name="fundid" />
+		<field name="depositslipid" />
+		<field name="split"  type="integer" defaultValue="0"/>
+		<field name="fundid" />
+
+		<field name="balance" expr="amount - amtused" type="decimal" caption="Amount Balance"/>
+		<!-- collector info -->
+		<field name="collectorid" />
+		<field name="external" />
+	</element>
+
+
+
+</schema>

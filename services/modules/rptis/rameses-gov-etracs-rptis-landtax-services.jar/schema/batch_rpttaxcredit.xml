@@ -1,0 +1,18 @@
+<schema>
+    <element tablename="batch_rpttaxcredit">
+        <field name="objid" primary="true" prefix="BRTC" />
+        <!-- DRAFT, COMPLETED -->
+        <field name="state" required="true" defaultValue="DRAFT" caption="State" searchable="true" indexed="true"/>
+        <field name="txndate" required="true" caption="Txn Date" type="date" />
+        <field name="txnno" required="true" caption="Txn No." />
+        <field name="rate" required="true" caption="Adjustment Rate" type="decimal" />
+        <!-- Include payments on or after this date, if null ALL -->
+        <field name="paymentfrom" caption="Payment From" type="date" indexed="true" />
+        <!-- include payments on or before this data, if null ALL -->
+        <field name="paymentto" caption="Payment To" type="date" indexed="true" />
+        <!-- the year tax credit is applied-->
+        <field name="creditedyear" caption="Year Credited" required="true" type="integer" searchable="true" />
+        <field name="reason" required="true"  caption="Reason" />
+        <field name="validity" caption="Validity" />
+    </element>
+</schema>

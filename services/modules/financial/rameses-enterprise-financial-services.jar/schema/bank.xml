@@ -1,0 +1,16 @@
+<schema>
+	<element tablename="bank">
+		<field name="objid" primary="true" prefix="BNK"/>
+		<field name="code" required="true" caption="Code" searchable="true" indexed="true"/>
+		<field name="name" required="true"  caption="Name" searchable="true" indexed="true"/>
+		<field name="branchname" required="true"  caption="Branch" indexed="true"/>
+		<!-- LOCAL, REGIONAL, OUT-OF-TOWN, OTHER-BRANCH -->
+		<field name="deposittype" caption="DepositType" required="true" lov="BANK_DEPOSIT_TYPES" indexed="true" hidden="true"/>
+		<field name="depository" type="integer" required="true" defaultValue="0" visible="false" indexed="true"/>
+		<field name="address"  visible="false"/>
+		<field name="manager" visible="false"/>
+
+		<field name="cashreport" />
+		<field name="checkreport" />		
+	</element>
+</schema>

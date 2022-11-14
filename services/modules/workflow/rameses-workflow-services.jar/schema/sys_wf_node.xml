@@ -1,0 +1,23 @@
+<schema adapter="system">
+
+	<element tablename="sys_wf_node">
+		<field name="name" primary="true"/>
+		<field name="processname" primary="true"/>
+		<field name="title" required="true"/>
+		<field name="nodetype" required="true"/>
+		<field name="idx" />
+		<field name="salience" />
+		<field name="domain" />
+		<field name="role" />
+		<complex name="ui" serializer="default" required="false"/>
+
+		<complex name="transitions" ref="sys_wf_transition" jointype="one-to-many" orderBy="idx" required="false">
+			<key field="name" target="parentid"/>
+			<key field="processname" target="processname"/>
+		</complex>	
+		<complex name="properties" serializer="default" required="false"/>
+		<field name="tracktime" />
+	</element>	
+
+</schema>	
+

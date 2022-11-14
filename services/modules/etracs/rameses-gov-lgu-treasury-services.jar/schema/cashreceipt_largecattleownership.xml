@@ -1,0 +1,12 @@
+<schema>
+	<element  tablename="cashreceipt_largecattleownership">
+		<field name="objid" primary="true"/>
+		<field name="ownerof" required="true"/>
+		<field name="sex" required="true"/>
+		<field name="age" required="true"/>
+		<field name="municipalitybrand" />
+		<field name="ownerbrand" />
+	</element>
+
+	
+</schema>

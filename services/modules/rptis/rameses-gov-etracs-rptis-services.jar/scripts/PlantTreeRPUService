@@ -1,0 +1,184 @@
+import com.rameses.annotations.*
+import com.rameses.util.*
+import com.rameses.services.extended.*
+
+class PlantTreeRPUService
+{
+	@ActiveDB('planttreerpu')
+    def em
+
+    @Env
+    def env
+    
+    @Service('RPTUtil')
+    def util
+
+    @Service('DateService')
+    def dateSvc
+
+    @Service('NumberService')
+    def numberSvc
+    
+    @Service('LandRPUService')
+    def rpuSvc
+
+    @Service('PlantTreeRYSettingLookupService')
+    def ptSettingSvc 
+
+    @Service('PlantTreeAssessmentRuleService')
+    def ruleSvc 
+
+    @DataContext('planttreerpu')
+    def em_rpu;
+
+    
+    def SCHEMA_DETAIL  = 'planttreedetail'
+    
+
+    @ProxyMethod
+    public def initPlantTreeRpu(rpu) {
+        def landrpu = rpuSvc.getLandRpuByRealPropertyId(rpu.realpropertyid)
+        if (!landrpu) throw new Exception('Land RPU Reference does not exists.')
+
+        rpu.landrpuid   = landrpu.objid 
+        rpu.productive = 0.0
+        rpu.nonproductive = 0.0
+        rpu.planttrees  = []
+        return rpu 
+    }
+
+    @ProxyMethod
+    public def createPlantTreeRpu( rpu ) {
+        em.create(rpu)
+        savePlantTrees(rpu.planttrees)
+        return rpu
+    }
+
+
+    @ProxyMethod
+    public def updatePlantTreeRpu(rpu) { 
+        def exists = em_rpu.select('objid').find([objid: rpu.objid]).first()
+        if (!exists) {
+            return createPlantTreeRpu(rpu)
+        } else {
+            em.updateImmediate(rpu)
+            savePlantTrees(rpu.planttrees)
+            removeDeletedItems(rpu)
+            return rpu
+        }
+    }
+
+
+    @ProxyMethod
+    public def openPlantTreeRpu( objid ) {
+        def rpu = em.read([objid:objid])
+        if (!rpu){
+            resolveLandRpu(objid)
+            rpu = em.read([objid:objid])
+        }
+        if (rpu) {
+            rpu.planttrees  = getPlantTreeDetails(rpu)
+            rpu.assessments = em.getAssessments(rpu)
+        } else {
+            rpu = [objid: objid]
+            rpu.planttrees = []
+            rpu.assessments = []
+        }
+        return rpu 
+    }
+
+
+    @ProxyMethod
+    public def deletePlantTreeRpu(rpu){
+    	deleteItems(rpu)
+        em.delete(rpu)
+    }
+
+    @ProxyMethod
+	public def deleteItems(rpu) {
+		rpu.planttrees.each{ em.delete(it, SCHEMA_DETAIL) }
+	}    
+
+
+    @ProxyMethod
+    public void generateNewIds( rpu ) {
+        rpu.planttrees.each{ pt ->
+            pt.objid     = util.generateId('PT')
+            pt.planttreerpuid = rpu.objid 
+        }
+    }
+
+
+    @ProxyMethod
+    public def getClassifications(  ) {
+        return rpuSvc.getClassifications()
+    }
+
+
+    @ProxyMethod
+    public def getExemptionTypes(){
+        return rpuSvc.getExemptionTypes()
+    }
+
+
+    @ProxyMethod
+    public def getPlantTreeRySetting(objid){
+        return ptSettingSvc.lookupPlantTreeRySettingById(objid)
+    }
+
+
+    /*-----------------------------------------------------------------
+    * 
+    * ASSESSMENT SUPPORT
+    *
+    *----------------------------------------------------------------- */
+    @ProxyMethod
+    public def calculateAssessment( rpu ) {
+        return ruleSvc.execute(rpu)    
+    }
+
+
+    def getRYSetting(){
+    	return [adjustplanttree:1, agriculturalid:'AGRICULTURAL']
+    }
+
+
+
+    def getPlantTreeDetails(rpu){
+        return em.getPlantTreeDetails(rpu)
+    }
+
+    void savePlantTrees(planttrees){
+    	planttrees.each{pt ->
+    		em.save(pt, SCHEMA_DETAIL)
+    	}
+    }
+
+    void removeDeletedItems(rpu){
+    	rpu._planttrees?.each{
+    		em.delete(it,SCHEMA_DETAIL)
+    	}
+    }
+
+    void resolveLandRpu(objid){
+        def faas = em.findFaasByRpu([objid:objid])
+        if (!faas) return
+
+        def landfaas = em.findLandFaasByRealProperty(faas)
+        if (!landfaas) return
+
+        def rpu = em.findRpu(faas)
+        if (!rpu){
+            rpu = [:]
+            rpu.objid = objid 
+            rpu.productive = 0
+            rpu.nonproductive = 0 
+            rpu.landrpuid = landfaas.rpuid 
+            em.create(rpu, 'planttreerpu')
+        }
+        else {
+            rpu.landrpuid = landfaas.rpuid 
+            em.update(rpu, 'planttreerpu')   
+        }
+    }
+}

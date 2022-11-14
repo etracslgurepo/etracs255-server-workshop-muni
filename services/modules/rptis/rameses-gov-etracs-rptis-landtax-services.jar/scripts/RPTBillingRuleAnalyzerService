@@ -1,0 +1,264 @@
+import com.rameses.annotations.*;
+import java.rmi.server.*;
+import com.rameses.rules.common.*;
+import com.rameses.util.*;
+import com.rameses.services.extended.*;
+
+
+public class RPTBillingRuleAnalyzerService
+{
+	@Service('RPTBillingService')
+	def billingSvc
+
+	@Service('DateService')
+	def dtSvc 
+
+	@Service('NumberService')
+	def numSvc
+
+	@Service('RPTUtil')
+	def util
+
+	@Service('RPTLedgerService')
+	def ledgerSvc 
+
+
+	@ProxyMethod
+	public def generateNoLedger( bill ) {
+		billingSvc.validateAndSetBillParam(bill)
+		bill._commit = false
+		createYearlyFactData(bill)
+		billingSvc.doCalculateTaxDues(bill)
+		createQtrlyFactData(bill)
+		billingSvc.doCalculatePenaltyDiscount(bill)
+		adjustQtrlyLastQtrPaidItem(bill)
+		billingSvc.buildSharesOnly(bill)
+		createTotalItem(bill)
+		bill.items.sort{a,b->
+			def sa = a.year +'-' + a.qtr 
+			def sb = b.year + '-' + b.qtr 
+			return sa <=> sb 
+		}
+		return bill
+	}
+
+	void createYearlyFactData(bill){
+		if (!bill.rptledger.faases)
+			throw new Exception('Ledger Items are required.')
+		bill.rptledger.faases.each{it.state = 'APPROVED'}
+		bill._pdate 	= dtSvc.parseDate(bill.billdate, null)
+		def cy 			= bill._pdate.year 
+		bill.items 		= []
+
+		if (!bill.taxpayer){
+			bill.taxpayer = bill.rptledger.taxpayer 
+		}
+		bill.rptledger.fromyear.upto(bill.billtoyear){ yr ->
+			createYearlyItemFact(bill, yr)
+		}
+	}
+
+	void adjustQtrlyLastQtrPaidItem(bill){
+		if (bill.rptledger.lastqtrpaid == 4)
+			return;
+
+		//calculate qtrly values 
+		bill.items += buildQtrlyItems(bill, bill.items.first())
+		bill.items.removeAll(bill.items.findAll{ it.year == bill.rptledger.lastyearpaid && it.qtr <= bill.rptledger.lastqtrpaid})
+		bill.items.removeAll(bill.items.findAll{ it.year == bill.billtoyear && it.qtr > bill.billtoqtr})
+
+		if (bill.lastqtrpaid != 4){
+			//rollup as to year 
+			def lastyearpaiditems = bill.items.findAll{it.year == bill.rptledger.lastyearpaid}
+			def item = [summarized:true]
+			item.putAll(lastyearpaiditems.first())
+			item.objid 			= 'TEMP'
+			item.qtr 			= 0
+			item.qtrly 			= 0 
+			item.av				=  lastyearpaiditems.av.sum()
+			item.basic			=  lastyearpaiditems.basic.sum()
+			item.basicint		=  lastyearpaiditems.basicint.sum()
+			item.basicdisc		=  lastyearpaiditems.basicdisc.sum()
+			item.basicidle		=  lastyearpaiditems.basicidle.sum()
+			item.basicidleint	=  lastyearpaiditems.basicidleint.sum()
+			item.basicidledisc	=  lastyearpaiditems.basicidledisc.sum()
+			item.sef			=  lastyearpaiditems.sef.sum()
+			item.sefint			=  lastyearpaiditems.sefint.sum()
+			item.sefdisc		=  lastyearpaiditems.sefdisc.sum()
+			item.firecode		=  lastyearpaiditems.firecode.sum()
+			item.basicnet		=  lastyearpaiditems.basicnet.sum()
+			item.sefnet			=  lastyearpaiditems.sefnet.sum()
+			item.total			=  lastyearpaiditems.total.sum()
+			bill.items.removeAll(lastyearpaiditems)
+			bill.items << item 
+		}
+
+
+	}
+
+
+	def buildQtrlyItems(bill, item){
+		def ledgerfaas = getLedgerFaas(bill, item.year)
+		def qtrlyav =  item.av / 4
+		def qtr4av = item.av - qtrlyav * 3
+
+		def basicqtrly =  item.basic / 4
+		def basicqtr4 = item.basic - basicqtrly * 3
+
+		def basicdiscqtrly =  item.basicdisc / 4
+		def basicdiscqtr4 = item.basicdisc - basicdiscqtrly * 3
+
+		def basicintqtrly =  item.basicint / 4
+		def basicintqtr4 = item.basicint - basicintqtrly * 3
+
+		def basicidleqtrly =  item.basicidle / 4
+		def basicidleqtr4 = item.basicidle - basicidleqtrly * 3
+
+		def basicidlediscqtrly =  item.basicidledisc / 4
+		def basicidlediscqtr4 = item.basicidledisc - basicidlediscqtrly * 3
+
+		def basicidleintqtrly =  item.basicidleint / 4
+		def basicidleintqtr4 = item.basicidleint - basicidleintqtrly * 3
+
+		def sefqtrly =  item.sef / 4
+		def sefqtr4 = item.sef - sefqtrly * 3
+
+		def sefdiscqtrly =  item.sefdisc / 4
+		def sefdiscqtr4 = item.sefdisc - sefdiscqtrly * 3
+
+		def sefintqtrly =  item.sefint / 4
+		def sefintqtr4 = item.sefint - sefintqtrly * 3
+
+		def totalqtrly =  item.total / 4
+		def totalqtr4 = item.total - totalqtrly * 3
+		
+		def items = []
+
+		1.upto(4){qtr->
+			def qtrlyitem = createLedgerItem(bill, ledgerfaas, item.year, qtr, [av:0])
+			qtrlyitem.objid = item.objid + '-' + qtr 
+			
+			qtrlyitem.av = (qtr == 4 ? qtr4av : qtrlyav)
+
+			qtrlyitem.basic = (qtr == 4 ? basicqtr4 : basicqtrly)
+			qtrlyitem.basicdisc = (qtr == 4 ? basicdiscqtr4 : basicdiscqtrly)
+			qtrlyitem.basicint = (qtr == 4 ? basicintqtr4 : basicintqtrly)
+
+			qtrlyitem.basicidle = (qtr == 4 ? basicidleqtr4 : basicidleqtrly)
+			qtrlyitem.basicidledisc = (qtr == 4 ? basicidlediscqtr4 : basicidlediscqtrly)
+			qtrlyitem.basicidleint = (qtr == 4 ? basicidleintqtr4 : basicidleintqtrly)
+
+			qtrlyitem.sef = (qtr == 4 ? sefqtr4 : sefqtrly)
+			qtrlyitem.sefdisc = (qtr == 4 ? sefdiscqtr4 : sefdiscqtrly)
+			qtrlyitem.sefint = (qtr == 4 ? sefintqtr4 : sefintqtrly)
+			
+			qtrlyitem.total = (qtr == 4 ? totalqtr4 : totalqtrly)
+			items << qtrlyitem 
+		}
+		return items 
+	}
+
+
+
+	void createQtrlyFactData(bill){
+		def itemsforqtrly = bill.items.findAll{it.qtrly == 1}
+		itemsforqtrly.each{item->
+			bill.items += buildQtrlyItems(bill, item)
+		}
+		bill.items.removeAll(itemsforqtrly)
+	}
+
+
+	def getLedgerFaas(bill, yr){
+		def ledgerfaas = bill.rptledger.faases.find{ yr >= it.fromyear && ( yr <= it.toyear || it.toyear == 0) }
+		if (!ledgerfaas){
+			def xyr = yr + 1
+			ledgerfaas = bill.rptledger.faases.find{ xyr >= it.fromyear && ( xyr <= it.toyear || it.toyear == 0) }
+		}
+		if (!ledgerfaas) 
+			throw new Exception('Ledger FAAS for year ' + yr + ' is not defined.\nVerify RPT Ledger faas history record.')
+		return ledgerfaas 
+	}
+
+
+	void createYearlyItemFact(bill, yr){
+		def ledgerfaas = getLedgerFaas(bill, yr)
+		def params = [ledger:bill.rptledger, ledgerfaas:ledgerfaas, yr:yr, av:ledgerfaas.assessedvalue]
+		ledgerSvc.calcLedgerItemAssessedValue(params)
+		bill.items << createLedgerItem(bill, ledgerfaas, yr, 0, params)
+	}
+
+
+	def createLedgerItem(bill, ledgerfaas, yr, qtr, params){
+		def item = [:]
+	    item.objid              =  'BI' + new java.rmi.server.UID()
+        item.rptledgerid        =  bill.rptledger.objid
+        item.rptledgerfaasid    =  ledgerfaas.objid
+        item._pdate 			=  bill._pdate
+        item.year               =  yr
+        item.qtr                =  qtr
+        item.originalav         =  ledgerfaas.assessedvalue
+        item.av                 =  params.av
+        item.txntype            =  ledgerfaas.txntype
+        item.classification     =  ledgerfaas.classification
+        item.actualuse          =  ledgerfaas.classification
+        item.numberofmonthsfromqtr   =  billingSvc.calculateNoOfMonthsFromQtr(bill._pdate, yr, qtr)
+        item.numberofmonthsfromjan   =  billingSvc.calculateNoOfMonthsFromJan(bill._pdate, yr, qtr)
+        item.backtax                 =  util.toBoolean(ledgerfaas.backtax, false)
+        item.reclassed               =  util.toBoolean(ledgerfaas.reclassed, false)
+        item.assessedvalue			=  0.0
+        item.qtrlyav 				=  0.0
+        item.idleland 				=  (ledgerfaas.idleland == 1)
+        item.basic					=  0.0
+		item.basicint				=  0.0
+		item.basicdisc				=  0.0
+		item.basicidle				=  0.0
+		item.basicidleint			=  0.0
+		item.basicidledisc			=  0.0
+		item.sef						=  0.0
+		item.sefint					=  0.0
+		item.sefdisc					=  0.0
+		item.firecode				=  0.0
+		item.basicnet				=  0.0
+		item.sefnet					=  0.0
+		item.total					=  0.0
+		item.partialled 			=  0
+		item.effectiveyear 			=  ledgerfaas.fromyear
+		item.qtrly 					=  0
+		return item
+	}	
+
+	void createTotalItem(bill){
+        def sum = { items, fld ->
+            def t = 0.0
+            items.each{
+                t += ( it[fld] != null ? it[fld] : 0.0 )
+            }
+            return t
+        }
+        
+        if (bill.items) {
+            bill.items << [
+                actualuse   : 'TOTALS', 
+                basic       : sum(bill.items, 'basic'),
+                basicdisc   : sum(bill.items, 'basicdisc'),
+                basicint    : sum(bill.items, 'basicint'),
+                basicidle     : sum(bill.items, 'basicidle'),
+                basicidledisc : sum(bill.items, 'basicidledisc'),
+                basicidleint  : sum(bill.items, 'basicidleint'),
+                sef         : sum(bill.items, 'sef'),
+                sefdisc     : sum(bill.items, 'sefdisc'),
+                sefint      : sum(bill.items, 'sefint'),
+                firecode    : sum(bill.items, 'firecode'),
+                total       : sum(bill.items, 'total'),
+            ]
+        }
+    }	
+
+
+    void printItemInfo(bill){
+    	bill.items.each{
+    		println 'Year: ' + it.year + '-' + it.qtr + '  qtrly: ' + it.qtrly
+    	}
+    }
+}

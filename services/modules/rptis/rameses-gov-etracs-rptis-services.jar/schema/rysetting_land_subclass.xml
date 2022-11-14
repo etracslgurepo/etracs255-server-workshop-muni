@@ -1,0 +1,14 @@
+<schema adapter="main">
+	<element tablename="lcuvsubclass">
+		<field name="objid" primary="true"/>
+		<field name="specificclass_objid" required="true"/>
+		<field name="landrysettingid" required="true"/>
+		<field name="code" required="true" caption="Code" searchable="true" indexed="true" width="100" />
+		<field name="name" required="true" caption="Subclass" searchable="true" indexed="true" width="200" />
+		<field name="unitvalue" type="decimal" required="true" caption="Unit Value" width="120" />
+		<field name="previd" />
+		<complex name="specificclass" ref="rysetting_land_specificclass" jointype="many-to-one" required="true">
+			<key field="specificclass_objid" target="objid" />
+		</complex>
+	</element>
+</schema>

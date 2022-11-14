@@ -1,0 +1,46 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class FAASListInterceptor
+{
+	@Env 
+	def env 
+
+	@ActiveDB('faas_list')
+	def em 
+
+	@After(pattern="FAASService.(createFaas|initOnlineTransaction|initNewDiscovery)", index=10000)
+	void afterCreateFaas(evt){
+		def faas = evt.result
+		try{
+			em.insertFaasList(faas)
+		}
+		catch(Exception ex){
+			ex.printStackTrace()
+			em.updateFaasList(faas)
+		}
+	}
+
+	@After(pattern="FAASService.(updateFaas|updateFaasOnly|submitForApproval|disapproveFaas|approveFaas)", index=10000)
+	void afterUpdateFaas(evt){
+		def faas = evt.result
+		em.updateFaasList(faas)
+	}	
+
+	@After(pattern="FAASService.updateSignatoryInfo", index=10000)
+	void afterUpdateSignatory(evt){
+		def task = evt.args[0]
+		if (task) {
+			em.updateFaasList([objid:task.refid])
+		}
+	}		
+
+	
+	@Before(pattern="FAASService.(deleteFaas|deleteRevertedFaas)")
+	void beforeDeleteFaas(evt){
+		def faas = evt.args[0]
+		em.deleteFaasList(faas)
+	}
+}
+

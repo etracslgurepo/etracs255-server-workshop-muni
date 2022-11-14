@@ -1,0 +1,10 @@
+<schema adapter="queue">
+	<element tablename="queue_announcement">
+		<field name="objid" primary="true"/>
+		<field name="state" required="true" caption="Status"/>	
+		<field name="dtfiled" required="true" caption="Date Filed"/>	
+		<field name="name" required="true" caption="Name"/>	
+		<field name="content" required="true" caption="Content"/>	
+		<field name="dtexpiry" caption="ExpiryDate"/> 
+	</element> 
+</schema>

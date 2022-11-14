@@ -1,0 +1,21 @@
+<schema>
+	
+	<element tablename="business_application_info">
+		<field name="objid" primary="true"/>
+		<field name="businessid" required="true"/>
+		<field name="applicationid" required="true"/>
+		<field name="type" required="true"/>
+		<field name="activeyear" required="true"/>
+		<field name="attribute_objid" required="true"/>
+		<field name="attribute_name" required="true"/>
+		<field name="lob_objid" />
+		<field name="lob_name" />
+		<field name="decimalvalue" />
+		<field name="intvalue" />
+		<field name="stringvalue" />
+		<field name="boolvalue" />
+		<field name="phase" />
+		<field name="level" />
+	</element>	
+
+</schema>

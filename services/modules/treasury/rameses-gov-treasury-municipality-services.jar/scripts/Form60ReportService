@@ -1,0 +1,137 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.common.*
+import com.rameses.services.extended.*
+
+class Form60ReportService  {
+
+	@ActiveDB('form60report')
+	def em;
+
+	@Service('DateService')
+	def dtSvc
+
+	@Service('NumberService')
+	def numSvc
+
+
+	@ProxyMethod
+	public def generateReport( params ) {
+		def form60items = em.getForm60Items()
+		if( !form60items ) throw new Exception('Form 60 Setup is not defined.')
+		
+		return [
+			period	: 'Covering the Period ' + params.month.caption + ', ' + params.year,
+			items	: buildForm60Report( form60items, params ),
+		]
+	}
+	
+	List buildForm60Report( form60items, params ) {
+		params.fromdate = params.year + '-' + params.month.index + '-01 00:00:00'
+		params.todate   = dtSvc.format('yyyy-MM-dd', dtSvc.getMonthEndDate(dtSvc.parse('yyyy-MM-dd', params.fromdate))) + " 23:59:59"
+
+		def acctsummarylist = em.getLiquidatedSummary(params )
+		if(! acctsummarylist) throw new Exception("No record(s) found.    ")
+						
+		form60items.each { item ->
+			def acct = acctsummarylist.find{ it.parentid == item.objid }
+			initShares( item)
+			if( acct ) {
+				calculateShares( item, acct )
+				adjustRoundingDiscrepancy( item )
+				calculateTotals( item )
+			}
+		}
+		return form60items 
+	}
+	
+	void initShares( item )  {
+		item.total = 0.0 
+		item.national = 0.0
+		item.provgen  = 0.0
+		item.provsef  = 0.0
+		item.provtrust  = 0.0
+		item.provtotal = 0.0 
+		item.munigen  = 0.0
+		item.munisef  = 0.0
+		item.munitrust  = 0.0
+		item.munitotal = 0.0 
+		item.barangay  = 0.0
+	}
+	
+	void calculateTotals( item ) {
+		item.provtotal = item.provgen + item.provsef + item.provtrust 
+		item.munitotal = item.munigen + item.munisef + item.munitrust 
+	}
+	
+	void adjustRoundingDiscrepancy( item ) {
+		// In case there are multiple shares then adjust according to this priority:
+		// 		if nationalshare > 0 adjust nationalshare 
+		// 		if barangayshare > 0 adjust barangayshare
+		// 		if provshare > 0 adjust provshare
+		
+		if( ! hasMultipleShares( item ) ) return
+		
+		//multiple shares, apply the above rule 
+		if( item.national > 0.0 ) {
+			item.national = item.total - ( item.provgen + item.provsef + item.provtrust + 
+										   item.munigen + item.munisef + item.munitrust + item.barangay )
+		}
+		else if( item.barangay > 0.0 ) {
+			item.barangay = item.total - ( item.provgen + item.provsef + item.provtrust + 
+										   item.munigen + item.munisef + item.munitrust )
+		}
+		else if( item.provgen > 0.0 ) {
+			item.provgen = item.total - ( item.provsef + item.provtrust + 
+										   item.munigen + item.munisef + item.munitrust )
+		}
+		else if( item.provsef > 0.0 ) {
+			item.provsef = item.total - ( item.provtrust + item.munigen + item.munisef + item.munitrust )
+		}
+		else if( item.provtrust > 0.0 ) {
+			item.provtrust = item.total - ( item.munigen + item.munisef + item.munitrust )
+		}
+		else if( item.munigen > 0.0 ) {
+			item.munigen = item.total - ( item.munisef + item.munitrust )
+		}
+		else if( item.munisef > 0.0 ) {
+			item.munisef = item.total - item.munitrust
+		}
+	}
+	
+	boolean hasMultipleShares( item ) {
+		int sharecount = 0
+		if( item.national > 0.0 ) sharecount++
+		if( item.provgen > 0.0 ) sharecount++
+		if( item.provsef > 0.0 ) sharecount++
+		if( item.provtrust > 0.0 ) sharecount++
+		if( item.munigen > 0.0 ) sharecount++
+		if( item.munisef > 0.0 ) sharecount++
+		if( item.munitrust > 0.0 ) sharecount++
+		if( item.barangay > 0.0 ) sharecount++
+		
+		return ( sharecount > 1  )
+	}
+	
+	void calculateShares( item, acct ) {
+		item.total = acct.total
+		
+		//calculate national share 
+		item.national = numSvc.round( acct.total * item.nationalrate / 100  )
+		
+		//calculate province shares 
+		item.provgen = numSvc.round( acct.total * item.provgenrate / 100)
+		item.provsef = numSvc.round( acct.total * item.provsefrate / 100)
+		item.provtrust = numSvc.round( acct.total * item.provtrustrate / 100)
+		
+		//calculate municipal shares 
+		item.munigen = numSvc.round( acct.total * item.munigenrate / 100)
+		item.munisef = numSvc.round( acct.total * item.munisefrate / 100)
+		item.munitrust = numSvc.round( acct.total * item.munitrustrate / 100)
+		
+		//calculate barangay share 
+		item.barangay = numSvc.round( acct.total * item.barangayrate / 100  )
+	}
+	
+}

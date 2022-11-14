@@ -1,0 +1,100 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import com.rameses.services.extended.*
+import com.rameses.util.Base64Cipher
+
+
+/*----------------------------------------------------------------
+* General Synchronization support shared 
+* between province and municipalities 
+-----------------------------------------------------------------*/
+class RPTSyncDataInterceptor
+{
+    @Service('ExaminationService')
+    def examinationSvc
+
+    @Service('RPTRequirementService')
+    def reqSvc 
+
+    @DataContext('dbimage_header')
+    def em_image_header
+
+    @DataContext('dbimage_chunk')
+    def em_image_chunk
+
+
+    /*----------------------------------------------------------
+    *
+    *  EXAMINATIONS SUPPORT
+    * 
+    ------------------------------------------------------------*/
+    @After(pattern="RPTMainSyncDataService.asyncSend", eval="#{result.action.matches('RPT-EXAMINATION')}") 
+    public void sendExamination( evt ) {
+        def syncdata = evt.result
+        def examination = examinationSvc.open([objid: syncdata.refid])
+        if (examination) {
+            syncdata.data = examination
+        }
+    }   
+
+    @After(pattern="RPTMainSyncDataService.receive", eval="#{args[0].action.matches('RPT-EXAMINATION')}") 
+    public void receiveExamination(evt){
+        def syncdata = evt.args[0]
+        def examination = syncdata.data 
+        examinationSvc.save(examination)
+    }
+
+
+
+    /*----------------------------------------------------------
+    *
+    *  REQUIREMENTS SUPPORT
+    * 
+    ------------------------------------------------------------*/
+    @After(pattern="RPTMainSyncDataService.asyncSend", eval="#{result.action.matches('RPT-REQUIREMENT')}") 
+    public void sendRequirement( evt ) {
+        def syncdata = evt.result
+        def requirement = reqSvc.open([objid: syncdata.refid])
+        if (requirement) {
+            syncdata.data = requirement
+        }
+    }   
+
+    @After(pattern="RPTMainSyncDataService.receive", eval="#{args[0].action.matches('RPT-REQUIREMENT')}") 
+    public void receiveRequirement(evt){
+        def syncdata = evt.args[0]
+        def requirement = syncdata.data 
+        reqSvc.save(requirement)
+    }
+
+
+    /*----------------------------------------------------------
+    *
+    *  IMAGE SUPPORT
+    * 
+    ------------------------------------------------------------*/
+    @After(pattern="RPTMainSyncDataService.asyncSend", eval="#{result.action.matches('RPT-IMAGE')}") 
+    public void sendImage( evt ) {
+        def syncdata = evt.result
+
+        def image = [:]
+        image.header = em_image_header.find([objid: syncdata.refid]).first()
+        if (!image.header) image.header = em_image_header.find([refid: syncdata.refid]).first()
+        if (image.header) {
+            image.chunks = em_image_chunk.find([parentid: image.header.objid]).list()
+            syncdata.data = image
+        }
+    }   
+
+    @After(pattern="RPTMainSyncDataService.receive", eval="#{args[0].action.matches('RPT-IMAGE')}") 
+    public void receiveImage(evt){
+        def syncdata = evt.args[0]
+        def image = syncdata.data 
+        em_image_header.save(image.header)
+        em_image_chunk.find([parentid: image.header.objid]).delete()
+        image.chunks.each {
+            em_image_chunk.save(it)
+        }
+    }
+}
+

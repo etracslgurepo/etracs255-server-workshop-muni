@@ -1,0 +1,19 @@
+<schema>
+	<element tablename="rpt_syncdata_completed">
+		<field name="objid" primary="true" prefix="SYNC" />
+		<field name="refid" required="true" indexed="true" />
+		<field name="reftype" required="true" caption="Ref Type" searchable="true" indexed="true" />
+		<field name="refno" caption="Ref No."  searchable="true" indexed="true" />
+		<field name="action" required="true" caption="Action" />
+		<field name="dtfiled" required="true" caption="Date Filed" />
+		<field name="orgid" required="true"  searchable="true" indexed="true" />
+		<field name="dtcreated" />
+		<field name="sender_objid" />
+		<field name="sender_name" />
+		<field name="sender_title" />
+		<field name="remote_orgid" required="true" />
+		<field name="remote_orgcode" required="true" />
+		<field name="remote_orgclass" required="true" />
+		<complex name="info" serializer="default" required="false"  />
+	</element>
+</schema>

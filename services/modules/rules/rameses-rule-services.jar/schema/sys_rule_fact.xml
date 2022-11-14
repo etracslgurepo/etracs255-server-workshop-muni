@@ -1,0 +1,27 @@
+<schema>
+	<element tablename="sys_rule_fact">
+		<field name="objid" primary="true" prefix="RULFACT"/>
+		<field name="name" required="true" indexed="true" searchable="true"/>
+		<field name="title" required="true" indexed="true" searchable="true"/>
+		<field name="factclass" required="true" indexed="true"/>
+		<field name="factsuperclass" required="false" />
+		<field name="sortorder" required="true"/>
+		<field name="handler" visible="false"/>
+		<field name="defaultvarname" visible="false"/>
+		<field name="dynamic" visible="false"/>
+		<field name="lookuphandler" visible="false"/>
+		<field name="lookupkey" visible="false"/>
+		<field name="lookupvalue" visible="false"/>
+		<field name="lookupdatatype" visible="false"/>
+		<field name="dynamicfieldname" visible="false"/>
+		<field name="builtinconstraints" visible="false"/>
+		<field name="domain" indexed="true" searchable="true"/>
+		<complex name="fields" ref="sys_rule_fact_field" jointype="one-to-many">
+			<key field="objid" target="parentid"/>
+		</complex>	
+
+
+		<field name="updated" expr="CASE WHEN objid = factclass THEN 1 ELSE 0 END" type="checkbox"/>
+	</element>	
+</schema>	
+

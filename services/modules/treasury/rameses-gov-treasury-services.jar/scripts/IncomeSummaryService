@@ -1,0 +1,35 @@
+import com.rameses.annotations.*;
+
+class IncomeSummaryService  {
+
+	@ActiveDB('income_summary') 
+	def income_summary_db; 
+
+	@DataContext('itemaccount')
+	def itemacct_db; 
+
+
+	@ProxyMethod
+	public def findItemAccount( param ) { 
+		return itemacct_db.find([ objid: param.objid.toString() ]).first(); 
+	} 
+
+	@ProxyMethod
+	public void postItems( param ) {
+		if ( !param.refid ) throw new Exception("refid parameter is required"); 
+		if ( !param.items ) throw new Exception("items parameter is required"); 
+
+		income_summary_db.removeItemsByRef([ refid: param.refid ]); 
+
+		param.items.each{ o-> 
+			income_summary_db.postItem( o ); 
+		} 
+	} 
+
+	@ProxyMethod
+	public void removeItems( param ) { 
+		if ( param.refid ) { 
+			income_summary_db.removeItemsByRef([ refid: param.refid ]); 
+		}
+	} 
+}

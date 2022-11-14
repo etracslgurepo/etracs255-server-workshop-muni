@@ -1,0 +1,417 @@
+import com.rameses.annotations.*;
+import java.rmi.server.*;
+import com.rameses.rules.common.*;
+import com.rameses.util.*;
+import com.rameses.services.extended.*;
+import rptis.landtax.facts.*;
+import rptis.landtax.actions.*;
+
+
+public class RPTBillingRuleService
+{
+	@ActiveDB('rptbill')
+	def em 
+
+	@ActiveDB('rule')
+	def ruleDB
+
+	@Resource('RuleService')
+	def ruleSvc
+
+	@Service('Var')
+	def var
+
+	@Service('DateService')
+	def dtSvc
+
+	@Service('LGUService')
+	def lguSvc 
+
+	@Service('RPTUtil')
+	def util
+
+	@Service('NumberService')
+	def numSvc
+
+	@Service('RPTLedgerService')
+	def ledgerSvc 
+
+	@DataContext('rptcompromise')
+	def em_compromise
+
+	@DataContext('vw_landtax_lgu_account_mapping')
+	def em_mapping 
+
+	@DataContext('org')
+	def em_org 
+
+	@DataContext('rptledger_faas')
+	def em_ledger_faas
+
+	@DataContext('rpttaxincentive_item')
+	def em_incentive_item 
+
+	@DataContext('rptexpiry')
+	def em_expiry 
+
+	def RULESET 			= 'rptbilling'
+	def FACT_PACKAGE 		= 'rptbilling.'
+
+
+	@ProxyMethod
+	public def getBilling(bill){
+		def request = buildRequest(bill);
+		executeRules(bill, request)
+		bill.remove('_pdate')
+		bill.remove('ledgerfact')
+		return bill
+	}
+
+
+	@ProxyMethod
+	public def getShares(bill){
+		if (!bill.rptledger) throw new Exception('bill.ledger must be specified')
+
+		bill.shares = [] 
+		bill.billitems = []
+		bill._pdate = dtSvc.parseDate(bill.billdate, null)
+		def request = [:]
+		request.shares = bill.shares 
+		request.billitems = bill.billitems 
+		request.facts = createShareFacts(bill)
+		request.actions = buildActions(request)
+		executeShareRules(request)
+		bill.rptledger.billitems = request.billitems
+		return bill.shares 
+	}
+
+
+
+	/*==========================================================
+	*
+	*  SUPPORT METHODS 
+	*
+	==========================================================*/
+
+	def buildRequest(bill){
+		bill.shares = []
+		bill.billitems = []
+		bill.expirydate = null
+		
+		def request = [:]
+		request.shares = bill.shares
+		request.items = bill.items
+		request.billitems = bill.billitems
+		request.facts = createFacts(bill)
+		request.actions = buildActions(request)
+		return request
+	}
+
+
+	void executeRules(bill, request){
+		def grps = ruleDB.getRulegroups( [ruleset: RULESET] );
+		grps.each{g ->
+			ruleSvc.execute( RULESET, request.facts, request.actions, g.name);
+			if ('INIT'.equalsIgnoreCase(g.name)) {
+				request.facts.findAll{it instanceof RPTLedgerItemFact}.each {
+					recalcPenaltyRate(bill, it)
+				}
+			}
+		}
+	}
+
+	void executeShareRules(request){
+		def grps = ['SUMMARY', 'AFTER_SUMMARY']
+		grps.each{g ->
+			ruleSvc.execute( RULESET, request.facts, request.actions, g);
+		}
+	}
+
+	def createFacts(bill) {
+		def parsedbilldate = dtSvc.parseDate(bill.billdate, null);
+		def currdate = dtSvc.format('yyyy-MM-dd', dtSvc.serverDate);
+		def expiry = em_expiry.find([
+				iyear: parsedbilldate.year,
+				iqtr : parsedbilldate.qtr,
+				imonth : parsedbilldate.month,
+				expirytype: 'penalty'
+			])
+			.where('validuntil >= :currdate', [currdate: dtSvc.format('yyyy-MM-dd', dtSvc.serverDate)])
+			.first();
+
+		if (expiry) {
+			bill.billdate = expiry.expirydate
+		}
+		
+		bill._pdate = dtSvc.parseDate(bill.billdate, null)
+
+		def facts = []
+		facts << new CurrentDate(bill.billdate)
+		facts << new EffectiveDate(bill.billdate)
+		facts << new Bill(bill)
+		facts << createLedgerFact(bill)
+		facts += createLedgerItemFacts(bill)
+		facts += createIncentiveFacts(bill)
+		facts += createLedgerFaasFacts(bill)
+		facts += createTagFacts(bill)
+		return facts 
+	}
+
+	def createLedgerFaasFacts(bill) {
+		def facts = [];
+		if (util.isTrue(var.rptledger_rule_include_ledger_faases)) {
+			def faases = em_ledger_faas.select('faasid,tdno,fromyear,fromqtr,toyear,toqtr,idleland,txntype.objid,assessedvalue,classification.objid,actualuse.objid,faas.totalmv')
+							.find([rptledgerid: bill.rptledger.objid, state:'APPROVED'])
+							.list()
+			faases.each {
+				facts << new RPTLedgerFaasFact(it)
+			}
+		}
+		return facts;
+	}
+
+	def createTagFacts(bill) {
+		def facts = []
+		def tags = ledgerSvc.getTags(bill.rptledger)
+		tags.each {
+			facts << new RPTLedgerTag(it.tag)
+		}
+		return facts 
+	}
+
+	def createShareFacts(bill){
+		def facts = []
+		facts << new CurrentDate(bill.billdate)
+		facts << new EffectiveDate(bill.billdate)
+		def ledgerfact = createLedgerFact(bill)
+		facts << ledgerfact
+
+		bill.rptledger.postingitems.each{
+			it.amtdue = it.amount 
+			def item = new RPTLedgerItemFact(ledgerfact, it)
+			facts << item 
+		}
+		return facts 
+	}
+
+
+	def createLedgerFact(bill){
+		def rptledger = bill.rptledger
+		rptledger.undercompromise = checkUnderCompromise(rptledger)
+		rptledger.firstqtrpaidontime = checkFirstQtrPaidOntime(rptledger, bill)
+		rptledger.missedpayment = checkMissedPayment(rptledger, bill)
+		bill.ledgerfact = new RPTLedgerFact(rptledger)
+		return bill.ledgerfact
+		
+	}
+
+	def createLedgerItemFacts(bill){
+		def facts = []
+		bill.items.eachWithIndex{ it, idx ->
+			it.fullypaid = checkFullyPaid(bill, it)
+			it.qtrlypaymentavailed = checkQtrlyPaymentAvailed(bill, it)
+			facts << createLedgerItemFact(bill, it)
+		}
+		return facts 
+	}
+
+	def createIncentiveFacts(bill){
+		def facts = []
+		def incentives = em_incentive_item.find([rptledgerid:bill.ledgerfact.objid]).list()
+		incentives.each{
+			facts << new RPTIncentive(bill.ledgerfact, it)
+		}
+		return facts 
+	}
+
+
+	boolean checkUnderCompromise(rptledger){
+		def compromise = em_compromise.select('objid')
+								.where(''' rptledgerid = :objid and state in ('FORPAYMENT','FORAPPROVAL','APPROVED') ''', rptledger)
+								.first()
+
+		return compromise != null 
+	}
+
+
+	boolean checkFirstQtrPaidOntime(rptledger, bill){
+		if (rptledger.lastyearpaid == bill.cy - 1 && rptledger.lastqtrpaid == 4 && bill._pdate.qtr == 1 )
+			return true;
+
+		def curryearpmt = em.findLatestPayment([objid:rptledger.objid, cy:bill.cy])
+		if (! curryearpmt.receiptdate)
+			return false;
+
+		curryearpmt.receiptdate = dtSvc.parse('yyyy-MM-dd', curryearpmt.receiptdate)
+		def firstqtrenddate = dtSvc.getQtrEndDate(1, bill.cy)
+		return curryearpmt.receiptdate <= firstqtrenddate
+	}
+
+	boolean checkMissedPayment(rptledger, bill){
+		//1st qtr, no missed payment 
+		if (bill.cqtr == 1) {
+			return false 
+		}
+
+		if (rptledger.lastyearpaid == bill.cy && rptledger.lastqtrpaid + 1 < bill.cqtr){
+			return false
+		}
+
+
+		def payments = em.getCurrentYearCredits([objid:rptledger.objid, cy:bill.cy])
+
+		if (!payments && bill.cqtr > 1) {
+			//no payments since 1st qtr 
+			return true 
+		}
+
+		def maxqtr = payments.toqtr.max();
+		if (maxqtr == null) maxqtr = 4;
+
+		if (payments &&  maxqtr+1 < bill.cqtr){
+			//miss payment previous qtr
+			return true 
+		}
+
+		def missedpayment = false 
+		payments.each{pmt -> 
+			if (pmt.fromqtr == null) pmt.fromqtr = 1
+			if (pmt.toqtr == null) pmt.toqtr = 4
+			pmt.fromqtr.upto(pmt.toqtr){qtr->
+				def qtrenddate = dtSvc.getQtrEndDate((Integer)qtr, bill.cy) + 1 
+				if (pmt.receiptdate > qtrenddate){
+					missedpayment = true 
+				}
+			}
+		}
+		return missedpayment
+	}
+
+
+	boolean checkFullyPaid(bill, item){
+		if (item.year < bill.billtoyear)
+			return true
+		if (item.year >= bill.billtoyear && bill.billtoqtr == 4)
+			return true
+		return false
+	}
+
+	boolean checkQtrlyPaymentAvailed(bill, item){
+		if (item.year == bill.ledgerfact.lastyearpaid)
+			return true;
+		if (item.year < bill.billtoyear)
+			return false
+		if (item.year == bill.billtoyear && bill.billtoqtr != 4)
+			return true 
+		if (bill.billtoyear && bill.ledgerfact.lastyearpaid && bill.ledgerfact.lastqtrpaid != 4)
+			return true 
+		return false
+	}
+
+	void recalcPenaltyRate(bill, item) {
+		def ledgerfact = bill.ledgerfact
+		item.monthsfromqtr = calculateNoOfMonthsFromQtr(bill._pdate, item.year, item.qtr)
+		item.monthsfromjan = calculateNoOfMonthsFromJan(bill._pdate, item.year, item.qtr)
+	}
+
+	def createLedgerItemFact( bill, item) {
+		def ledgerfact = bill.ledgerfact
+		item.monthsfromqtr = calculateNoOfMonthsFromQtr(bill._pdate, item.year, item.qtr)
+		item.monthsfromjan = calculateNoOfMonthsFromJan(bill._pdate, item.year, item.qtr)
+		item.backtax = checkBacktax(bill, item)
+		return new RPTLedgerItemFact(bill.ledgerfact, item)
+	}
+
+	int calculateNoOfMonthsFromQtr(pdate, year, qtr) {
+		if (qtr == null || qtr == 0) qtr = 1 
+		int currYear = pdate.year
+		int currMonth = pdate.month
+		qtr = ( qtr == 0 ? 1 : qtr )
+		if(year < currYear) {
+			return ((currYear - year) * 12 - (3 * (qtr-1))) + currMonth 
+		}
+		else {
+			int nm = currMonth - (3 * (qtr-1))
+			return nm < 0 ? 0 : nm
+		}
+	}
+	
+	int calculateNoOfMonthsFromJan(pdate, year, qtr) {
+		int currYear = pdate.year
+		int currMonth = pdate.month
+		int nmon = 0;
+		if(year < currYear) {
+			nmon = ( currYear - year ) * 12 + currMonth
+		}
+		else {
+			nmon = currMonth
+		}
+		return nmon 
+	}	
+
+	boolean checkBacktax(bill, item ) {
+		int currYear = bill._pdate.year
+
+		if (util.isTrue(item.rptledgerfaas.backtax)) {
+			return true
+		}
+
+
+		if (item.effectivityyear == null) {
+			item.effectivityyear = item.rptledgerfaas.fromyear 
+		}
+
+		
+		def txntype_objid = item.rptledgerfaas.txntype?.objid; 
+		if ( 'ND'.equalsIgnoreCase(txntype_objid) && item.year == item.effectivityyear ) {
+			return true
+		} 
+
+		return false;
+	}
+
+
+
+
+
+	/*====================================================================
+	* BUILD ACTIONS
+	====================================================================*/
+
+	def buildActions(request){
+		def actions = new RuleAction();
+		actions.addCommand('split-by-qtr', new SplitByQtr(request:request, numSvc:numSvc))
+		actions.addCommand('calc-tax', new CalcTax(numSvc:numSvc))
+		actions.addCommand('calc-interest', new CalcInterest(numSvc:numSvc))
+		actions.addCommand('calc-discount', new CalcDiscount(numSvc:numSvc))
+		actions.addCommand('split-bill-item', new SplitLedgerItem(request:request, numSvc:numSvc))
+		actions.addCommand('remove-bill-item', new RemoveLedgerItem(request:request))
+		actions.addCommand('aggregate-bill-item', new AggregateLedgerItem(request:request))
+		actions.addCommand('create-tax-summary', new CreateTaxSummary(request:request))
+		actions.addCommand('add-billitem', new AddBillItem(request:request, em_mapping: em_mapping, em_org: em_org))
+		actions.addCommand('add-share', new AddShare(request:request, numSvc: numSvc, em_mapping: em_mapping))
+		actions.addCommand('set-bill-expiry', new SetBillExpiryDate(request:request))
+		return actions 
+	}
+
+	@ProxyMethod
+	public def buildShareRequest(bill, ledger) {
+		def xbill = bill 
+		xbill.taxes = []
+		def facts = []
+
+		def billdate = dtSvc.parse('yyyy-MM-dd', xbill.billdate) 
+    	facts << new CurrentDate(billdate)
+    	facts << new EffectiveDate(billdate)
+
+		def ledgerfacts = [:]
+		def ledgerfact = new RPTLedgerFact(ledger)
+		facts << ledgerfact
+
+    	ledger.items.eachWithIndex{it, idx ->
+    		facts << new RPTLedgerItemFact(bill.ledgerfact, it)
+    	}
+		def actions = buildActions(xbill, facts)
+		return [facts:facts, actions:actions, bill:xbill]
+	}
+}

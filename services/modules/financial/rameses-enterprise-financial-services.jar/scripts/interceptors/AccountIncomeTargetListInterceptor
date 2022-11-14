@@ -1,0 +1,35 @@
+import com.rameses.annotations.*;
+
+class AccountIncomeTargetListInterceptor {
+	
+	@DataContext('account_maingroup')
+	def acctgroup_db;
+
+	@After(pattern="QueryService.getNodeList", eval="#{ args[0]._schemaname == 'vw_account_incometarget' }")
+	public def getNodeList( evt ) { 
+		def result = evt.result; 
+		
+		def list = acctgroup_db.find([ reporttype: 'SRE' ]).orderBy('version,title').list(); 
+		result.addAll( list ); 
+	}
+
+	@Before(pattern="QueryService.getList", eval="#{ args[0]._schemaname == 'vw_account_incometarget' }")
+	public void beforeGetList( evt ) {
+		def o = evt.args[0]; 
+		def maingroupid = o.node?.objid; 
+		if ( !maingroupid ) return;
+
+		def year = o.year; 
+		if ( !year ) return; 
+
+		def str = "maingroupid = :maingroupid AND year = :year";
+		def m = [maingroupid: maingroupid, year: year];
+		if ( o.where ) {
+			o.where[0] = str + " AND " + o.where[0];	
+			o.where[1].putAll( m );
+		} 
+		else { 
+			o.where = [str, m];
+		} 
+	} 
+} 

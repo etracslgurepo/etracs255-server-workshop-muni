@@ -1,0 +1,22 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+
+class SingleItemCollectionTypeInterceptor 
+{
+	@ActiveDB('collectiontype_account')
+	def acct;
+
+	@After(pattern="CashReceiptService.init", index=300, eval="#{result.collectiontype?.handler == 'singleitem'}")
+	public def initNew(def evt) { 
+		def r = evt.result;
+		def z = acct.findAccount([objid: r.collectiontype.objid] );
+		if( !z)
+			throw new Exception("Account not found for singleitem handler. Please define at least one account in collection type")
+		def item = [objid:'RCTITEM'+new UID(), item:z.account, amount: 0];
+		r.items << item;
+	}
+	
+
+
+}

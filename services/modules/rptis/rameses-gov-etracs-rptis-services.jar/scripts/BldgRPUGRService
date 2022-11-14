@@ -1,0 +1,133 @@
+import com.rameses.annotations.*
+import com.rameses.util.*
+import com.rameses.services.extended.*
+
+class BldgRPUGRService
+{
+	@ActiveDB('bldgrpu')
+	def em
+
+	@ActiveDB('bldgrysettinglookup')
+	def em_bldgsetting 
+
+	@Service('BldgRYSettingLookupService')
+	def lookupSvc
+
+	@Service('BldgRPUService')
+	def bldgRpuSvc 
+
+	@Service('Var')
+	def var 
+
+	@Service('RPTUtil')
+	def util
+
+	@Service('DateService')
+	def dtSvc 
+
+	
+	@ProxyMethod
+	public def reviseBldgRpu(rpu){
+		rpu.dtappraised = dtSvc.serverDate 
+		if (rpu.floorcount == null || rpu.floorcount == 0){
+			rpu.floorcount = 1
+		}
+		rpu.basevalue = 0.0;
+
+		updateBldgDateInfo(rpu)
+		updateBldgStructure(rpu)
+		reviseStructuralTypes(rpu)
+		bldgRpuSvc.calculateAssessment(rpu)
+		updateEffectiveAge(rpu)
+		return rpu
+	}
+
+	void updateEffectiveAge(rpu){
+		if (rpu.effectiveage == null){
+			rpu.effectiveage = rpu.bldgage
+		}
+	}
+
+	void updateBldgDateInfo(rpu){
+		if (rpu.bldgage == null)
+			rpu.bldgage = 0
+			
+		if (!rpu.dtcompleted && !rpu.dtoccupied) {
+			if (rpu.preveffectivity != null && rpu.preveffectivity > 0){
+				def yrcompleted =  rpu.preveffectivity - rpu.bldgage
+				rpu.dtcompleted = dtSvc.parse('yyyy-MM-dd', yrcompleted + '-01-01')
+			}
+		}
+		if (!rpu.dtoccupied){
+			rpu.dtoccupied = rpu.dtcompleted
+		}
+		else {
+			rpu.dtcompleted = rpu.dtoccupied
+		}
+		rpu.effectiveage = null;
+	}
+
+	void updateBldgStructure(rpu){
+		if (!rpu.structures){
+			em.getStandardStructures().each{
+				rpu.structures << [
+					objid 		: 'BS' + new java.rmi.server.UID(),
+					bldgrpuid 	: rpu.objid,
+					structure 	: it,
+					floor 		: 1,
+				]
+			}
+		}
+	}
+
+	void reviseStructuralTypes(rpu){
+		rpu.structuraltypes.each{ st ->
+			if (!st.bldgtype) st.bldgtype = [:]
+			if (!st.bldgkindbucc) st.bldgkindbucc = [:]
+			st.bldgtype = lookupSvc.lookupBldgTypeByPrevId(st.bldgtype.objid)
+			st.bldgkindbucc = lookupSvc.lookupBldgKindBuccByPrevId(st.bldgkindbucc.objid)
+			if (st.bldgkindbucc ){
+				st.basevalue = st.bldgkindbucc.basevalue 
+				if (st.bldgkindbucc.basevaluetype == 'range'){
+					st.basevalue = st.bldgkindbucc.maxbasevalue 
+				}
+				st.unitvalue = st.basevalue
+			}
+			reviseBldgUses(rpu, st)
+		}
+	}
+
+	void reviseBldgUses( rpu, st) {
+		reviseActualUse( rpu, st  )
+		reviseFloors( rpu, st )
+	}
+	
+	void reviseActualUse( rpu, st  ) {
+		st.bldguses.each{ bu ->
+			bu.basevalue = st.basevalue 
+			bu.actualuse =  lookupSvc.lookupAssessLevelByPrevId(bu.actualuse.objid)
+		}
+	}
+	
+	void reviseFloors(rpu, st) {
+		st.bldguses.each{ bu ->
+			bu.floors.each{ floor -> 
+				def deletedItems = []
+				floor.basevalue = st.basevalue
+				floor.unitvalue = st.basevalue 
+				floor.additionals.each{  addl ->
+					addl.additionalitem = lookupSvc.lookupAdditionalItemByPrevId(addl.additionalitem.objid)
+					if (addl.additionalitem) {
+						addl.expr = addl.additionalitem.expr 
+					}
+					else {
+						deletedItems.add(addl)
+					}
+				}
+				if (floor.additionals)
+					floor.additionals.removeAll( deletedItems )
+			}
+		}
+	}
+}
+ 

@@ -1,0 +1,21 @@
+import com.rameses.annotations.*;
+
+class EntityQueryInterceptor {
+
+	@After( pattern="QueryService.getList", eval="#{args[0]._schemaname=='vw_entityindividual'}" ) 
+	public void afterGetList( evt ) {
+		evt.result.each{ 
+			formatAddress( it?.address, ", " ) 
+		} 
+	}
+
+	void formatAddress( x, delimiter ) { 
+		if ( !x ) return; 
+
+		def txt1 = [x.unitno, x.bldgno, x.bldgname].findAll{( it )}.join(' ').trim(); 
+		def txt2 = [x.street, x.subdivision].findAll{( it )}.join(' ').trim();
+		def txt3 = [x.barangay?.name, x.city, x.municipality, x.province].findAll{( it )}.join(' ').trim();
+		def result = [txt1, txt2, txt3].findAll{( it )}.join( delimiter ).trim();  
+		if (result) x.text = result; 
+	} 
+}

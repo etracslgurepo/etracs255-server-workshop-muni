@@ -1,0 +1,119 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.common.*
+import com.rameses.services.extended.*;
+
+class RuleDeveloperService  {
+
+	@ActiveDB("rule")
+	def em;
+	
+	@Service("DateService")
+	def dateSvc;
+
+	@Service("TemplateService")
+	def template;
+
+	@Env
+	def env;
+
+	@ProxyMethod
+	public def findFact( def o ) {
+		def f = em.read( o, "fact" );
+		f.fields = em.getFactFields(o);
+		f.rulesets = em.getFactRulesets(o);
+		f.rulesets.each {
+			it.old = true;	//marker to indicate if we should create or not. see saveFact below
+		}
+		return f;
+	}
+
+	@ProxyMethod
+	public def saveFact( def o ) {
+		//if(!o.rulesets || o.rulesets.size() < 1 )
+		//	throw new Exception("There must be at least one ruleset");
+
+		if(!o.fields || o.fields.size() < 1)
+			throw new Exception("There must be at least one field");
+
+		if(!o.sortorder) o.sortorder = 0;
+		em.save(o, "fact");
+		o._deleted_rulesets?.each { 
+			em.delete(it, "ruleset_fact");
+		}
+		o.rulesets.each {
+			if(!it.old) {
+				it.rulefact = o.objid;
+				em.create(it, "ruleset_fact");
+			}
+		}
+		o._deleted_fields?.each { 
+			em.delete(it, "fact_field");
+		}
+		int i= 1;
+		o.fields.each {
+			it.sortorder = (i++);
+			it.parentid = o.objid;
+			em.save( it, "fact_field" );
+		}
+	}
+	
+	@ProxyMethod
+	public def findActionDef(o) {
+		def a = em.read( o, "actiondef" );
+		a.params = em.getActionDefParams(o);
+		a.rulesets = em.getActionDefRulesets(o);
+		a.rulesets.each {
+			it.old = true;	//marker to indicate if we should create or not. see saveActionDef below
+		}
+		return a;
+	}
+
+	@ProxyMethod
+	public def saveActionDef( def o ) {
+		if(!o.rulesets || o.rulesets.size() < 1)
+			throw new Exception("There must be at least one ruleset");
+		
+		if(!o.params || o.params.size() < 1)
+			throw new Exception("There must be at least one parameter");
+
+		em.save(o, "actiondef");
+		o._deleted_rulesets?.each {
+			em.delete(it, "ruleset_actiondef");
+		}
+		o.rulesets.each {
+			if(!it.old) {
+				it.actiondef = o.objid;
+				em.create( it, "ruleset_actiondef");
+			}	
+		}
+		o._deleted_params?.each { 
+			em.delete(it, "actiondef_param");
+		}
+		int i = 1;
+		o.params.each {
+			it.sortorder = (i++);
+			it.parentid = o.objid;
+			em.save( it, "actiondef_param")
+		}
+	}
+
+	
+
+	@ProxyMethod
+	public void removeFact(o) {
+		em.removeFactRulesets(o);
+		em.removeFactFields(o);
+		em.removeFact(o);
+	}
+
+	@ProxyMethod
+	public void removeActionDef(o) {
+		em.removeActionDefRulesets(o);
+		em.removeActionDefParams(o);
+		em.removeActionDef(o);
+	}
+
+
+}

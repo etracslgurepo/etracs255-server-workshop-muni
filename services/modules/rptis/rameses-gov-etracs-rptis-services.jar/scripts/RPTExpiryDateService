@@ -1,0 +1,24 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.services.extended.*
+
+public class RPTExpiryDateService extends ActiveCrudListService {
+
+	@ActiveDB("rptexpiry")
+	def em;
+	
+	String pagingKeys = "iyear,iqtr";
+
+	public def getColumns(def o) {
+		return [
+			[name:"iyear", caption:"Year", width:80, resizable:false],
+			[name:"iqtr", caption:"Qtr", width:50, resizable:false],
+			[name:"expirytype", caption:"Type"],
+			[name:"expirydate", caption:"Date", width:100, resizable:false],
+			[name:"reason", caption:"Reason"],
+		];
+	}
+
+
+}

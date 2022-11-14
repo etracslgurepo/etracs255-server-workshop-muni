@@ -1,0 +1,46 @@
+import com.rameses.annotations.*
+import com.rameses.services.extended.*
+
+class RPTCertificationImprovementService 
+{
+    @Service('RPTCertificationService')
+    def certSvc 
+
+    @DataContext('rptcertification')
+    def em_certification;
+
+	
+	@ProxyMethod
+	public def createCertification( cert ) {
+		certSvc.buildFilter(cert)
+		certSvc.createCertification(cert)
+		return openCertification(cert.objid)
+	}
+
+	@ProxyMethod
+	public def openCertification(objid) {
+		def cert = certSvc.openCertification(objid)
+		cert.lands = em_certification.getLandDetails([faasid: cert.faasid])
+		cert.improvements = em_certification.getLandImprovements([faasid: cert.faasid])
+		loadFaasInfo(cert)
+		certSvc.makeHtmlSafe(cert)
+		return cert 
+	}
+
+	void loadFaasInfo(cert){
+		def faas = certSvc.getFaasInfo(cert.faasid)
+		if (faas) {
+			faas.street = (faas.street ? faas.street : faas.barangay.name)
+			
+			def locations = [];
+			locations << faas.barangay.name
+			locations << faas.lgu.name
+			if (faas.parentlgu?.name) locations << faas.parentlgu.name
+			faas.location = locations.join(', ')
+			def certid = cert.objid
+			cert.putAll( faas )
+			cert.objid = certid
+		}
+		certSvc.makeHtmlSafe(cert)
+	}
+}

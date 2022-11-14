@@ -1,0 +1,43 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+
+public class BPExpiryDateService {
+
+	@DataContext("bpexpirydate")
+	def em;
+	
+	@Service("DateService")
+	def dateSvc;
+
+	@ProxyMethod
+	public def findExpiryDate( def d ) {
+		if(!d.year) throw new Exception("year required in findExpiryDate");
+		if(!d.qtr) throw new Exception("qtr required in findExpiryDate");
+		def y = d.year;
+		def q = d.qtr;
+		def bd = dateSvc.getBeginningQtrDate( q, y, 1 );
+		def qtrDate = dateSvc.parseDate( bd, null );
+		def ed = em.find([year:y, qtr: q]).first();
+		if(ed) {
+			return dateSvc.parse( 'yyyy-MM-dd', ed.expirydate);
+		}	
+		else {
+			int mon = qtrDate.month;
+			def smon = "-"+mon+"-";
+			if( mon < 10) smon = "-0"+mon+"-"; 
+			return dateSvc.parseDate(y+smon+"20", null).date;
+		}
+	}
+
+	@ProxyMethod
+	public def getDuedates(def year) {
+		def list = [];
+		list << findExpiryDate([year:year, qtr: 1]);
+		list << findExpiryDate([year:year, qtr: 2]);
+		list << findExpiryDate([year:year, qtr: 3]);
+		list << findExpiryDate([year:year, qtr: 4]);
+		return list;
+	}
+
+}

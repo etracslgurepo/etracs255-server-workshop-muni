@@ -1,0 +1,22 @@
+package rptledger;
+
+import rptis.landtax.facts.*;
+import java.util.*;
+import com.rameses.rules.common.*;
+
+global RuleAction action;
+
+rule "apply-incentive"
+	agenda-group "AFTER_TAX"
+	salience -10
+	no-loop
+	when
+		INC : RPTIncentive($fromyear:fromyear, $toyear:toyear)
+		RLI : RPTLedgerItemFact ( year >= $fromyear, year <= $toyear  )
+	then	
+		System.out.println("apply-incentive");
+		Map map = new HashMap();
+		map.put("incentive", INC);
+		map.put("rptledgeritem", RLI);
+		action.execute( "apply-incentive", map, drools );
+end

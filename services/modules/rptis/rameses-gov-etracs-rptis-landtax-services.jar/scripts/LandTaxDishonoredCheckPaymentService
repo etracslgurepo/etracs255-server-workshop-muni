@@ -1,0 +1,140 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import com.rameses.services.extended.*
+
+class LandTaxDishonoredCheckPaymentService
+{
+	@Env 
+	def env
+
+	@ActiveDB('landtax_dishonored_check_payment')
+	def adb_dishonored 
+
+	@DataContext('rptledger')
+	def em_rptledger
+
+	@DataContext('rptpayment')
+	def em_rptpayment
+
+	@DataContext('rptpayment_item')
+	def em_rptpayment_item
+	
+	@DataContext('rptledger_item')
+	def em_ledger_item
+
+	@Service('LogService')
+	def logSvc 
+
+
+	@ProxyMethod
+	public def testPost() {
+		post([
+			controlno: 'DC-2022-01011',
+			receipt: [objid: 'RCT-7c0f1345:18229fa92c2:-7b30']
+		])
+		return [status: 'success']
+	}
+
+	@ProxyMethod
+	public void post(dishonoredCheck) {
+		def receipt = dishonoredCheck.receipt
+		def payments = em_rptpayment.find([receiptid: receipt.objid]).list()
+		if (!payments) return
+
+		payments.each {
+			revertLedgerPayment(it)
+			em_rptpayment.find([objid: it.objid]).update([voided: 1])
+			logDishonored(dishonoredCheck, it)
+		}
+	}
+
+	void revertLedgerPayment(payment) {
+		def paiditems = adb_dishonored.getSummarizedPaidItems(payment)
+		paiditems.each {
+			revertLedgerItem(payment, it)
+		}
+		adjustLedgerLastYearQtrPaid(payment, paiditems)
+	}
+
+	void revertLedgerItem(payment, paiditem) {
+		def rptledgerid = payment.refid
+		def ledgeritem = em_ledger_item.find([
+			parentid: rptledgerid,
+			year: paiditem.year,
+			revtype: paiditem.revtype,
+		]).first()
+
+		if (ledgeritem) {
+			em_ledger_item.find([objid: ledgeritem.objid])
+				.update([
+					amtpaid: ledgeritem.amtpaid - paiditem.amount 
+				])
+		} else {
+			em_ledger_item.create([
+				parentid: rptledgerid,
+				rptledgerfaasid: paiditem.rptledgerfaasid,
+				rptledgerfaas: [objid: paiditem.rptledgerfaasid],
+				remarks: 'REVERTED: DISHONORED CHECK',
+				basicav: paiditem.assessedvalue ? paiditem.assessedvalue : 0,
+				sefav: paiditem.assessedvalue ? paiditem.assessedvalue : 0,
+				av: paiditem.assessedvalue ? paiditem.assessedvalue : 0,
+				revtype: paiditem.revtype,
+				year: paiditem.year,
+				fromqtr: paiditem.minqtr,
+				toqtr: paiditem.maxqtr,
+				year: paiditem.year,
+				amount: paiditem.amount,
+				amtpaid: 0,
+				priority: paiditem.priority,
+				taxdifference: 0,
+				system: 1,
+			])
+		}
+	}
+
+	void adjustLedgerLastYearQtrPaid(payment, paiditems) {
+		def rptledgerid = payment.refid
+		def ledger = em_rptledger.select('objid,lastyearpaid,lastqtrpaid')
+				.find([objid: rptledgerid])
+				.first()
+		if (!ledger) return
+
+		def firstpaidbasic = paiditems.find{it.revtype == 'basic'}
+		if (!firstpaidbasic) return
+
+		if (ledger.lastyearpaid == firstpaidbasic.year) {
+			ledger.lastyearpaid = firstpaidbasic.minqtr == 1 ? ledger.lastyearpaid - 1 : ledger.lastyearpaid
+			ledger.lastqtrpaid = firstpaidbasic.minqtr == 1 ? 4 : firstpaidbasic.minqtr - 1
+			em_rptledger.find([objid: rptledgerid]).update(ledger)
+		}
+	}
+
+	void logDishonored(dishonoredCheck, payment) {
+		def remarks = 'Post Dishonored Check #' + payment.receiptno 
+		remarks += '  Period Covered: ' + getPeriodCovered(payment) 
+		logSvc.logA( 'dishonoredcheck', 'rptledger', payment.refid, remarks)
+	}
+
+	def getPeriodCovered(payment) {
+		//single year
+		if (payment.fromyear == payment.toyear && payment.fromqtr == 1 && payment.toqtr == 4) {
+			return payment.fromyear
+		}
+		//single year full qtr
+		if (payment.fromyear == payment.toyear && payment.fromqtr == payment.toqtr) {
+			return payment.fromqtr + 'Q, ' + payment.fromyear
+		}
+		//single year multiple quarters
+		if (payment.fromyear == payment.toyear) {
+			return payment.fromqtr + '' + payment.toqtr + 'Q, ' + payment.fromyear
+		}
+
+		//multiple full years
+		if (payment.fromqtr == 1 && payment.toqtr == 4) {
+			return payment.fromyear + ' - ' + payment.toyear
+		}
+
+		return payment.fromqtr + 'Q, ' + payment.fromyear + ' - ' + payment.toqtr + 'Q, ' + payment.toyear 
+	}
+}
+

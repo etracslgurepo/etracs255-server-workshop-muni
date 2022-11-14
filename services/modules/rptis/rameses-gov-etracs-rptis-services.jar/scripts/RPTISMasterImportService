@@ -1,0 +1,19 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class RPTISMasterImportService 
+{
+
+	@Service("PersistenceService")
+    def svc;
+
+	@Async
+	@ProxyMethod
+	public def importData( data ) {
+		data.items.each{
+			it._schemaname = data.schemaname
+			svc.save(it)
+		}
+	}
+}

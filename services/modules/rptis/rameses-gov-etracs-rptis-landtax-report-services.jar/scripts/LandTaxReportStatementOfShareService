@@ -1,0 +1,255 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class LandTaxReportStatementOfShareService{
+    @Env 
+    def env 
+
+    @ActiveDB('landtaxreport_statementofshare')
+    def em
+
+    @Service('DateService')
+    def dtsvc
+
+    @Service('NumberService')
+    def numSvc
+
+    @DataContext('barangay')
+    def em_barangay
+    
+
+    /* to be intercepted for specific report implementations */
+    @ProxyMethod
+    public def getReportData(params) {
+        def data = [:]
+        return data
+    }
+
+
+
+
+    @ProxyMethod
+    def generateIdleLandSharesAbstract(params){
+        String idx = (params.month.index+'').padLeft(2, '0')
+        params.fromdate = dtsvc.parse('yyyy-MM-dd', params.year+"-"+idx+"-01");
+        params.todate = dtsvc.getMonthEndDate(dtsvc.parse("yyyy-MM-dd",params.fromdate));
+        params.todate = dtsvc.add(dtsvc.parse("yyyy-MM-dd",params.todate),"1d");
+
+        def period = 'For the Month of ' + dtsvc.format('MMMMM, yyyy', params.fromdate);
+        params.filter = ' liquidationdate >= $P{fromdate} AND liquidationdate < $P{todate} '
+        if (params.postingtype && params.postingtype.code == 'byrem'){
+            params.filter = ' remittancedate >= $P{fromdate} AND remittancedate < $P{todate} '
+        }
+        
+
+        def items = em.getIdleLandSharesAbstract(params)
+        if (!items) 
+            throw new Exception('Records not found.')
+
+        return [
+            params : [PERIOD : period],  
+            items  : items 
+        ]
+    }
+
+    @ProxyMethod
+    public def generateIdleLandShares( params ) {
+        String idx = (params.month.index+'').padLeft(2, '0')
+        params.fromdate = dtsvc.parse('yyyy-MM-dd', params.year+"-"+idx+"-01")
+        params.todate = dtsvc.getMonthEndDate(dtsvc.parse("yyyy-MM-dd",params.fromdate))
+        params.todate = dtsvc.add(dtsvc.parse("yyyy-MM-dd",params.todate),"1d")
+
+        def period = 'For the Month of ' + dtsvc.format('MMMMM, yyyy', params.fromdate)
+        params.filter = ' liquidationdate >= $P{fromdate} AND liquidationdate < $P{todate} '
+        if (params.postingtype && params.postingtype.code == 'byrem'){
+            params.filter = ' remittancedate >= $P{fromdate} AND remittancedate < $P{todate} '
+        }
+        
+
+        def shares = em.getIdleLandShares(params)
+        if (!shares) 
+            throw new Exception('Records not found.')
+        
+        shares[0].totalshare = shares[0].munisharetotal + shares[0].provsharetotal
+
+        return [
+            params : [PERIOD : period],  
+            shares : shares
+        ]
+    }
+
+
+    @ProxyMethod
+    public def generateBasicSharesAbstract( params ) {
+        buildDateFilters(params)
+        def shares = em.getBasicSharesAbstract(params)
+        if (!shares) 
+            throw new Exception('Records not found.')
+        
+        shares.each{
+            it.brgytotal = it.brgycurr + it.brgyprev + it.brgypenalty
+            it.brgytotalshare = it.brgycurrshare + it.brgyprevshare + it.brgypenaltyshare 
+            it.provmunitotalshare = it.provmunicurrshare + it.provmuniprevshare + it.provmunipenaltyshare
+            it.citytotalshare = it.citycurrshare + it.cityprevshare + it.citypenaltyshare
+        }
+
+        return [
+            params : [PERIOD : params.periodtitle],  
+            shares : shares
+        ]
+    }
+
+
+    @ProxyMethod
+    public def generateBasicShares( params ) {
+        buildDateFilters(params)
+        def shares = em.getBasicShares(params)
+        if (!shares) 
+            throw new Exception('Records not found.')
+        
+        shares.each{
+            it.brgytotal = it.brgycurr + it.brgyprev + it.brgypenalty
+            it.munitotalshare = it.municurrshare + it.muniprevshare + it.munipenaltyshare 
+            it.provtotalshare = it.provcurrshare + it.provprevshare + it.provpenaltyshare 
+            it.citytotalshare = it.citycurrshare + it.cityprevshare + it.citypenaltyshare 
+        }
+
+        return [
+            params : [PERIOD : params.periodtitle],  
+            shares : shares
+        ]
+    }
+
+    @ProxyMethod
+    public def generateBasicSharesSummary( params ) {
+        buildDateFilters(params)
+        def shares = em.getBasicSharesSummary(params)
+        if (!shares) 
+            throw new Exception('Records not found.')
+        return [
+            params : [PERIOD : params.periodtitle],  
+            shares : shares
+        ]
+    }   
+
+
+
+    @ProxyMethod
+    public def generateSefShares( params ) {
+        buildDateFilters(params)
+        def shares = em.getSefShares(params)
+        if (!shares) 
+            throw new Exception('Records not found.')
+        
+        shares[0].totalshare = shares[0].munisharetotal + shares[0].provsharetotal
+
+        return [
+            params : [PERIOD : params.periodtitle],  
+            shares : shares
+        ]
+    }
+
+    @ProxyMethod
+    public def getBarangayShares(params) {
+        buildDateFilters(params)
+        def shares = em.getBrgyShares( params) 
+        if(! shares )  throw new Exception('Records not found.')
+        
+        return [
+            params : [PERIOD : params.periodtitle],  
+            shares : shares
+        ]
+    }
+
+    @ProxyMethod
+    public def getBarangayAdvanceShares(params) {
+        params.filter = ' year = $P{advanceyear} '
+        def brgyCollections = em.getAdvanceCollectionsByBrgy( params) 
+        if(! brgyCollections )  throw new Exception('Records not found.')
+
+        def shares = buildShares(params, brgyCollections)
+
+        def rate = ( env.ORGCLASS.equalsIgnoreCase('city') ? 0.30 :  0.25)
+        def lgutitle  = ( env.ORGCLASS.equalsIgnoreCase('city') ? 'CITY' :  'MUNICIPALITY') + ' SHARE'
+        def brgytitle  = (rate * 100) + '% BARANGAY SHARE' 
+
+        return [
+            params : [PERIOD : 'For the Year ' + params.advanceyear, RATE: rate, LGUTITLE: lgutitle, BRGYTITLE: brgytitle],  
+            shares : shares
+        ]
+    }
+
+    def buildShares(params, brgyCollections) {
+        def shares = initShares()
+        brgyCollections.each{bc ->
+            def share = shares.find{it.objid == bc.brgyid}
+            if (!share) throw new Exception('Barangay ' + bc.brgyid + ' does not exist or has been deleted.')
+            share.basic += bc.basic
+            share.disc += bc.disc
+            share.total += bc.total
+        }
+
+        params.filter = ' rps.year = $P{advanceyear} '
+        def brgyShares = em.getAdvanceBrgySharesAnnual(params)
+        brgyShares.each{bs->
+            def share = shares.find{it.objid == bs.brgyid}
+            if (!share) throw new Exception('Barangay ' + bs.brgyid + ' does not exist or has been deleted.')
+            share.brgybasic += bs.brgybasic
+            share.brgydisc += bs.brgydisc
+            share.brgyshare += bs.brgyshare
+        }
+
+        params.lgutype = env.ORGCLASS.toLowerCase()
+        params.filter = ' rps.year = $P{advanceyear} '
+        def lguShares = em.getAdvanceLguSharesAnnual(params)
+        lguShares.each{ls->
+            def share = shares.find{it.objid == ls.brgyid}
+            if (!share) throw new Exception('Barangay ' + ls.brgyid + ' does not exist or has been deleted.')
+            share.lgubasic += ls.lgubasic
+            share.lgudisc += ls.lgudisc
+            share.lgushare += ls.lgushare
+        }
+
+        return shares
+    }
+
+    def initShares() {
+        def shares = em_barangay.where('1=1').select('objid, brgyname:{name}').orderBy('indexno').list()
+        shares.each {
+            it.basic = 0.0
+            it.disc = 0.0
+            it.total = 0.0
+
+            it.brgybasic = 0.0
+            it.brgydisc = 0.0
+            it.brgyshare = 0.0
+
+            it.lgubasic = 0.0
+            it.lgudisc = 0.0
+            it.lgushare = 0.0
+        }
+        return shares 
+    }
+
+
+    void buildDateFilters(params) {
+        if ("daily".equalsIgnoreCase(params.period)) {
+            String idx = (params.month.index+'').padLeft(2, '0')
+            params.fromdate = dtsvc.parse('yyyy-MM-dd', params.date)
+            params.todate = dtsvc.add(dtsvc.parse("yyyy-MM-dd",params.fromdate),"1d")
+            params.periodtitle = 'For ' + dtsvc.format('MMMMM dd, yyyy', params.fromdate)
+        } else {
+            String idx = (params.month.index+'').padLeft(2, '0')
+            params.fromdate = dtsvc.parse('yyyy-MM-dd', params.year+"-"+idx+"-01")
+            params.todate = dtsvc.getMonthEndDate(dtsvc.parse("yyyy-MM-dd",params.fromdate))
+            params.todate = dtsvc.add(dtsvc.parse("yyyy-MM-dd",params.todate),"1d")
+            params.periodtitle = 'For the Month of ' + dtsvc.format('MMMMM, yyyy', params.fromdate)
+        }
+
+        params.filter = ' liquidationdate >= $P{fromdate} AND liquidationdate < $P{todate} '
+        if (params.postingtype && params.postingtype.code == 'byrem'){
+            params.filter = ' remittancedate >= $P{fromdate} AND remittancedate < $P{todate} '
+        }
+    }
+}

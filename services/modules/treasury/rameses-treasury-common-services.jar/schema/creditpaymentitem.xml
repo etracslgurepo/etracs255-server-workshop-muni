@@ -1,0 +1,18 @@
+<schema>
+	
+	<element tablename="creditpaymentitem">
+		<field name="objid" primary="true" prefix="BRCTI"/>
+		<field name="receiptid" required="true" />
+		<field name="item_objid" required="true" />
+		<field name="item_code" required="true" />
+		<field name="item_title" required="true" />
+		<field name="amount" required="true" />
+		<field name="item_fund_objid" required="false" />
+		<complex name="item_fund" ref="fund" jointype="many-to-one" required="false">
+			<key field="item_fund_objid" target="objid" />
+		</complex>	
+		<field name="remarks"  />
+	</element>
+
+</schema>
+

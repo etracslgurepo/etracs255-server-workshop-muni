@@ -1,0 +1,90 @@
+import com.rameses.annotations.*;
+
+class AccountingReportUtil  {
+
+	@ProxyMethod 
+	public def buildFilters( filters ) { 
+		def vals = [:]; 		
+		def keys = [];
+		filters.eachWithIndex{ o,idx-> 
+			def dtype = o.field?.type; 
+			if ( !dtype ) dtype = "string"; 
+
+			def arr = null; 
+			if ( dtype == "date" ) {
+				arr = buildDateOperator( o, o.dateoperator, idx ); 
+			} else if ( dtype == 'integer' ) {
+				arr = buildNumberOperator( o, o.integeroperator, idx ); 
+			} else if ( dtype == 'decimal' ) {
+				arr = buildNumberOperator( o, o.decimaloperator, idx ); 
+			} else if ( dtype == 'boolean' ) {
+				arr = buildBooleanOperator( o, o.booleanoperator, idx ); 
+			} else if ( dtype == 'list' ) {
+				arr = buildListOperator( o, o.listoperator, idx ); 
+			} else {
+				arr = buildStringOperator( o, o.stringoperator, idx ); 
+			} 
+
+			if ( arr ) { 
+				keys << arr[0];
+				vals.putAll( arr[1] );
+			}
+		} 
+ 
+		return [ keys.join(' AND '), vals ];  
+	} 
+
+	def buildDateOperator( p, opr, idx ) {
+		return buildNumberOperator( p, opr, idx ); 
+	} 
+
+	def buildNumberOperator( p, opr, idx ) {
+		if ( !p.field ) return null;
+
+		def arg = [:];
+		def name1 = 'value'+ idx;
+		arg.put( name1, p.value );
+
+		def pname1 = '''$P{'''+ name1 +'''}'''; 
+		if ( opr.key == 'BETWEEN' ) { 
+			def name2 = name1+'b';
+			def pname2 = '''$P{'''+ name2 +'''}''';
+			arg.put( name2, p.value2 ); 
+			return [ p.field.name +' BETWEEN '+ pname1 +' AND '+ pname2, arg ]; 
+		} else {
+			return [ p.field.name +' '+ opr.key +' '+ pname1, arg ]; 
+		} 
+	} 
+
+	def buildBooleanOperator( p, opr, idx ) { 
+		if ( !p.field ) return null;
+		return [ p.field.name +' '+ opr.key, [:]]; 
+	}
+
+	def buildStringOperator( p, opr, idx ) {
+		if ( !p.field ) return null;
+
+		def arg = [:];
+		def name1 = 'value'+ idx;
+		arg.put( name1, p.value );
+
+		def pname1 = '''$P{'''+ name1 +'''}'''; 
+		return [ p.field.name +' '+ opr.key +' '+ pname1, arg ]; 
+	} 
+
+	def buildListOperator( p, opr, idx ) {
+		if ( !p.field ) return null; 
+
+		def arg = [:];
+		def pnames = []; 
+		p.value.eachWithIndex{ o,ii-> 
+			def kname = 'listvalue_'+idx+'_'+ii; 
+			def pname = '''$P{'''+ kname +'''}'''; 
+			pnames << pname; 
+			arg.put( kname, o.key );
+		}
+
+		def fk = p.field.name +' '+ opr.key +' ( '+ pnames.join(', ') +' )'; 
+		return [ fk, arg ];  
+	}
+} 

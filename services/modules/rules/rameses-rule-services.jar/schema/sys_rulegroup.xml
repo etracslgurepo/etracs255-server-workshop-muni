@@ -1,0 +1,8 @@
+<schema>
+	<element tablename="sys_rulegroup">
+		<field name="name" primary="true"/>
+		<field name="ruleset" primary="true"/>
+		<field name="title" required="true"/>
+		<field name="sortorder" required="true"/>
+	</element>	
+</schema>	

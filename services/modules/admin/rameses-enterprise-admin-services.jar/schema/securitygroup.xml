@@ -1,0 +1,11 @@
+<schema>
+
+	<element name="securitygroup" tablename="sys_securitygroup">
+		<field name="objid" primary="true"/>	
+		<field name="name" />
+		<field name="usergroup_objid" />
+		<field name="exclude"/>
+	</element>
+	
+	
+</schema>

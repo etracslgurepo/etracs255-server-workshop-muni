@@ -1,0 +1,17 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+
+class BPLobListingReportService
+{
+	
+	@ActiveDB("bpreport")
+	def em
+
+	@ProxyMethod
+	public def getReport() { 
+		def list = em.getLobList();
+		if( ! list ) throw new Exception('No records found.');
+		return list;
+	}
+
+}

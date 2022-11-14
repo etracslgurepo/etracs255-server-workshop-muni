@@ -1,0 +1,88 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import java.rmi.server.UID;
+import com.rameses.util.*;
+import com.rameses.io.*;
+
+class EntityFingerPrintService {
+
+	@DataContext("entity")
+	def	entitydb; 
+
+	@DataContext("entity_fingerprint")
+	def	fingerprintdb; 
+
+	@Service 
+	def self;
+
+	@Service('DateService') 
+	def dateSvc; 
+
+	@ProxyMethod
+	public def getList( params ) { 
+		if ( !params.entityid ) return []; 
+
+		return fingerprintdb.find([ entityid: params.entityid ])
+							.select('objid,fingertype,image')
+							.list(); 
+	}
+
+	@ProxyMethod
+	public def save( params ) {
+		def entitydata = entitydb.find([ objid: params.entityid ]).first(); 
+		if ( !entitydata ) throw new Exception('Entity record does not exist'); 
+
+		def rundate = dateSvc.getServerDate(); 
+		if ( params.objid ) {
+			fingerprintdb.find([ objid: params.objid ]).update([ 
+				fingertype: params.fingertype, 
+				image: params.image, 
+				data: params.data, 
+				dtfiled: rundate
+			]);
+			return params; 
+		
+		} else {
+			def fp = fingerprintdb.create([
+				entityid: params.entityid, 
+				fingertype: params.fingertype, 
+				image: params.image, 
+				data: params.data,  
+				dtfiled: rundate
+			]);
+			fp.remove('data'); 
+			fp.remove('image'); 
+			return fp; 
+		}
+	}
+
+	@ProxyMethod
+	public def getFingerPrint( params ) {
+		return fingerprintdb.find([ entityid: params.entityid, fingertype: params.type ]).select('image').first(); 
+	}
+
+	@ProxyMethod(local=true) 
+	public def getMedia( params ) { 
+		def result = self.getFingerPrint( params ); 
+		if ( result == null || result.image == null ) return null; 
+
+		def o = result.image; 
+		if ( o instanceof String ) {
+			def base64 = new Base64Cipher(); 
+            if ( base64.isEncoded( o )) {
+                o = base64.decode( o ); 
+            }
+		}
+
+		if ( o ) {
+			def mf = new MediaFile(); 
+			mf.setContentType('image/jpeg');  
+			mf.setContent( o );  
+			return mf; 
+			
+		} else {
+			return null; 
+		} 
+	}
+
+}

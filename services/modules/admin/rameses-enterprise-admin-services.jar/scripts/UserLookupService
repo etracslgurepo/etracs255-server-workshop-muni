@@ -1,0 +1,33 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import java.rmi.server.UID;
+import com.rameses.util.*;
+import com.rameses.io.*;
+
+
+class UserLookupService  {
+
+	@PersistenceContext("admin")
+	def em;
+
+	@ProxyMethod
+	public def getColumns( param ) {
+		return  [
+			[name:'username', caption:'User Name'],
+			[name:'lastname', caption:'Last Name'],
+			[name:'firstname', caption:'First Name'],
+			[name:'jobtitle', caption:'Job Title'],
+		]
+	}
+
+	@ProxyMethod
+	public List getList( params ) { 
+		if (!params.name) params.name = params.searchtext; 
+		params.name = params.name? params.name+'%': '%';
+		params.searchtext = params.searchtext ? params.searchtext : '%'
+		def filter = [filter: '''u.username LIKE $P{name}''' ];
+		return em.sqlContext.createNamedQuery("user:getList").setParameters(params).setVars(filter).resultList;	
+	}
+}
+
+

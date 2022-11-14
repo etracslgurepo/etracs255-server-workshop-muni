@@ -1,0 +1,58 @@
+import com.rameses.annotations.*
+import com.rameses.services.extended.*;
+
+class OrgService extends ActiveCrudListService {
+
+	@ActiveDB("org")
+	def	em; 
+
+	@Env
+	def env;
+
+	@ProxyMethod
+	public def getOrgClasses() {
+		return em.getOrgClasses();
+	}
+
+	@ProxyMethod
+	public def getColumns(o) {
+		return[
+			[name:'code', caption:'Code', maxWidth:150 ], 
+			[name:'name', caption:'Name' ],
+			[name:'txncode', caption:'Txn Code' ] 
+		];
+	}
+
+
+	public void beforeCreate(o) {
+		o.root = 0;
+	}	
+
+	public void afterOpen(o) {
+		if(o.parent?.objid) {
+			def p = em.read( [objid: o.parent.objid] );
+			o.parent.name = p.name;
+		}
+	}
+
+	@ProxyMethod
+	public def getRoot() {
+		return em.findRoot();
+	}
+
+	@ProxyMethod
+	public def findByName(def o) {
+		return em.findByName(o);
+	}
+
+	@ProxyMethod
+	public def findByCode(def o) {
+		return em.findByCode(o);
+	}
+
+
+	@ProxyMethod
+	public def getOrgsByParent( parent ) {
+		return em.getOrgsByParent(parent)	
+	}
+}

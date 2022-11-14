@@ -1,0 +1,163 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.common.*
+import com.rameses.services.extended.*;
+
+
+class RuleExporterService {
+
+	@ActiveDB('rule') 
+	def rule;
+
+	@ActiveDB('ruletool') 
+	def ruletool;
+	
+	@Service("RuleMgmtService")
+	def service;
+
+
+	@ProxyMethod 
+	public def getRules( params ) {
+		if ( !params.ruleset ) throw new Exception('ruleset parameter is required');
+
+		return ruletool.getRules( params ); 
+	} 
+
+	@ProxyMethod 
+	public def open( params ) { 
+		if ( !params.objid ) throw new Exception('objid parameter is required');
+
+		def o = ruletool.findRule([ ruleid: params.objid ]); 
+		if ( !o ) throw new Exception('Rule record not found'); 
+
+		o.conditions = ruletool.getRuleConditions([ ruleid: params.objid ]); 
+		o.conditions.each{ rc-> 
+			rc.vars = ruletool.getRuleConditionVars([ conditionid: rc.objid ]); 
+			rc.contraints = ruletool.getRuleConditionConstraints([ conditionid: rc.objid ]);  
+		}
+		o.actions = ruletool.getRuleActions([ ruleid: params.objid ]); 
+		o.actions.each{ ra-> 
+			ra.params = ruletool.getRuleActionParams([ actionid: ra.objid ]);  
+		} 
+		o.buildver = 2.0; 
+		return o; 
+	} 
+
+	@ProxyMethod
+	public def upload( o ) { 
+		try { 
+			o.noloop = ( o.noloop == null ? 1 : o.noloop ); 
+			if ( o.buildver && o.buildver >= 2.0 ) {
+				uploadV2( o ); 
+
+			} 
+			else { 
+				buildVars( o ); 
+
+				def rec = rule.findRule([ objid: o.objid ]); 
+				if ( rec && rec.state.toString().toUpperCase() == 'DEPLOYED' ) {
+					o.state = 'DEPLOYED'; 
+				} else {
+					o.state = 'DRAFT'; 
+				}
+
+				service.create( o ); 
+				o.conditions.each { 
+					it.notexist = ( it.notexist == null ? 0 : it.notexist ); 
+					service.saveCondition( it ); 
+				} 
+				o.actions.each { 
+					service.saveAction( it ); 
+				} 
+			} 
+		} 
+		catch(e) { 
+			throw e; 
+		} 
+	}
+
+	private void uploadV2( o ) { 
+		if ( o.dtfiled instanceof Date ) {
+			def formatter = new java.text.SimpleDateFormat('yyyy-MM-dd HH:mm:ss');
+			o.dtfiled = formatter.format( o.dtfiled ); 
+		}
+
+		def rec = rule.findRule([ objid: o.objid ]); 
+		if ( rec && rec.state.toString().toUpperCase() == 'DEPLOYED' ) {
+			o.state = 'DEPLOYED'; 
+		} else { 
+			o.state = 'DRAFT'; 
+		} 
+
+		rule.save( o ); 
+		o.conditions.each{   
+			it.notexist = ( it.notexist == null ? 0 : it.notexist ); 
+			rule.save( it, "condition" ); 
+		} 
+		o.conditions.each{ c-> 
+			c.vars.each{ 
+				rule.save( it, "var" ); 
+			}
+		} 
+		o.conditions.each{ c-> 
+			c.contraints.each{ 
+				if ( it.listvalue ) {
+					it.listvalue = rule.serializer.read( it.listvalue );  
+				}
+				rule.save( it, "constraint" ); 
+			} 
+		} 
+		o.actions.each{ a-> 
+			rule.save( a, "action" ); 
+
+			a.params.each{ 
+				if ( it.listvalue ) { 
+					it.listvalue = rule.serializer.read( it.listvalue );  
+				} 
+				rule.save( it, "actionparam" ); 
+			} 
+		} 
+	} 
+
+	private void buildVars( o ) { 
+		o.vars = []; 
+		o.conditions.each{ c-> 
+			if ( c.varname ) {
+				o.vars << [ 
+					objid   : c.objid, 
+					parentid: c.objid, 
+					ruleid  : c.parentid, 
+					varname : c.varname, 
+					pos     : c.pos, 
+					datatype: c.fact?.factclass 					
+				]; 
+			} 
+			c.constraints.each{ cc-> 
+				if ( cc.varname ) {
+					o.vars << [
+						objid   : cc.objid, 
+						parentid: c.objid, 
+						ruleid  : c.parentid, 
+						varname : cc.varname, 
+						pos     : cc.pos, 
+						datatype: cc.field?.vardatatype 
+					]; 
+				} 
+			} 
+		}
+
+		o.conditions.each{ a-> 
+			a.constraints.findAll{( it.var?.name )}.each{ b-> 
+				def vv = o.vars.find{ it.varname==b.var.name } 
+				b.var.objid = vv?.objid; 
+			} 
+		}
+		o.actions.each{ a-> 
+			a.params.findAll{( it.var.name )}.each{ b-> 
+				def vv = o.vars.find{ it.varname==b.var.name }
+				b.var.objid = vv?.objid;  
+			} 
+		} 
+	} 
+} 

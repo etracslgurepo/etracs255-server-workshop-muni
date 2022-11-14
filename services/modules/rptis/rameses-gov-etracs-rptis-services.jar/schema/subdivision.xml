@@ -1,0 +1,53 @@
+<schema>
+    <element name="subdivision" tablename="subdivision">
+        <field name="objid" primary="true" />
+        <field name="state" required="true" />
+        <field name="ry" required="true" type="integer" />
+        <field name="txntype_objid" required="true" />
+        <field name="txnno" required="true" />
+        <field name="txndate" required="true" />
+        <field name="autonumber" required="true" type="boolean" />
+        <field name="effectivityyear" required="true" type="integer" />
+        <field name="effectivityqtr" required="true" type="integer" />
+        <field name="motherfaasid" />
+        <field name="mothertdnos" />
+        <field name="motherpins" />
+        <field name="memoranda" required="true" />
+        <field name="lguid" required="true" />
+        <field name="filetype" required="true" />
+        <field name="originlguid" />
+    </element>
+
+    <element name="subdividedland" tablename="subdividedland">
+        <field name="objid" primary="true" />
+        <field name="subdivisionid" required="true" />
+        <field name="newpin" required="true" />
+        <field name="newfaasid" required="true" />
+        <field name="newrpid" required="true" />
+        <field name="newrpuid" required="true" />
+    </element>
+
+    <element name="affectedrpu" tablename="subdivisionaffectedrpu">
+        <field name="objid" primary="true" />
+        <field name="subdivisionid" required="true" />
+        <field name="subdividedlandid" />
+        <field name="prevfaasid" />
+        <field name="prevtdno" />
+        <field name="prevpin" />
+        <field name="newfaasid" />
+        <field name="newsuffix" />
+        <field name="newpin" />
+        <field name="newrpuid" required="true" />
+        <field name="newrpid" />
+        <field name="isnew" type="boolean" />
+    </element>
+
+    <element name="motherland" tablename="subdivision_motherland">
+        <field name="objid" primary="true" />
+        <field name="subdivisionid" required="true" />
+        <field name="landfaasid" required="true" />
+        <field name="rpuid" required="true" />
+        <field name="rpid" required="true" />
+    </element>    
+</schema>
+

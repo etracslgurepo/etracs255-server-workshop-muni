@@ -1,0 +1,6 @@
+provider=websocket
+ws.host=${cloud_ws.host}
+ws.protocol=${cloud_ws.channel}
+ws.group=${cloud_ws.group}
+ws.enabled=${cloud_ws.enabled}
+debug=true

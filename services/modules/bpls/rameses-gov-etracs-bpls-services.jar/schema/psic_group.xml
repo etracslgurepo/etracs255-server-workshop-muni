@@ -1,0 +1,9 @@
+<schema>
+	<element tablename="psic_group">
+		<field name="code" primary="true" searchable="true" indexed="true" visible="true" caption="Group Code"/>
+		<field name="description"  caption="Description"/> 
+		<field name="details"  caption="Details"/>
+		<field name="divisionid" />
+	</element>
+</schema>
+

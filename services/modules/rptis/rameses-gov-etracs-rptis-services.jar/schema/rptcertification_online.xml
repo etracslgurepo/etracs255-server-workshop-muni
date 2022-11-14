@@ -1,0 +1,13 @@
+<schema>
+	<element tablename="rptcertification_online">
+		<field name="objid" primary="true" prefix="CERTO" />
+		<field name="state" required="true" caption="State" />
+		<field name="reftype" required="true"  caption="Type" />
+		<field name="refid" required="true"  />
+		<field name="refdate" required="true"  />
+		<field name="refno" required="true"  caption="Ref No." />
+		<field name="orno" caption="OR No." />
+		<field name="ordate" caption="OR Date" />
+		<field name="oramount" caption="OR Amount" />
+	</element>
+</schema>

@@ -1,0 +1,72 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class LandTaxSMSService
+{
+	@Env 
+	def env 
+
+	@ActiveDB('landtax_sms')
+	def em
+
+	@Service('DateService')
+	def dtSvc 
+
+	@Service('RPTSmsService')
+	def smsSvc
+
+	@Service('RPTBillingService')
+	def billSvc
+
+	@Service('NumberService')
+	def numSvc
+
+
+	/* return all unpaid ledgers for this client */
+	@ProxyMethod
+	public def getUnpaidLedgers(){
+		def pdate = dtSvc.parseCurrentDate();
+		def params = [
+			cy   : pdate.year,
+		]
+		return 	em.getUnpaidLedgers(params)
+	}
+
+
+	@ProxyMethod
+	public void sendTaxDueInfo(ledger){
+		println 'sendTaxDueInfo -> ' + ledger.phoneno  
+
+		def bill = billSvc.generateBillByLedger(ledger)
+		def discount = bill.totals.basicdisc + bill.totals.sefdisc
+
+		def msg = 'ADVISORY: Balance of your property TD No. ' + ledger.tdno + ' ' 
+		
+		def total = bill.totals.total
+		if (discount > 0.0){
+			msg += 'is P' + numSvc.format('#,##0.00', (total + discount)) + '. '
+			msg += 'Discount of P' + numSvc.format('#,##0.00', discount) + ' is availed '
+			msg += 'if payment is made on or before ' + dtSvc.format('MMMM dd, yyyy', bill.validuntil) + '. '
+		}
+		else {
+			msg += 'is P' + numSvc.format('#,##0.00', total) + '. '
+			msg += 'This is valid until ' + dtSvc.format('MMMM dd, yyyy', bill.validuntil) + '. '
+			msg += 'Please pay ontime to avoid extra penalty.'
+		}
+
+		msg += '\nLGU - ' + env.ORGNAME
+
+
+		def smstext = [
+			objid 		: 'SMS' + new java.rmi.server.UID(),
+			phoneno		: ledger.phoneno,
+			refid 		: ledger.objid,
+			message		: msg,
+			keyword 	: 'NOTIFY',
+			retcode 	: 'OK',
+		]
+		smsSvc.send(smstext)
+	}
+}
+

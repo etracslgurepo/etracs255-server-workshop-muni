@@ -1,0 +1,8 @@
+<schema>
+	<element tablename="lobclassification">
+		<field name="objid" primary="true"/>
+		<field name="state" required="true" />
+		<field name="name" required="true" caption="Name" searchable="true" indexed="true"/>
+		<field name="remarks"/>
+	</element>
+</schema>

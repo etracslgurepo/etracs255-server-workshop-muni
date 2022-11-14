@@ -1,0 +1,21 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+
+class BPCollectionListingReportService
+{
+	
+	@ActiveDB("bpreport")
+	def em
+
+	@ProxyMethod
+	public def getReport(def params) { 
+		params.imonth = ( params.month ? params.month.index : '%' );
+		params.day = ( params.day ? params.day : '%' );
+		params.barangayid = ( params.barangay ? params.barangay.objid : '%' );
+
+		def list = em.getBPCollectionList( params );
+		if( ! list ) throw new Exception('No records found.');		
+		return list;
+	}
+
+}

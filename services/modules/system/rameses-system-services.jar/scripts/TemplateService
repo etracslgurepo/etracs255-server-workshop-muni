@@ -1,0 +1,30 @@
+import com.rameses.annotations.*;
+
+class TemplateService {
+
+	@Resource("TemplateService")
+	def template;
+	
+	@ProxyMethod 
+	public def get( String name, def params ) {
+		try {
+			return template.render("${name}.gtpl".toString(), params );	
+		}
+		catch(e) {	
+			System.out.println( e.message );
+			return null;
+		}
+	}
+	
+	@ProxyMethod 
+	public def render( String name, def params ) {
+		try {
+			return template.render(name, params ).toString();	
+		}
+		catch(e) {
+			e.printStackTrace();
+			throw e;
+		}
+	}
+	
+}

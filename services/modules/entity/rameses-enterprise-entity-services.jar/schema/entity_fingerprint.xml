@@ -1,0 +1,12 @@
+<schema adapter="main">
+	
+	<element tablename="entity_fingerprint">
+		<field name="objid" primary="true" prefix="EFP"/>
+		<field name="entityid" required="true"/>
+		<field name="dtfiled" required="true"/>
+		<field name="fingertype" required="true"/>
+		<field name="data" required="true"/>
+		<field name="image" required="true"/>
+	</element>
+
+</schema>

@@ -1,0 +1,32 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+
+class LargeCattleTransferInterceptor {
+
+	@DataContext("cashreceipt_largecattletranfer")
+	def em; 
+
+	@After(pattern="CashReceiptService.post", eval="#{result.collectiontype?.handler == 'lct' && result.txnmode != 'CAPTURE'}")
+	public void afterPost( evt ) { 
+		def cs = evt.result; 
+		em.create( cs ); 
+	} 
+
+	@After(pattern="CashReceiptService.open", eval="#{result.collectiontype?.handler == 'lct'}")
+	public void afterOpen1( evt ) { 
+		afterOpenImpl( evt.result ); 
+	} 
+
+	@After(pattern="PersistenceService.read", eval="#{result?.collectiontype?.handler == 'lct'}")
+	public void afterOpen2( evt ) { 
+		afterOpenImpl( evt.result ); 
+	} 
+
+	void afterOpenImpl( data ) { 
+		if ( data == null ) return; 
+
+		def cs = em.find([ objid: data.objid ]).first(); 
+		if ( cs ) data.putAll( cs ); 
+	} 
+}

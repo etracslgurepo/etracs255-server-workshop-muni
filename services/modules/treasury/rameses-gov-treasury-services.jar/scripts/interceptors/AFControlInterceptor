@@ -1,0 +1,26 @@
+import com.rameses.annotations.*;
+
+class AFControlInterceptor {
+	
+	@DataContext('af_control') 
+	def afc_db; 
+
+	@After( pattern="CashReceiptService.removeReceipt" ) 
+	public void afterRemoveReceipt( evt ) { 
+		def rct = evt.result; 
+		if ( !rct?.controlid ) return; 
+
+		def afcparam = [ objid: rct.controlid ]; 
+		def afcdata = afc_db.find( afcparam ).first();  
+		if ( !afcdata ) return; 
+
+		if ( (rct.series+1) == afcdata.currentseries ) { 
+			// this is the correct series to remove 
+		} else { 
+			throw new Exception('Please remove first the last series'); 
+		} 
+
+		afc_db.find( afcparam ).update([ currentseries: afcdata.currentseries-1 ]);  
+	}
+
+}

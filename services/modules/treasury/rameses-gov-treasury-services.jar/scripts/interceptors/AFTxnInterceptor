@@ -1,0 +1,244 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+import com.rameses.util.*;
+
+class AFTxnInterceptor { 
+	
+	@Service("SequenceService") 
+	def seqSvc;
+
+	@Service("DateService") 
+	def dateSvc;
+
+	@Service("PersistenceService") 
+	def persistSvc;
+
+	@Service("AFInventoryService")
+	def afInvSvc;	
+
+	@DataContext("af_control")
+	def afcontrol_db;
+
+	@DataContext("af_control_detail")
+	def afcd_db;
+
+	@DataContext("afrequest")
+	def afReq_db;
+
+	@DataContext("aftxnitem")
+	def aftxnItem_db;
+
+	@DataContext("aftxn")
+	def aftxn_db;
+
+	@DataContext("sys_user")
+	def user_db;
+
+	@Env
+	def env;
+
+	@Before(pattern="PersistenceService.create", eval="#{ args[0]._schemaname == 'aftxn' }")
+	public void beforeCreate( evt ) { 
+		def o = evt.args[0];
+		o.txndate = dateSvc.getServerDate(); 
+		o.controlno = "IRAF" + seqSvc.getNextFormattedSeries("IRAF");
+		o.user = [objid: env.USERID, name: env.FULLNAME, title: env.JOBTITLE];
+		o.org = [objid:env.ORGID, name: env.ORGNAME];
+		o.state = "DRAFT";
+
+		if ( !o.dtfiled ) o.dtfiled = o.txndate; 
+
+		if ( o.request ) {
+			afReq_db.find([ objid: o.request.objid ]).update([ state:'CLOSED' ]);
+		}
+
+		o.items?.each {
+			it.qtyserved = 0;
+		}
+	} 
+
+
+	@After(pattern="PersistenceService.read", eval="#{ args[0]._schemaname == 'aftxn' }")
+	public void afterOpen( evt ) { 
+		def result = evt.result;
+
+		def users = [result.user, result.issueto].findAll{( it )}
+		users.each{ o-> 
+			def user = user_db.find([ objid: o.objid.toString() ]).select('objid,jobtitle').first();
+			if ( user ) o.title = user.jobtitle; 
+		} 	
+
+		result.requester = [objid: null]; 
+		if ( result.request?.objid ) {
+			def req = afReq_db.find([ objid: result.request.objid ]).select('dtfiled,requester.*').first(); 
+			if ( req ) {
+				result.requester = req.requester; 
+				result.request.dtfiled = req.dtfiled;
+			}
+		}
+
+		def scols1 = "parent.dtfiled,parent.batchno,parent.batchref,parent.prefix,parent.suffix,parent.cost,parent.salecost";
+		def scols2 = ",startseries:{MIN(parent.startseries)},endseries:{MAX(parent.endseries)}";
+		def scols3 = ",startstub:{MIN(parent.stubno)},endstub:{MAX(parent.stubno)},stubcount:{COUNT(DISTINCT parent.objid)}"; 
+
+		result.items.each { r->
+			r.items = afcd_db.find([ aftxnitemid: r.objid ]).select( scols1 + scols2 + scols3 ).groupBy( scols1 ).list().collect{[ 
+				uuid: 'UUID-'+ new java.rmi.server.UID().toString(), 
+				batchno: it.parent.batchno, 
+				batchref: it.parent.batchref, 
+				prefix: it.parent.prefix,
+				suffix: it.parent.suffix,
+				cost: it.parent.cost, 
+				salecost: it.parent.salecost,
+				startseries: it.startseries, 
+				endseries: it.endseries, 
+				startstub: it.startstub, 
+				endstub: it.endstub, 
+				stubcount: it.stubcount 
+			]} 
+			r.remarks = r.items.collect{ i-> i.startseries + "-" + i.endseries +";" }.join(","); 
+		} 
+	} 
+
+	@Before(pattern="PersistenceService.removeEntity", eval="#{ args[0]._schemaname == 'aftxn' }")
+	public void beforeRemoveEntity( evt ) { 
+		def param = evt.args[0]; 
+		if ( !param?.objid ) return; 
+
+		def findby = [ objid: param.objid ]; 
+		def lockid = new java.rmi.server.UID().toString();
+		aftxn_db.find( findby ).update([ lockid: lockid ]); 
+
+		def aftxn = aftxn_db.find( findby ).select('objid,state,request.*').first(); 
+		if ( !aftxn ) return; 
+
+		if ( aftxn.state.toString().toUpperCase() != 'DRAFT' ) 
+			throw new Exception('Action not allowed. Transaction status is already '+ aftxn.state );  
+
+		aftxn_db.find( findby ).update([ state: 'CANCELLED' ]); 
+
+		findby.clear(); 
+		findby.aftxnid = param.objid; 
+		def cnt = afcd_db.find( findby ).select("cnt:{COUNT(*)}").val();
+		if ( cnt > 0 )
+			throw new Exception("Cannot remove this transaction. Please revert the accountable forms issued first");
+
+		// and inject a findBy parameter because we only want the status to be CANCELLED 
+		// and not the record to be deleted since the control number is already in sequence.		
+		param.findBy = [ objid: 'CANCELLED-'+ param.objid ]; 
+		param.request = aftxn.request; 
+	} 
+
+	@After(pattern="PersistenceService.removeEntity", eval="#{ args[0]._schemaname == 'aftxn' }")
+	public void afterRemoveEntity( evt ) { 
+		def param = evt.args[0]; 
+		if ( param.request?.objid ) {
+			afReq_db.find([ objid: param.request.objid ]).update([ state: 'OPEN' ]); 
+		}
+	} 
+
+	@After(pattern="PersistenceService.create", eval="#{ args[0]._schemaname == 'aftxn' && args[0].txntype=='FORWARD' }")
+	public void afterCreateForward( evt ) { 
+		def res = evt.result; 
+		aftxn_db.find([ objid: res.objid ]).update([ state: 'POSTED']); 
+		def form = res.form;
+		def afunit = form.afunit;
+
+		res.items.each{ a-> 
+			aftxnItem_db.find([ objid: a.objid ]).update([ qtyserved: a.qty ]); 
+
+			def afc = [:]; 
+			afc.afid = a.item.objid;
+			afc.unit = a.unit;
+			afc.afunit = afunit; 
+			if( afunit.formtype == 'serial' ) {				
+				afc.startseries = form.startseries;
+				afc.endseries = form.endseries;
+				afc.currentseries = form.currentseries;
+			}
+			else {
+				afc.startseries = 1; 
+				afc.endseries = form.qty; 
+				afc.currentseries = afc.startseries;
+			}
+
+			afc.dtfiled = res.dtfiled;
+			afc.stubno = form.stubno;
+			afc.prefix = form.prefix;
+			afc.suffix = form.suffix;
+			afc.cost = a.cost;
+			afc.batchno = 1;
+			afc.allocation = res.allocation;
+
+			def ref = [:];
+			ref.aftxnid = a.parentid;
+			ref.aftxnitemid = a.objid;
+			ref.refid = a.parentid;
+			ref.refno = res.controlno;
+			ref.refdate = res.dtfiled;
+			ref.reftype = res.txntype;
+			ref.remarks = res.txntype;
+			ref.txntype = res.txntype;
+			ref.txndate = res.txndate;
+			ref.issueto = res.issueto;
+			ref.respcenter = res.respcenter;
+			afInvSvc.add( ref, afc );
+		}
+	} 
+
+	@After(pattern="PersistenceService.create", eval="#{ args[0]._schemaname == 'aftxn' && args[0].txntype.toString().matches('TRANSFER|RETURN|MANUAL_ISSUE') }")
+	public void afterTransferOrReturn( evt ) { 
+		def res = evt.result; 
+		aftxn_db.find([ objid: res.objid ]).update([ state: 'POSTED' ]); 
+
+		def afitems = res.afitems.collect{ it.objid } 
+		if ( !afitems ) throw new Exception('Please provide at least one Accountable Form'); 
+
+		def owner = res.issueto;
+		def assignee = owner;
+		if ( res.txntype == 'RETURN' ) {
+			owner = [objid: null, name: null]; 
+			assignee = owner; 
+		}
+
+		afitems.each{
+			afcontrol_db.find([ objid: it ]).update([ lockid: new java.rmi.server.UID().toString() ]); 
+
+			def afc = afcontrol_db.find([ objid: it ]).first(); 
+			if ( !afc ) throw new Exception('failed to locate Accountable Form '+ it); 
+
+			def errkey = 'AF#'+ afc.afid +' Stub#'+ afc.stubno; 
+			if ( afc.active.toString() != '0' ) throw new Exception(errkey +' must not be active'); 
+			if ( afc.currentseries > afc.endseries ) throw new Exception(errkey +' is already consumed'); 
+
+			if( res.txntype != 'MANUAL_ISSUE') {
+				if ( afc.state.toString() != 'ISSUED' ) throw new Exception(errkey +' must be in ISSUED state'); 
+				if ( afc.assignee.objid != afc.owner.objid ) throw new Exception(errkey +' assignee must be the same as the owner'); 
+			}
+			else {
+				if(afc.state.toString() != 'OPEN' )  throw new Exception(errkey +' must be in OPEN state');  
+			}
+			afcontrol_db.find([ objid: it ]).update([ owner: owner, assignee: assignee, lockid:'{NULL}' ]); 
+		}
+
+		res.items.eachWithIndex{ a,idx-> 
+			aftxnItem_db.find([ objid: a.objid ]).update([ qtyserved: a.qty ]); 
+
+			def ref = [:];
+			ref.aftxnid = a.parentid;
+			ref.aftxnitemid = a.objid;
+			ref.refid = a.parentid;
+			ref.refno = res.controlno;
+			ref.refdate = res.dtfiled;
+			ref.reftype = res.txntype;
+			ref.remarks = res.txntype;
+			ref.txntype = res.txntype;
+			ref.txndate = res.txndate;
+			ref.issueto = owner; 
+			ref.respcenter = res.respcenter;
+			afInvSvc.add( ref, res.afitems[idx] );
+		} 
+
+	} 
+
+}

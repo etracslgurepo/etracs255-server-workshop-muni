@@ -1,0 +1,7 @@
+<schema>
+    <element tablename="rpumaster">
+        <field name="objid" primary="true"/>
+        <field name="currentfaasid"/>
+        <field name="currentrpuid"/>
+    </element>
+</schema>

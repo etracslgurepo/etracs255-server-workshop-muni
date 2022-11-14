@@ -1,0 +1,42 @@
+import com.rameses.annotations.*;
+
+class ItemAccountListInterceptor {
+
+	@After(pattern="QueryService.getNodeList", eval="#{ args[0]._schemaname == 'itemaccount' }")
+	public void afterGetNodeList( evt ) {
+		def result = evt.result;
+		result << [title:'DRAFT', state:'DRAFT'];
+		result << [title:'ACTIVE', state:'ACTIVE'];
+		result << [title:'INACTIVE', state:'INACTIVE'];
+	}
+
+	@Before(pattern="QueryService.getList", eval="#{ args[0]._schemaname == 'itemaccount' }")
+	public void beforeGetList( evt ) {
+		def o = evt.args[0];
+		def wherelist = [];
+		def wheremap  = [:]; 
+		if ( o.node?.state ) {
+			wherelist << "state = :state";
+			wheremap.state = o.node.state;
+		} 
+
+		if ( o.exclude instanceof List && o.exclude ) {
+			wherelist << "objid NOT IN ("+ o.exclude.collect{( "'"+ it +"'" )}.join(",") +")"; 
+		} 
+		else if ( o.exclude instanceof Map && o.exclude.objid ) {
+			wherelist << "objid NOT IN ('"+ o.exclude.objid +"')"; 
+		}
+		else if ( o.exclude instanceof String ) {
+			wherelist << "objid NOT IN ("+ o.exclude +")"; 
+		}
+
+		if ( o.where ) {
+			wherelist << o.where[0]; 
+			o.where[0] = wherelist.join(" AND "); 
+			o.where[1].putAll( wheremap ); 
+		}
+		else {
+			o.where = [wherelist.join(" AND "), wheremap]; 
+		}
+	}
+}

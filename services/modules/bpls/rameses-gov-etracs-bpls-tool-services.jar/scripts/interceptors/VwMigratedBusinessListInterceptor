@@ -1,0 +1,49 @@
+import com.rameses.annotations.*;
+
+class VwMigratedBusinessListInterceptor {
+
+	@After(pattern="QueryService.getNodeList", eval="#{ args[0]._schemaname == 'vw_migrated_business' }")
+	public void afterGetNodeList( evt ) { 
+		def result = evt.result;
+		result << [ title: 'For Approval', state:'FOR-APPROVAL' ];
+		result << [ title: 'Approved', state:'COMPLETED' ];
+	}
+
+	@Before(pattern="QueryService.getList", eval="#{ args[0]._schemaname == 'vw_migrated_business' }")
+	public void beforeGetList( evt ) { 
+		def param = evt.args[0];
+
+		def qmap = [:]; 
+		def wheres = [];
+		def orderby = null; 
+
+		if ( param.node?.state == 'FOR-APPROVAL' ) {
+			wheres << " state = :state AND appstate = :appstate AND txnmode = :txnmode"; 
+			qmap.state = 'PROCESSING'; 
+			qmap.txnmode = 'CAPTURE'; 
+			qmap.appstate = param.node.state.toString(); 
+			orderby = 'appyear, tradename'; 
+		}
+		else if ( param.node?.state == 'COMPLETED' ) {
+			wheres << " appstate = :appstate AND txnmode = :txnmode"; 
+			qmap.txnmode = 'CAPTURE'; 
+			qmap.appstate = param.node.state.toString(); 
+			orderby = 'appyear DESC, tradename'; 
+		}
+
+		if ( param.where ) {
+			wheres << param.where[0]; 
+			param.where[0] = wheres.join(" AND ");
+			param.where[1].putAll( qmap ); 
+		}
+		else { 
+			param.where = [ wheres.join(" AND "), qmap ]; 
+		} 
+
+		wheres.clear(); 
+
+		if ( orderby ) {
+			param.orderBy = orderby;
+		} 
+	} 
+}

@@ -1,0 +1,27 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.services.extended.*;
+
+class BusinessPaymentOrderInterceptor {
+	
+	@Service("BusinessPaymentService")
+	def pmtSvc;
+
+	@Before( pattern="PaymentOrderService.close", eval="#{args[0].txntype == 'BUSINESS'}" )
+	public void postBusiness(evt) {
+		def o = evt.args[0];
+		def info = o.info;
+		def receipt = o.receipt;
+		def pmt = [:]	
+		pmt.businessid = info.businessid;
+		pmt.refno = receipt.receiptno;
+		pmt.refid = receipt.objid;
+		pmt.reftype = 'cashreceipt';
+		pmt.refdate = receipt.receiptdate;
+		pmt.amount = info.amount;
+		pmt.items = info.items;
+		pmtSvc.create( pmt );
+	}
+
+}

@@ -1,0 +1,10 @@
+<schema>
+	<element tablename="report_bpdelinquency_app">
+		<field name="objid" primary="true"/> 
+		<field name="parentid" required="true"/> 
+		<field name="applicationid" required="true"/> 
+		<field name="appdate" required="true" /> 
+		<field name="appyear" required="true" /> 
+		<field name="lockid" /> 
+	</element>
+</schema>

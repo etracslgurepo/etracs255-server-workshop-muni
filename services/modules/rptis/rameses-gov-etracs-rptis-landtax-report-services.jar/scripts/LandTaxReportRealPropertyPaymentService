@@ -1,0 +1,32 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+
+class LandTaxReportRealPropertyPaymentService
+{
+	@Service('DateService')
+	def dtSvc;
+
+    @ActiveDB('landtaxreport_real_property_payment')
+    def em;     
+
+     
+	@Async 
+	@ProxyMethod 
+	public def buildReportData( params ) {
+		def parsedate = dtSvc.parseCurrentDate();
+		if(params.year > parsedate.year ) throw new Exception('Year must not exceed current year.');
+		
+		params.fromdate = params.year + '-01-01';
+		params.todate = (params.year+1) + '-01-01';
+		params.period = 'FOR THE YEAR ' + params.year;
+
+		params.filter = ' cv_controldate >= $P{fromdate} AND cv_controldate < $P{todate} '
+		if (params.postingtype && params.postingtype.code == 'byrem'){
+			params.filter = ' rem_controldate >= $P{fromdate} AND rem_controldate < $P{todate} '
+		}
+		def data = em.getPayments(params);
+		if (data) data[0].year = params.year;
+		return [reportdata : data ]; 
+	} 
+
+}	

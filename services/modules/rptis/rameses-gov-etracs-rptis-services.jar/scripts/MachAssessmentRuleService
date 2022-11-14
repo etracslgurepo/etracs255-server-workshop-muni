@@ -1,0 +1,118 @@
+import com.rameses.annotations.*;
+import com.rameses.rules.common.*;
+import com.rameses.util.*;
+
+import rptis.facts.*;
+import rptis.actions.*;
+
+import rptis.mach.facts.*;
+import rptis.mach.actions.*;
+
+public class MachAssessmentRuleService  
+{
+	@Env 
+	def env
+
+	@Resource("RuleService")	
+	def ruleSvc
+
+	@ActiveDB("rule")
+	def ruleDB
+
+	@Service('DateService')
+	def dtSvc 
+
+	@Service('NumberService')
+	def numSvc 
+
+	@ActiveDB('machrpu')
+	def em
+
+	@Service('MachRYSettingLookupService')
+    def machSettingSvc 
+
+    @Service('RPTUtil')
+    def util
+
+    @DataContext('propertyclassification')
+    def em_classification
+
+	
+	String RULESET = "machassessment";
+
+	@ProxyMethod
+	public def execute(rpu) throws Exception {
+		rpu.assessments = []
+		def request = [rpu:rpu, variables:[], assessments:[]]; 
+		request.facts = createFacts(request);
+		request.actions = buildActions( request );
+
+		def grps = ruleDB.getRulegroups( [ruleset: RULESET] );
+		grps.each{g ->
+			ruleSvc.execute( RULESET, request.facts, request.actions, g.name);
+		}
+
+        rpu.totalbmv = util.sum(rpu.machuses, 'basemarketvalue')
+        rpu.totalmv  = util.sum(rpu.assessments, 'marketvalue')
+        if (rpu.totalav == 0){
+        	rpu.totalav  = util.sum(rpu.assessments, 'assessedvalue')
+        }
+
+		rpu.assessments.each{
+			it.classification = em_classification.select('objid,code,name').find([objid: it.classification.objid]).first()
+			it.actualuse = em.findActualUseInfo(it.actualuse)
+		}
+
+		return rpu
+	}
+
+	def createFacts(request){
+		def rpu = request.rpu
+		def facts = []
+
+		def currDate = dtSvc.serverDate;
+		def dt = currDate;
+		if (rpu.issuedate){
+			dt = java.sql.Date.valueOf( rpu.issuedate );
+		}
+		facts << new EffectiveDate( dt );
+		facts << new CurrentDate(currDate);
+
+		/*-------------------------------------
+		* RPU
+		-------------------------------------*/
+		def rpufact = new rptis.facts.RPU(rpu)
+		facts << rpufact
+		request.rpufact = rpufact
+
+		rpu.machuses.each{mu ->
+			def mufact = new MachineActualUse(rpufact, mu)
+			facts << mufact
+
+			mu.machines.each{md->
+				facts << new MachineDetail(mufact, md)
+			}
+		}
+
+		return facts
+	}
+
+	def buildActions(request) {
+		def actions = new RuleAction();
+		actions.addCommand( "init-info", new CalcPreAssessInfo( request:request));
+		actions.addCommand( "calc-mach-bmv", new CalcMachineBMV( request:request));
+		actions.addCommand( "calc-mach-depreciation", new CalcMachineDepreciation( request:request));
+		actions.addCommand( "calc-mach-mv", new CalcMachineMV( request:request));
+		actions.addCommand( "calc-mach-al", new CalcMachineAssessLevel( request:request, settingSvc:machSettingSvc));
+		actions.addCommand( "calc-mach-av", new CalcMachineAV( request:request));
+		actions.addCommand( "calc-machuse-al", new CalcMachUseAssessLevel( request:request, settingSvc:machSettingSvc));
+		actions.addCommand( "calc-machuse-av", new CalcMachUseAV( request:request));
+		actions.addCommand( "add-assessment-info", new AddAssessmentInfo( request:request, NS:numSvc));
+		actions.addCommand( "recalc-rpuassessment", new CalcRPUAssessValue( request:request, NS:numSvc));
+		actions.addCommand( "recalc-rpu-totalav", new CalcTotalRPUAssessValue( request:request, NS:numSvc));
+		actions.addCommand( "add-derive-var", new AddDeriveVariable( request:request));
+		return actions;
+	}
+
+}
+

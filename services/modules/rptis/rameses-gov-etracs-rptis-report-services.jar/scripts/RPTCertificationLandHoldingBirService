@@ -1,0 +1,110 @@
+import com.rameses.annotations.*
+import com.rameses.eserver.*;
+import com.rameses.common.*;
+
+class RPTCertificationLandHoldingBirService 
+{
+    @ActiveDB('rptcertification_bir')
+    def em;
+
+    @Service('RPTCertificationService')
+    def certSvc 
+
+
+    @ProxyMethod
+    public def getPropertiesForBIR(entity){
+    	validateAndSetParams(entity)
+		def items = em.getLandHoldingBirItems(entity)
+		return getBirRuleApplicableProperties(entity, items)
+    }    
+
+
+    @ProxyMethod
+    public def getPropertiesWithImprovementForBIR( entity ) {
+    	validateAndSetParams(entity)
+		def items = em.getLandHoldingWithImprovementBirItems(entity)
+		return getBirRuleApplicableProperties(entity, items)
+    }
+
+    @ProxyMethod
+    public def getPropertiesWithNoImprovementForBIR( entity ) {
+    	validateAndSetParams(entity)
+		def items = em.getLandHoldingWithNoImprovementBirItems(entity)
+		return getBirRuleApplicableProperties(entity, items)
+    }
+
+	
+	@ProxyMethod
+	public def createCertification( cert ) {
+		def newcert = certSvc.createCertification(cert)
+		cert.items.each{
+			em.createItem([objid: newcert.objid, refid:it.objid])
+		}
+		cert.items = getLandHoldingItems(newcert)
+		certSvc.makeHtmlSafe(newcert)
+		return newcert 
+	}
+
+
+	@ProxyMethod
+	public def openCertification(objid) {
+		def cert = certSvc.openCertification(objid)
+		if (! cert ) 
+			throw new Exception('Certification does not exist or has already been deleted.')
+		cert.items = getLandHoldingItems(cert)
+		return cert 
+	}
+
+
+	def getLandHoldingItems(cert){
+		def items = em.getItems(cert).each{
+			it.street = (it.street ? it.street : it.barangay)
+			it.description = 'LOT ' + it.cadastrallotno
+		}
+
+		if (!items) 
+			throw new Exception('There are no land properties registered for this taxpayer.')
+		return items
+	}
+
+
+	void validateAndSetParams(entity){
+		entity.taxpayerid = entity.taxpayer.objid 
+
+    	def data = em.findRyForAsOfYear(entity)
+    	if (!data) 
+    		throw new Exception('Revision year cannot be determined for the specified As of Year.')
+    	entity.ry = data.ry 
+	}
+
+	def getBirRuleApplicableProperties(entity, items){
+
+		//rule 1: do not include GR transactions approved on asofyear 
+		def gritems = items.findAll{ it.year == entity.asofyear && it.txntype.objid == 'GR'}
+		if (gritems){
+			items.removeAll(gritems)
+		}
+
+		// group by pin and in case of duplicate, include only the latest year
+		// this is a case where a property is processed several time before the 
+		// specified as of year
+		def pingroup = items.groupBy{it.fullpin}
+		def holdings = []
+		
+		pingroup.each{k, v ->
+			holdings << v.last()
+		}
+
+		if (!holdings){
+			if (entity.opener == 'landholdingwithimprov')
+				throw new Exception('There are no existing land properties with improvements.')
+			if (entity.opener == 'landholdingwithnoimprovbir')
+				throw new Exception('There are no existing land properties with no improvements.')
+			throw new Exception('There are no registered properties found.')
+		}
+
+		return holdings 
+    }
+
+
+}

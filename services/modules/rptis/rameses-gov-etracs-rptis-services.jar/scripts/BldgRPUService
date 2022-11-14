@@ -1,0 +1,448 @@
+import com.rameses.annotations.*
+import com.rameses.util.*
+import com.rameses.services.extended.*
+import java.math.RoundingMode
+import java.text.DecimalFormat
+
+class BldgRPUService
+{
+	@ActiveDB('bldgrpu')
+	def em
+    
+    @Service('LandRPUService')
+	def rpuSvc
+
+	@Service('BldgRYSettingLookupService')
+	def bldgSettingSvc 
+
+	@DataContext('bldgrpu')
+	def em_bldgrpu
+
+	@DataContext('rpu')
+	def em_rpu
+
+	@DataContext('structure')
+	def em_structure
+
+	@DataContext('bldgrpu_land')
+	def em_bldgrpu_land
+
+	@DataContext('bldgrpu_floor_additional')
+	def em_additional
+
+	@DataContext('bldgrpu_floor_additional_param')
+	def em_additional_param
+
+	@Service('RPTUtil')
+	def util
+
+	@Service('NumberService')
+	def numSvc
+
+	@Service('BldgAssessmentRuleService')
+	def ruleSvc 
+	
+	def SCHEMA_STRUCTURE	= 'structure'
+	def SCHEMA_STRUCTURAL_TYPE	= 'structuraltype'
+	def SCHEMA_BLDGUSE		= 'bldguse'
+	def SCHEMA_BLDGLAND		= 'bldgland'
+	def SCHEMA_FLOOR		= 'floor'
+	def SCHEMA_ADDITIONAL	= 'additional'
+	def SCHEMA_PARAM		= 'param'
+
+
+	@ProxyMethod
+	public def initBldgRpu(rpu) {
+		def landrpu = rpuSvc.getLandRpuByRealPropertyId(rpu.realpropertyid)
+		if (!landrpu) throw new Exception('Land RPU Reference does not exists.')
+
+		rpu.landrpuid 			= landrpu.objid 
+		rpu.totalarea 			= 0.0
+		rpu.floorcount 			= 1
+		rpu.basevalue 			= 0.0
+		rpu.depreciation 		= 0.0
+		rpu.depreciationvalue	= 0.0
+		rpu.totaladjustment 	= 0.0
+		rpu.firstfloorbasevalue = 0.0
+		rpu.bldgage 			= 0
+		rpu.effectiveage 		= 0
+		rpu.swornstatement 		= false
+		rpu.swornamount 		= 0.0
+		rpu.useswornamount 		= false
+		rpu.percentcompleted 	= 100
+		rpu.assesslevel 		= 0.0
+		rpu.condominium 		= false 
+		rpu.structures 			= loadStructures(rpu)
+		rpu.structuraltypes		= []
+		rpu.lands 			    = []
+	}
+
+
+	List loadStructures(rpu){
+		return em_structure.where('1=1').orderBy('indexno').list().collect{
+			[floor:1, objid:util.generateId('ST'), bldgrpuid:rpu.objid, structure:it]
+		}
+	}
+	
+	@ProxyMethod
+	public def createBldgRpu( rpu ) {
+		checkFloorInfo(rpu)
+		em_bldgrpu.save(rpu)
+		saveStructures(rpu)
+		saveStructuralTypes(rpu.structuraltypes)
+		saveBldgLands(rpu)
+		return rpu
+	}
+
+
+	@ProxyMethod
+	public def updateBldgRpu(rpu) { 
+		checkFloorInfo(rpu)
+		em_bldgrpu.save(rpu)
+		saveStructures(rpu)
+		saveStructuralTypes(rpu.structuraltypes)
+		saveBldgLands(rpu)
+		removeDeletedItems(rpu)
+		return rpu
+	}
+
+
+	@ProxyMethod
+	public def openBldgRpu( objid ) {
+		def rpu = em.read([objid:objid])
+		if (rpu) {
+			rpu.bldgassesslevel = bldgSettingSvc.lookupBldgAssessLevelById(rpu.bldgassesslevel?.objid)
+			rpu.condominium		= util.toBoolean(rpu.condominium, false)
+			rpu.structures 		= getStructures(rpu)
+			rpu.structuraltypes = getStructuralTypes(rpu)
+			rpu.assessments 	= em.getAssessments(rpu)
+		} else {
+			rpu = [objid: objid, condominium: false]
+			rpu.structures = []
+			rpu.structuraltypes = []
+			rpu.assessments = []
+		}
+		return rpu 
+	}
+
+
+	@ProxyMethod
+	public def deleteBldgRpu(rpu){
+		deleteItems(rpu)
+		em.delete(rpu)
+	}
+
+	@ProxyMethod
+	public def deleteItems(rpu) {
+		em.deleteAllParams(rpu)
+		em.deleteAllFloorAdditionals(rpu)
+		em.deleteAllFloors(rpu)
+		em.deleteAllUses(rpu)
+		em.deleteAllStructuralTypes(rpu)
+		em.deleteAllStructures(rpu)
+	}
+
+
+	@ProxyMethod
+	public void generateNewIds( rpu ) {
+		rpu.structures.each{bs -> 
+			bs.objid = util.generateId('BS') 
+			bs.bldgrpuid = rpu.objid 
+		}
+
+		rpu.assessments.each{bs -> 
+			bs.objid = util.generateId('BA') 
+			bs.bldgrpuid = rpu.objid 
+		}
+
+		rpu.structuraltypes.each{stt ->
+			stt.objid     = util.generateId('BU')
+			stt.bldgrpuid = rpu.objid 
+
+			stt.bldguses.each{ bu ->
+				bu.objid     = util.generateId('BU')
+				bu.structuraltype = [objid:stt.objid]
+				bu.bldgrpuid = rpu.objid 
+				
+				bu.floors.each{f ->
+					f.objid     = util.generateId('FL')
+					f.bldguseid = bu.objid 
+					f.bldgrpuid = rpu.objid 
+
+					f.additionals.each{a ->
+						a.objid = util.generateId('AI')
+						a.bldgfloorid = f.objid
+						a.bldgrpuid = rpu.objid 
+
+						a.params.each{ p ->
+							p.objid = util.generateId('P')
+							p.bldgflooradditionalid = a.objid 
+							p.bldgrpuid = rpu.objid 
+						}
+					}
+				}
+			}
+		}
+	}
+
+    @ProxyMethod
+    public def getClassifications(  ) {
+    	return rpuSvc.getClassifications()
+    }
+
+
+    @ProxyMethod
+    public def getExemptionTypes(){
+        return rpuSvc.getExemptionTypes()
+    }
+
+
+    @ProxyMethod
+	public def getBldgRySetting(objid){
+		return bldgSettingSvc.lookupBldgRySettingById(objid)
+	}
+
+	@ProxyMethod
+	public def findBldgRySettingByLguIdRy( params ) {
+		return bldgSettingSvc.findByLguIdRy(params)
+	}
+
+	void checkFloorInfo(rpu){
+		rpu.floorcount = 1
+        rpu.structuraltypes.each{st ->
+            st.bldguses.each{bu ->
+                bu.floors.each{f ->
+                	if (!f.floorno) f.floorno = 0
+                	def floorno = util.toInteger(f.floorno.toString())
+                    if (floorno > rpu.floorcount){
+                        rpu.floorcount = floorno
+                    }
+                }
+            }
+        }
+	}
+
+
+	@ProxyMethod
+	public def getBldgLands(entity) {
+		return em_bldgrpu_land.find(['rpu.objid':entity.objid]).orderBy('landfaas.fullpin').list() 
+			
+	}
+
+	@ProxyMethod
+	public void deleteBldgLand( bldgland ) {
+		em_bldgrpu_land.delete(bldgland)
+	}
+
+	@ProxyMethod
+	public def saveBldgLand(item){
+		def landrpu = em_rpu.select('rpumasterid').find([objid: item.landfaas.rpuid]).first()
+		item.landrpumaster = [objid: landrpu?.rpumasterid]
+		em_bldgrpu_land.save(item)
+		return item 
+	}
+
+    @ProxyMethod
+    public def deleteAdditionalItems(items) {
+        items.each {
+            em_additional_param.find([bldgflooradditionalid: it.objid]).delete();
+            em_additional.find([objid: it.objid]).delete();
+        }
+    }
+	
+	/*-------------------------------------------------------------------
+	*
+	* COMPUTATION METHODS
+	*
+	-------------------------------------------------------------------*/
+
+	@ProxyMethod
+	public def calculateAssessment( rpu ) {
+		return ruleSvc.execute(rpu)
+	}
+
+    @ProxyMethod
+    public def calcBaseValueByGap(stt) {
+        def defvalue = [basevalue: 0]
+        if (!stt.bldgkindbucc) return defvalue;
+        if (stt.totalfloorarea <= 0) return defvalue;
+
+        def minvalue = stt.bldgkindbucc.minbasevalue;
+        def maxvalue = stt.bldgkindbucc.maxbasevalue;
+        def gap = stt.bldgkindbucc.gapvalue;
+        def minarea = stt.bldgkindbucc.minarea;
+        def maxarea = stt.bldgkindbucc.maxarea;
+
+        def areagap = (maxarea - minarea) / gap;
+        def valuegap = numSvc.round((maxvalue - minvalue) / areagap);
+        def diffareagap = floor((stt.totalfloorarea - minarea) / gap);
+        def computedminarea = minarea + gap * diffareagap;
+        def computredminvalue = numSvc.round(maxvalue - valuegap * diffareagap);
+
+        def gaparea = stt.totalfloorarea - computedminarea;
+        def ratio = gaparea / gap;
+        def basevalue = numSvc.round(computredminvalue - valuegap * ratio);
+        return [basevalue: basevalue];
+    }
+
+	/*-------------------------------------------------------------------
+	*
+	* SUPPORT METHODS
+	*
+	-------------------------------------------------------------------*/
+	void saveStructures(rpu){
+		rpu._structures.each{ st ->
+			em.delete(st, SCHEMA_STRUCTURE)
+		}
+		rpu.structures.each{ st ->
+			em.save(st, SCHEMA_STRUCTURE)
+		}
+	}
+
+	void saveStructuralTypes(structuraltypes){
+		structuraltypes.each{stt ->
+			stt.floorcount = 0
+			em.save(stt, SCHEMA_STRUCTURAL_TYPE)
+			saveBldgUses(stt.bldguses)
+		}
+	}
+
+	void saveBldgUses(bldguses){
+		bldguses.each{bu ->
+			if (bu.adjfordepreciation == null)
+				bu.adjfordepreciation = 0.0
+			if (bu.taxable == null)
+				bu.taxable = true
+			em.save(bu, SCHEMA_BLDGUSE)
+			saveFloors(bu.floors)
+		}
+	}
+
+	void removeDeletedItems(rpu){
+		rpu._params.each{ em.delete(it, SCHEMA_PARAM)}
+		
+		rpu._additionals.each{ addl ->
+			addl.params.each{param-> 
+				em.delete(param, SCHEMA_PARAM)
+			}
+			em.delete(addl, SCHEMA_ADDITIONAL)
+		}
+
+		rpu._lands.each{
+			em.delete(it, SCHEMA_BLDGLAND)
+		}
+
+		rpu._floors.each{floor ->
+			floor.additionals.each{ addl ->
+				addl.params.each{param-> 
+					em.delete(param, SCHEMA_PARAM)
+				}
+				em.delete(addl, SCHEMA_ADDITIONAL)
+			}
+			em.delete(floor, SCHEMA_FLOOR)
+		}
+
+		rpu._bldguses.each{bu ->
+			bu.floors.each{floor ->
+				floor.additionals.each{ addl ->
+					addl.params.each{param-> 
+						em.delete(param, SCHEMA_PARAM)
+					}
+					em.delete(addl, SCHEMA_ADDITIONAL)
+				}
+				em.delete(floor, SCHEMA_FLOOR)
+			}
+			em.delete(bu, SCHEMA_BLDGUSE)
+		}
+
+		rpu._structuraltypes.each{stt ->
+			stt.bldguses.each{bu ->
+				bu.floors.each{floor ->
+					floor.additionals.each{ addl ->
+						addl.params.each{param-> 
+							em.delete(param, SCHEMA_PARAM)
+						}
+						em.delete(addl, SCHEMA_ADDITIONAL)
+					}
+					em.delete(floor, SCHEMA_FLOOR)
+				}
+				em.delete(bu, SCHEMA_BLDGUSE)
+			}
+			em.delete(stt,SCHEMA_STRUCTURAL_TYPE)
+		}
+	}
+
+	void saveFloors(floors){
+		floors.each{
+			em.save(it,SCHEMA_FLOOR)
+			saveFloorAdditionals(it.additionals)
+		}
+	}
+
+	void saveFloorAdditionals(additionals){
+		additionals.each{
+			if (it.issystem == null) it.issystem = false
+			em.save(it, SCHEMA_ADDITIONAL)
+			saveParams(it.params)
+		}
+	}
+
+	void saveParams(params){
+		params.each{ param ->
+			if (param.value != null){
+				if (param.param.paramtype.matches('.*integer.*')){
+					param.intvalue = new java.math.BigDecimal(param.value+'').intValue();
+					param.decimalvalue = null
+				}
+				else{
+					param.decimalvalue = new java.math.BigDecimal(param.value+'')
+					param.intvalue = null
+				}
+			}
+			em.save(param, SCHEMA_PARAM)
+		}
+	}
+
+
+	List getStructures(rpu){
+		return em.getStructures(rpu)
+	}
+
+	List getStructuralTypes(rpu){
+		def types = em.getStructuralTypes([bldgrpuid:rpu.objid])
+		types.each{ 
+			it.bldgtype 	= bldgSettingSvc.lookupBldgTypeById(it.bldgtype.objid)
+			it.bldgkindbucc	= bldgSettingSvc.lookupBldgKindBuccById(it.bldgkindbucc.objid)
+			it.bldguses = getBldgUses(it)
+		}
+		return types 
+	}
+
+	List getBldgUses(structuraltype){
+		def bldguses = em.getBldgUses([structuraltypeid:structuraltype.objid])
+		bldguses.each{ bu ->
+			bu.taxable = util.toBoolean(bu.taxable, true)
+			bu.floors = em.getFloors([bldguseid:bu.objid])
+			bu.floors.each{ floor ->
+				floor.additionals = em.getAdditionalItems([bldgfloorid:floor.objid])
+				floor.additionals.each{ addl -> 
+					addl.params = em.getAdditionalItemParams([bldgflooradditionalid:addl.objid])
+					addl.params.each{ it.issystem = addl.issystem }
+				}
+			}
+		}
+		return bldguses
+	}
+
+	void saveBldgLands(rpu){
+		rpu.lands?.each{
+			em.save(it, SCHEMA_BLDGLAND)
+		}
+	}
+
+    def floor(value) {
+        return new BigDecimal(value).setScale(2, RoundingMode.FLOOR);
+    }
+
+}
+ 

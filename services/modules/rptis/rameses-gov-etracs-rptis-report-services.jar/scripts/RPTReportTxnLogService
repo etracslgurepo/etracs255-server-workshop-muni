@@ -1,0 +1,63 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class RPTReportTxnLogService
+{
+	@Env 
+	def env 
+
+    @ActiveDB('rptreport_txn_log')
+    def em
+
+    @Service('RPTUtil')
+    def util
+
+
+    @ProxyMethod
+    public def getUsers(){
+    	return em.getUsers()
+    }
+
+    @ProxyMethod
+    public def getRefTypes(){
+    	def types = em.getRefTypes()
+    	if (types) {
+    		types.each{ it.ref = it.ref.toLowerCase() }
+    		return types.ref 
+    	} else {
+    		return []
+    	}
+    }
+
+    @Async
+	@ProxyMethod
+	public Map buildReport( params ) {
+		if (!params.user) throw new Exception('User must be specified')
+		
+		util.buildStartEndDateFilter(params)
+
+		params.filter = ''
+
+		if (params.user) {
+			params.filter += ' and userid = $P{userid} '
+			params.userid = params.user.objid
+		}
+
+		if (params.reftype) {
+			params.filter += ' and ref = $P{reftype} '
+		}
+
+		def items = em.getList(params).each{ it.ref = it.ref.toLowerCase()}
+		if (!items) throw new Exception('Records not found.')	
+
+		def p = [
+			PERIOD 		: util.buildPeriod(params),
+		]
+
+		return [
+			parameters  : p, 
+			reportdata  : items,
+		]
+	}
+}

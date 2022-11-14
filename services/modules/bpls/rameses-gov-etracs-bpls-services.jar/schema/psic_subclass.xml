@@ -1,0 +1,8 @@
+<schema>
+	<element tablename="psic_subclass">
+		<field name="code" primary="true" searchable="true" indexed="true" visible="true" caption="Subclass Code"/>
+		<field name="description"  caption="Description" searchable="true" indexed="true"/> 
+		<field name="details"  caption="Details"/>
+		<field name="classid" />
+	</element>
+</schema>

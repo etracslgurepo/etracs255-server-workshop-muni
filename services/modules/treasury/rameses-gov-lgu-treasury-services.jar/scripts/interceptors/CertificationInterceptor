@@ -1,0 +1,22 @@
+import com.rameses.annotations.*;
+
+class CertificationInterceptor {
+	
+	@ActiveDB('cashreceipt') 
+	def cashreceiptdb; 
+
+	@After( pattern="CertificationService.open" ) 
+	public void afterOpen( evt ) { 
+		def result = evt.result; 
+		def receiptid = result.receiptid; 
+		if ( !receiptid && result.items ) { 
+			def o = result.items.find{( it.receiptid != null )} 
+			if ( o ) receiptid = o.receiptid; 
+		} 
+
+		if ( receiptid ) { 
+			def o = cashreceiptdb.read([ objid: receiptid ]); 
+			if ( o ) result.remarks = o.remarks; 
+		} 
+	} 
+} 

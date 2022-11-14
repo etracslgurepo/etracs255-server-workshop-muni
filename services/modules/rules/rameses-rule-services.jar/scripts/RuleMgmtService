@@ -1,0 +1,453 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.common.*
+import com.rameses.services.extended.*;
+
+class RuleMgmtService extends ActiveCrudListService {
+
+	@ActiveDB("rule")
+	def em;
+	
+	@Service 
+	def self;
+
+	@Service("DateService")
+	def dateSvc;
+
+	@Service("TemplateService")
+	def template;
+
+	@Resource("RuleService")	
+	def ruleSvc;
+
+	@Env
+	def env;
+
+	@Context
+	def appContext;
+
+	@DataContext("sys_rule")
+	def sysrule;
+
+	@DataContext("sys_ruleset")
+	def sysruleset;
+
+	@DataContext("sys_rule_deployed")
+	def sysruledeployed;
+
+	@ProxyMethod
+	public def getColumns( def o ) {
+		return[
+			[name:'name', caption:'Rule Name', width:150 ],
+			[name:'title', caption:'Title', width:200 ],
+			[name:'salience', caption:'Salience', width:60, type:'integer' ],
+			[name:'state', caption:'Status', width:60, alignment:'CENTER' ],
+			[name:'rulegroup', caption:'Rule Group', width:100 ],
+			[name:'user.name', caption:'Author', width:80],
+			[name:'dtfiled', caption:'Date Created', width:80, type:'date' ],
+		];
+	}
+	
+	void beforeList(o) {
+		def b = new StringBuilder();
+		if( o.rulegroup ) {
+			b.append( ' AND r.rulegroup = $P{rulegroup} ' );
+		}
+		if( o.state ) {
+			b.append( ' AND r.state = $P{state} ' );
+		}
+		o.filter = b.toString();
+
+		def searchtext = o.title; 
+		o.title = '%'+ (searchtext? searchtext: '') +'%'; 
+		o.name = (searchtext? searchtext: '') +'%'; 
+		o._pagingKeys = 'r.objid'; 
+	}
+
+	public void beforeCreate(def o) {
+		if ( o.salience == null ) o.salience = 0;
+		if ( o.noloop == null ) o.noloop = 1; 
+		o.dtfiled = dateSvc.serverDate;
+		o.user = [objid:env.USERID, name:env.USER];
+		o.state = 'DRAFT';
+	}
+
+	public void beforeUpdate(def o) {
+		if( o.effectivefrom!=null && o.effectiveto!=null) {
+            def dfrom = java.sql.Date.valueOf(o.effectivefrom);
+            def dto = java.sql.Date.valueOf(o.effectiveto);
+            if( dto.before(dfrom)) {
+                throw new Exception("To date must be greater than from date");
+            }
+        }
+	}
+
+	public void beforeRemoveEntity( o ) { 
+		em.removeAllRuleActionParams(o);
+		em.removeAllRuleActions(o);
+		em.removeAllRuleConstraints(o);
+		em.removeAllRuleConditionVars(o);
+		em.removeAllRuleConditions(o);
+	} 
+
+	public void afterOpen(Object o) {
+		o.conditions = em.getRuleConditions(o);
+		o.conditions.each { c->
+			c.constraints = em.getRuleConditionConstraints(c);
+			c.constraints.each {
+				if(it.listvalue) it.listvalue = em.serializer.read(it.listvalue);
+				if(!it.operator?.symbol) it.operator = null;
+			}
+		};
+		o.actions = em.getRuleActions(o);
+		o.actions.each { a->
+			a.params = em.getRuleActionParams(a);
+			a.params.each {
+				if(it.listvalue && it.listvalue != 'null') it.listvalue = em.serializer.read(it.listvalue);
+			}
+		} 
+		buildVars( o ); 
+
+		//get also the domain and include it in the rule
+		def p = sysruleset.select('domain').find( [name: o.ruleset] ).first();
+		o.domain = p.domain;
+	} 
+
+	
+
+	@ProxyMethod
+	public def getRulegroups(o) {
+		return em.getRulegroups( o );
+	}
+	
+	/*********************************************
+	* CONDITION
+	**********************************************/
+	@ProxyMethod
+	public def getFacts(o) {
+		return em.getFacts( o );
+	}
+
+	
+	@ProxyMethod
+	public def findFact(o) {
+		def f = em.read( o, "fact" );
+		f.fields = em.getFactFields(o);
+		return f;
+	}
+
+	private void saveFactVariable( o ) {
+		//we add the fact as vars 
+		if( o.varname ) {
+			def m = [
+				objid: o.objid, 
+				parentid: o.objid, 
+				ruleid: o.parentid,
+				varname: o.varname,
+				datatype: o.fact.factclass,
+				pos: o.pos 
+			]; 
+			em.save( m, "var");
+		}
+		else {
+			em.delete( [objid:o.objid], "var");
+		}
+	}
+
+	private void saveConstraintVariable(o, cond) {
+		if( o.varname ) {
+			def dtype = o.field.vardatatype;
+			
+			def z = [
+				objid: o.objid,
+				parentid: cond.objid,
+				ruleid: cond.parentid,
+				varname: o.varname,
+				datatype: dtype,
+				pos: o.pos
+			];
+			em.save( z, "var");
+		}
+		else {
+			em.delete( [objid:o.objid], "var");
+		}
+	}
+
+
+
+	@ProxyMethod
+	public def saveCondition(o) {
+		em.save( o, "condition" );
+		saveFactVariable(o);
+
+		int i = 0;
+		o.constraints.each {
+			if(!o.fieldname) it.fieldname = it.field.name;
+			it.parentid = o.objid;
+			em.save( it, "constraint");
+			saveConstraintVariable( it, o );
+		}
+		o._deleted_constraints?.each {
+			em.delete(it, "constraint");
+			em.delete( [objid:it.objid], "var");
+		}
+	}
+
+	@ProxyMethod
+	public def findCondition(o) {
+		def c = em.read( o, "condition" );
+		c.vars = em.getRuleConditionVars(c);
+		c.constraints = em.getRuleConditionConstraints(c);
+		c.constraints.each {
+			if(it.listvalue) it.listvalue = em.serializer.read(it.listvalue);
+		}
+		return c;
+	}
+
+	@ProxyMethod
+	public def findAllVarsByType(def opt) {
+		if(!opt.ruleid) throw new Exception("Please specify ruleid");
+
+		def builder = new StringBuilder();
+		if(opt.datatype) {
+			if(opt.datatype == 'number') {
+				builder.append( " AND (var.datatype='decimal' OR var.datatype='integer') " );
+			}
+			else if(opt.datatype == "obj") {
+				builder.append( " AND NOT(var.datatype='decimal')" );
+				builder.append( " AND NOT(var.datatype='integer')" );
+				builder.append( " AND NOT(var.datatype='string')" );
+			}
+			else {
+				builder.append( ''' AND var.datatype=$P{datatype}''' );
+			}
+		}
+		if( opt.pos ) {
+			builder.append( ''' AND var.pos < $P{pos} ''' );
+		}
+		opt.filter = builder.toString();
+		return em.findAllVarsByType(opt);
+	}
+
+
+	@ProxyMethod
+	public def getFactFields(def o) {
+		return em.getFactFields(o)*.name;
+	}
+
+	/*********************************************
+	* ACTION
+	**********************************************/
+	@ProxyMethod
+	public def getActionDefs(o) {
+		return em.getActionDefs( o );
+	}
+
+	@ProxyMethod
+	public def findActionDef(o) {
+		def a = em.read( o, "actiondef" );
+		a.params = em.getActionDefParams(o);
+		return a;
+	}
+
+	@ProxyMethod
+	public def saveAction(o) {
+		o.pos = 0;
+		em.save( o, "action" );
+		o.params.each {
+			it.parentid = o.objid;
+			it.pos = 0;
+			em.save(it, "actionparam");
+		};
+		if(o._deleted_params) {
+			o._deleted_params.each { v->
+				em.delete([objid:v.objid], "actionparam");
+			}
+		};
+	}
+
+	@ProxyMethod
+	public void removeCondition(o) {
+		em.removeAllConditionConstraint( o );
+		em.removeAllConditionVar(o);
+		em.delete( o, "condition" );
+	}
+
+	@ProxyMethod
+	public void removeAction(o) {
+		em.removeAllActionParams( o );
+		em.delete( o, "action" );
+	}
+
+	@ProxyMethod
+	public def viewRuleText( o ) {
+		o = open(o);
+		o.vars = em.getRuleVars(o); 
+		return template.get( "rules/rule", [rule: o, templateSvc: template ] ).toString(); 
+	}
+
+	@ProxyMethod
+	public def deploy( o ) {
+		o = open(o);
+		if(o.state=='DEPLOYED') 
+			throw new Exception("Rule is already deployed");
+
+		//if(o.state!='APPROVED') 
+		//	throw new Exception("Rule must be in approved state")
+		o.vars = em.getRuleVars(o); 
+		String ruletext =  template.get( "rules/rule", [rule: o, templateSvc: template ] );
+		try {
+			ruleSvc.addRulePackage( o.ruleset, new java.io.StringReader(ruletext) );
+			em.create( [objid:o.objid,ruletext:ruletext], "deployed");
+			o.state = 'DEPLOYED';
+			em.update( o );
+			return o;
+		}
+		catch(e) {
+			println "----------ERROR--------"
+			println ruletext;
+			println e.message;
+			println "------------------------"
+			throw e;
+		}
+	}
+
+	@ProxyMethod
+	public def undeploy( o ) {
+		o = em.read(o);
+		String pkg = o.ruleset + "." + o.name; 
+		ruleSvc.removeRulePackage( o.ruleset, pkg );
+		em.delete( [objid:o.objid], "deployed" );
+		o.state = 'APPROVED';
+		em.update(o);
+		return o;
+	}
+
+
+	@ProxyMethod
+	public void reload( def ruleset ) {
+		println "RELOADING RULESET " + ruleset;
+		try {
+			ruleSvc.removeRuleContext( ruleset );
+		}
+		catch(e) {
+			println "ERROR REMOVING RULE CONTEXT " + ruleset;
+		}
+		
+		def readers = [];
+		//reload the rules again.
+		def loadrules = { m->
+			try {
+				readers << new InputStreamReader(m.url.openStream());
+			}
+			catch(e) {println "error load " + e.message; }
+		} as ScanFileFilter;
+		appContext.scanFiles( "rulesets/"+ruleset+"/facts", loadrules, ".*\\.drl");
+		appContext.scanFiles( "rulesets/"+ruleset+"/rules", loadrules, ".*\\.drl");
+		em.getRulesForDeployment( [ruleset:ruleset] ).each{ r->
+			try {
+				String s = r.ruletext;
+				readers << new java.io.StringReader( s );
+			}
+			catch(e) {
+				e.printStackTrace();
+			}
+		}
+		ruleSvc.buildRuleContext(ruleset, readers);
+	} 
+
+
+	private void buildVars( o ) { 
+		def vars = []; 
+		o.conditions.each{ c-> 
+			if ( c.varname ) {
+				vars << [ 
+					objid   : c.objid, 
+					parentid: c.objid, 
+					ruleid  : c.parentid, 
+					varname : c.varname, 
+					pos     : c.pos, 
+					datatype: c.fact?.factclass 					
+				]; 
+			} 
+			c.constraints.each{ cc-> 
+				if ( cc.varname ) {
+					vars << [
+						objid   : cc.objid, 
+						parentid: c.objid, 
+						ruleid  : c.parentid, 
+						varname : cc.varname, 
+						pos     : cc.pos, 
+						datatype: cc.field?.vardatatype 
+					]; 
+				} 
+			} 
+		} 
+
+		o.conditions.each{ a-> 
+			a.constraints.findAll{( it.var?.name )}.each{ b-> 
+				def vv = vars.find{ it.varname==b.var.name } 
+				b.var.objid = vv?.objid; 
+			} 
+		}
+		o.actions.each{ a-> 
+			a.params.findAll{( it.var.name )}.each{ b-> 
+				def vv = vars.find{ it.varname==b.var.name }
+				b.var.objid = vv?.objid;  
+			} 
+		} 
+		vars.clear();
+	} 
+
+	@ProxyMethod
+	public void transferRuleset( def o ) {
+		if(!o.objid) throw new Exception("Please include objid of rule");
+		if(!o.ruleset) throw new Exception("Please include new ruleset");
+		if(!o.rulegroup) throw new Exception("Please include rulegroup");
+		sysrule.find( [objid: o.objid] ).update( [ruleset: o.ruleset, rulegroup: o.rulegroup] );
+	}
+
+
+	@ProxyMethod
+	public def touchDeployedRules( param ) {
+		if ( !param.ruleset ) throw new Exception('ruleset parameter is required'); 
+
+		def list = sysruledeployed.getRulesByRuleset([ ruleset: param.ruleset ]);
+		if ( list ) {
+			list.each{ o-> 
+				try {
+					o.ruletext = viewRuleText([ objid: o.objid ]); 
+				} 
+				catch(Throwable t) {
+					o.ruletext = null; 
+
+					println '\nfailed to view rule text for '+ o.name +' caused by '+ t.message; 
+					t.printStackTrace(); 
+				}
+			}
+
+			def m = [:]; 
+			list.each{ o-> 				
+				if ( o.ruletext ) { 
+					m.objid = o.objid.toString(); 
+					sysruledeployed.find( m ).delete(); 
+
+					m.ruletext = o.ruletext; 
+					sysruledeployed.create( m ); 
+					m.remove('ruletext'); 
+				}
+			} 
+
+			self.reloadAsync( param.ruleset ); 
+		}
+
+		return [status: "success"]; 
+	}
+
+	@Async
+	@ProxyMethod
+	public void reloadAsync( ruleset ) {
+		reload( ruleset ); 
+	} 
+} 

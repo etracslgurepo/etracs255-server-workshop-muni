@@ -1,0 +1,34 @@
+import com.rameses.annotations.*;
+
+import treasury.utils.*;
+import treasury.facts.*;
+import enterprise.utils.*;
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import java.util.*;
+
+
+public class CollectionRuleInterceptor {
+	
+
+	@After(pattern="FactBuilderService.getFacts", eval="#{ args[0].rulename == 'collection'  }")
+	public void buildFacts(def evt) {
+		def factBuilder = evt.result; 
+		def params = evt.args[0].params;
+		def facts = factBuilder.facts;
+
+		def vp = new DefaultVariableInfoProvider(
+			schemaName:"treasury_variableinfo"
+		);
+		factBuilder.variableInfoProvider = vp;
+		if( params.collectiongroup ) {
+			def cg = params.collectiongroup;
+			facts << new treasury.facts.CollectionGroup( objid:cg.objid, name: cg.name );
+		}
+	}
+
+
+
+
+}

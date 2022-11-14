@@ -1,0 +1,32 @@
+<!--
+DROP VIEW IF EXISTS vw_cashreceipt_itemaccount_collectiongroup
+;
+CREATE VIEW vw_cashreceipt_itemaccount_collectiongroup AS 
+SELECT 
+	ia.objid, ia.state, ia.code, ia.title, ia.description, 
+	ia.type, ia.fund_objid, ia.fund_code, ia.fund_title,
+	CASE WHEN ca.defaultvalue=0 THEN ia.defaultvalue ELSE ca.defaultvalue END AS defaultvalue,
+	CASE WHEN ca.defaultvalue=0 THEN ia.valuetype ELSE ca.valuetype END AS valuetype, 
+	ca.sortorder, ia.org_objid AS orgid, ca.collectiongroupid, ia.generic 
+FROM collectiongroup_account ca 
+	INNER JOIN itemaccount ia ON ia.objid = ca.account_objid 
+;
+-->
+<schema>
+	<element tablename="vw_cashreceipt_itemaccount_collectiongroup">
+		<field name="objid" primary="true"/>		
+		<field name="state" />	
+		<field name="code" />	
+		<field name="title" />	
+		<field name="description" />	
+		<field name="type" />	
+		<field name="fund_objid" />	
+		<field name="fund_code" />	
+		<field name="fund_title" />	
+		<field name="defaultvalue" />
+		<field name="sortorder" />		
+		<field name="valuetype" />	
+		<field name="orgid" />	
+		<field name="collectiongroupid" />
+	</element>
+</schema>

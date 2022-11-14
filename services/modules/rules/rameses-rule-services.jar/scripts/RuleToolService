@@ -1,0 +1,127 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*
+import com.rameses.services.extended.*;
+import com.rameses.util.*;
+import java.rmi.server.UID;
+
+class RuleToolService {
+
+	@ActiveDB("rule")
+	def em;
+
+	@ActiveDB("ruletool")
+	def ruletool;
+
+	@Service("DateService")
+	def dateSvc;	
+
+	@Env
+	def env;
+
+	@ProxyMethod 
+	public void copyRule( params ) { 
+		if ( !params.ruleid ) throw new Exception('ruleid parameter is required'); 
+		if ( !params.objid ) throw new Exception('objid parameter is required'); 
+
+		def ruleinfo = ruletool.findRule( params ); 
+		if ( !ruleinfo ) throw new Exception('Rule record does not exist');
+
+		if ( !params.user ) params.user = [objid: env.USERID, name: env.USER]; 
+		if ( !params.effectivefrom ) params.effectivefrom = ruleinfo.effectivefrom;
+		if ( !params.effectiveto ) params.effectiveto = ruleinfo.effectiveto;
+		if ( params.noloop == null ) params.noloop = 1;
+
+		params.dtfiled = dateSvc.serverDate;
+		params.state = 'DRAFT'; 
+		em.create( params ); 
+
+		def vars = []; 
+		def conditions = ruletool.getRuleConditions( params ); 
+		conditions.each{ c-> 
+			c._objid = c.objid; 
+			c.objid = 'RC' + new UID(); 
+			c.parentid = params.objid; 
+			if ( c.varname ) { 
+				vars << [ 
+					ruleid  : c.parentid, 
+					objid   : c.objid, 
+					parentid: c.objid, 
+					varname : c.varname, 
+					datatype: c.datatype, 
+					pos     : c.pos 
+				]; 
+			} 
+
+			c.constraints = ruletool.getRuleConditionConstraints([ conditionid: c._objid ]); 
+			c.constraints.each{ cc-> 
+				cc._objid = cc.objid; 
+				cc.objid = 'RCC' + new UID(); 
+				cc.parentid = c.objid; 
+				if ( cc.varname ) {
+					vars << [ 
+						ruleid  : c.parentid, 
+						objid   : cc.objid, 
+						parentid: cc.parentid, 
+						varname : cc.varname, 
+						datatype: cc.datatype, 
+						pos     : cc.pos 
+					]; 
+				} 
+				if ( cc.listvalue ) {
+					cc.listvalue = em.serializer.read( cc.listvalue );
+				} 
+			}
+			c.constraints.findAll{( it.var?.name )}.each{ cc-> 
+				def vv = vars.find{ it.varname==cc.var.name }
+				cc.var.objid = vv?.objid; 
+			} 
+		}
+
+		def actions = ruletool.getRuleActions( params ); 
+		actions.each{ ra-> 
+			ra._objid = ra.objid; 
+			ra.objid = 'RA' + new UID(); 
+			ra.parentid = params.objid; 
+
+			ra.params = ruletool.getRuleActionParams([ actionid : ra._objid ]); 
+			ra.params.each{ rap-> 
+				rap._objid = rap.objid; 
+				rap.objid = 'RAP' + new UID(); 
+				rap.parentid = ra.objid; 
+				if ( rap.var?.objid ) { 
+					def vv = vars.find{ it.varname==rap.var.name }
+					rap.var.objid = vv?.objid; 
+				} 
+				if ( rap.listvalue ) {
+					rap.listvalue = em.serializer.read( rap.listvalue );
+				} 
+			} 
+		} 
+
+		conditions.each{ 
+			it.notexist = ( it.notexist == null ? 0 : it.notexist ); 
+			em.create( it, 'condition' ) 
+		} 
+		vars.each{ 
+			em.create( it, 'var' ) 
+		} 
+		conditions.each{ c-> 
+			c.constraints.each{ 
+				em.create( it, 'constraint' ) 
+			} 
+		}
+		actions.each{ a->  
+			em.create( a, 'action' ); 
+			a.params.each{  
+				if ( it.listvalue ) {
+					it.listvalue = em.serializer.read( it.listvalue );
+				} 
+				em.create( it, 'actionparam' ); 
+			}
+		}
+
+		conditions.clear();
+		actions.clear();
+		vars.clear();
+	} 	
+}

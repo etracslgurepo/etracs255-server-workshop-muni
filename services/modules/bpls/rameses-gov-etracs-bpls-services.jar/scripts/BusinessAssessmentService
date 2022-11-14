@@ -1,0 +1,209 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.rules.common.*;
+
+import bpls.facts.*;
+import bpls.actions.*;
+
+public class BusinessAssessmentService  {
+
+	@Service("BPAssessmentRuleService")	
+	def ruleSvc;
+
+	@Service("BusinessApplicationFactBuilder")
+	def factBuilder;
+
+	@Service("BusinessRecurringFeeService")
+	def recurFeeSvc;
+
+	@Service("BusinessBillingService")
+	def billSvc;
+
+	@Service("BusinessInfoService")
+	def infoSvc;
+
+	@Service("BusinessReceivableService")
+	def receivableSvc;
+
+	@Service("DateService")
+	def dateSvc;
+
+	@ActiveDB("business_application")
+	def bapp;
+
+	@Service 
+	def self;
+
+	@ProxyMethod
+	public def assess( def o ) { 
+		if ( !o.lobs ) throw new Exception("Please provide at least one line of business");
+
+		def facts = [];
+		def currDate = dateSvc.getServerDate();
+		def dt = currDate;
+		if(o.dtfiled && !(o.dtfiled instanceof java.util.Date)) {
+			dt = dateSvc.parse('yyyy-MM-dd', o.dtfiled );
+		}
+		facts << new EffectiveDate( dt );
+		facts << new CurrentDate(currDate);
+
+		//this is so we will not process derived infos.	
+		o.infos?.removeAll( o.infos.findAll{it.phase==null || it.phase > 1} );	
+		factBuilder.build(o, facts );
+
+		def req = [entity:o, facts: facts, taxfees: []];
+		//*********************************************************************
+		// if there is a businessid provided, retrieve recurring fees if any
+		//*********************************************************************
+		def recurringfees = [];
+		if ( o.businessid != null && o.apptype.toString().toUpperCase().matches('NEW|RENEW') ) {
+			recurringfees = recurFeeSvc.getList([ businessid: o.businessid ]);
+			recurringfees.each { 
+				if ( it.txntype?.feetype ) it.taxfeetype = it.txntype.feetype; 
+				if ( !it.taxfeetype ) it.taxfeetype = 'REGFEE'; 
+
+				req.taxfees << it; 
+				//workaround
+				def bi = new TaxFeeAccount();
+				bi.objid = "BPTXFEE"+new UID();
+				bi.acctid = it.account.objid;
+				bi.type = it.taxfeetype;
+				bi.amount = it.amount;
+				req.facts << bi;
+			} 
+		} 
+
+		def r = ruleSvc.execute( req );
+
+		if ( r.taxfees != null ) { 
+			r.taxfees.addAll( recurringfees ); 
+			recurringfees.clear(); 
+		} 
+
+		self.postAssess( req, r ); 
+
+		if ( r.taxfees ) { 
+			r.totals = [tax:0, regfee:0, othercharge:0, total:0]; 
+			def rt = r.taxfees; 
+			def taxfees = rt.findAll{ it.lob?.objid!=null }.sort{ it.lob?.name.toString() } + rt.findAll{it.lob?.objid==null};
+			taxfees.eachWithIndex {oo,idx-> 
+				oo.year = o.appyear;
+				if( oo.lob?.assessmenttype!=null ) {
+					oo.assessmenttype = oo.lob.assessmenttype;
+				}
+				else {
+					oo.assessmenttype = o.apptype;
+				}
+
+				oo.surcharge = 0; 
+				oo.interest = 0; 
+				oo.discount = 0; 
+				oo.lastqtrpaid = 0; 
+				oo.partial = 0; 
+				oo.amtpaid = 0; 
+				oo.total = oo.amount; 
+				if( oo.taxfeetype == 'TAX') {
+					oo.indexno = 0;
+					r.totals.tax += oo.total; 
+				} else if( oo.taxfeetype == 'REGFEE') { 
+					oo.indexno = 1;
+					r.totals.regfee += oo.total; 
+				} else if( oo.taxfeetype == 'OTHERCHARGE') { 
+					oo.indexno = 2;
+					r.totals.othercharge += oo.total; 
+				} else {
+					oo.indexno = 3;
+				}
+			}
+			def newtaxfees = taxfees.sort{ it.indexno } 
+			taxfees.clear();
+			taxfees.addAll( newtaxfees ); 
+		}
+		else { 
+			r.totals = [tax:0, regfee:0, othercharge:0, total:0];
+		} 
+		return r;
+	}
+
+	@ProxyMethod
+	public void postAssess( req, res ) {
+		// to be intercepted...
+	} 
+
+	@ProxyMethod
+	public def getBilling( def o ) {
+		def m = [:];
+		def z = billSvc.generateBilling( o );
+		return z;
+	}
+
+	@ProxyMethod
+	public def getAssessment( def o ) {
+		def m = [:];
+		def app = [apptype:o.apptype, appyear:o.appyear, dtfiled:o.dtfiled];
+		m.assessmentinfos = infoSvc.getAssessmentInfos( [applicationid: o.objid] );
+		m.taxfees = receivableSvc.getAssessmentTaxFees([applicationid: o.objid] );
+		if( !m.taxfees ) {
+			m.totals = [tax:0, regfee:0,othercharge:0,total:0,excess:0, q1:0,q2:0,q3:0,q4:0];
+			return  m; 
+		}
+
+		m.taxfees.each{ 
+			it.surcharge = it.interest = 0.0; 
+			if ( it.amount == it.amtpaid ) it.discount = 0.0; 
+		} 
+
+		def appstate = bapp.read([objid: o.objid])?.state; 
+		if (appstate.toString().toUpperCase().matches('RELEASE|COMPLETED|CANCELLED')) {
+			def tamtdue = m.taxfees.sum{ (it.amtdue? it.amtdue: 0.0) } 
+			if (tamtdue == 0.0) { 
+				m.totals = [tax:0,regfee:0,othercharge:0,total:0,excess:0, q1:0,q2:0,q3:0,q4:0];
+				m.taxfees.each { 
+					def amtdue = (it.amtdue? it.amtdue: 0.0);
+					def amtsur = (it.surcharge? it.surcharge: 0.0); 
+					def amtint = (it.interest? it.interest: 0.0); 
+					it.total = (amtdue + amtsur + amtint);
+				} 
+				return m; 
+			} 
+		} 
+
+		//always rebuild the bill
+		def z = billSvc.generateBilling( [app:app, taxfees: m.taxfees, show_paid: true] );
+		m.totals = z.totals;
+		m.nextbilldate = z.expirydate; 
+		m.expirydate = z.expirydate; 
+		m.taxfees.each{ tf->  
+			if( tf.taxfeetype == 'TAX') tf.indexno=0;
+			else if( tf.taxfeetype == 'REGFEE') tf.indexno=1;
+			else if( tf.taxfeetype == 'OTHERCHARGE') tf.indexno=2;
+			else tf.indexno=3;
+		}
+		m.taxfees.sort{ it.indexno } 
+		m.qtrdates = z.qtrdates;
+		return m;
+	}
+
+
+	@ProxyMethod
+	public def getBillingByAppno( def o ) {
+		def m = [:];
+		def app = bapp.findInfoByAppno( [appno: o.appno] );
+		def taxfees = receivableSvc.getAssessmentTaxFees([applicationid: app.objid] );
+		if(!taxfees) {
+			return  [tax:0, regfee:0,othercharge:0,total:0,excess:0, q1:0,q2:0,q3:0,q4:0,taxfees:[],items:[]];
+		}
+		def z = billSvc.generateBilling( [app:app, taxfees: taxfees, show_paid: true] );
+		m.taxfees = z.taxfees;
+		m.totals = z.totals;
+		m.expirydate = z.expirydate;
+		m.objid = app.objid;
+		m.businessname = app.tradename;
+		m.ownername = app.owner.name;
+		m.bin = app.bin;
+		return m;
+	}
+
+}
+

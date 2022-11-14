@@ -1,0 +1,20 @@
+<schema adapter="main">
+
+	<element tablename="entity_relation"> 
+		<field name="objid" primary="true"/> 
+		
+
+		<complex name="entity" ref="vw_entityindividual" jointype="many-to-one" includefields="objid,entityno,name,lastname,firstname,middlename,birthdate,gender"> 
+			<key field="entity_objid" target="objid"/> 
+		</complex> 
+
+		<complex name="relation" ref="entity_relation_type" jointype="many-to-one"> 
+			<key field="relation_objid" target="objid"/> 
+		</complex> 
+
+		<complex name="relateto" ref="vw_entityindividual" jointype="many-to-one" includefields="objid,entityno,name,lastname,firstname,middlename,birthdate,gender"> 
+			<key field="relateto_objid" target="objid"/> 
+		</complex> 
+	</element> 
+
+</schema>

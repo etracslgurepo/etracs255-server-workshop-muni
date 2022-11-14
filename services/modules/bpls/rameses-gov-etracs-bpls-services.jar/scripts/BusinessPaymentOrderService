@@ -1,0 +1,40 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.services.extended.*;
+
+public class BusinessPaymentOrderService {
+
+	@Service("PaymentOrderService")
+	def service;
+
+	@Service("CollectionTypeService")
+	def collTypeSvc;
+
+	@Service("RevenueItemAccountService")
+	def acctSvc;
+
+	@ProxyMethod
+	public def create(def o) {
+		def info = [:];
+		info.payer = [objid:o.business.owner.objid, name:o.business.owner.name];
+		info.paidby = o.business.businessname;
+		info.paidbyaddress = o.business.address.text;
+		info.businessid = o.business.objid;
+		info.amount = o.amount;
+		info.remarks = o.remarks;
+		info.collectiontype = collTypeSvc.findByHandler( [handler:'bpls'] );		
+		info.collectiontype.handler = 'bpls-payment-order';
+		info.items = o.items;
+		info.items.each {
+			it.item = acctSvc.findAccount( it.account );
+		}
+		def m = [
+			txntype: 'BUSINESS',
+			info: info
+		]
+		def z = service.create( m );			
+		return [txnid: z.txnid];
+	}
+
+}

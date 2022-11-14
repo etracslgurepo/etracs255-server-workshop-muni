@@ -1,0 +1,22 @@
+import com.rameses.annotations.*;
+
+class MobileSessionInterceptor {
+
+	@ActiveDB('var') 
+	def var_db;
+
+	@Env 
+	def env; 
+
+	@After(pattern="SessionService.getUserInfo", index=9999, eval="env.CLIENTTYPE=='mobile'") 
+	public void loadReportVariables( evt ) { 
+		def result = evt.result;
+		if ( result.env ) { 
+			def m = [:];
+			var_db.getList([ category: 'REPORT', searchtext: '%' ]).each{
+				m.put( "report_"+it.name, it.value ); 
+			}
+			result.env.REPORT = m; 
+		}
+	}
+}

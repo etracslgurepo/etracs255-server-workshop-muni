@@ -1,0 +1,243 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*
+import com.rameses.util.*;
+
+class RemittanceRCDReportService {
+
+	@DataContext('remittance')
+	def rem_em; 
+	
+	@DataContext('remittance_fund')
+	def remfund_em; 
+	
+	@ActiveDB('remittance_rcd_report') 
+	def rcd_em; 
+
+	@ActiveDB('remittance_rcdfund_report') 
+	def rcdfund_em; 
+
+	@ActiveDB('remittancereport')
+	def remreport_em;
+
+
+	@Service("NumberService")
+	def numSvc;
+
+
+	@ProxyMethod 
+	def getFundlist( remittanceid ) { 
+		def params = [ remittanceid: remittanceid ]; 
+		return remreport_em.getFundlist( params ); 
+	} 
+
+
+	@ProxyMethod 
+	def getReport( param ) { 
+		def result = [:]; 		
+		
+		def reminfo = rem_em.find([ objid: param.objid ]).first(); 
+		if ( !reminfo ) return result; 
+
+		result.putAll( reminfo ); 
+
+		def rptdb = rcd_em;
+		def p = [ remittanceid: param.objid ]; 
+		if ( param.fund?.objid ) { 
+			p.fundid = param.fund.objid; 
+			def em = remfund_em.find([ remittanceid: p.remittanceid ]);
+			em.where('fund.objid = :fundid', [ fundid: p.fundid ]);
+			em.select('controlno,amount,totalcash,totalcheck,totalcr,cashbreakdown,fund.*'); 
+			def o = em.first(); 
+			if ( !o ) return [:]; 
+
+			result.putAll( o ); 
+			rptdb = rcdfund_em; 
+		} 
+		else {
+			result.fund = [title: '']; 
+		}
+
+		p.fundidfilter = (p.fundid ? p.fundid : '%'); 
+
+		result.collectiontype = rptdb.getCollectionTypes( p ); 	
+		result.collectiontype.each { 
+			if ( it.formtype != 'serial' ) { 
+				it.formno = it.formno.toString() +' STUB #' + it.stubno; 
+			} 
+		} 
+
+		def total = 0.0; 
+		result.collectionsummaries = rptdb.getCollectionSummaries( p ); 
+		result.collectionsummaries.each { 
+			total += ( it.amount ? it.amount : 0.0 ); 
+
+			it.particulars = 'AF#'+ it.formno.toString() +':'+ it.collectiontypetitle +'-'+ it.fundtitle; 
+		}
+		result.amount = total; 
+		result.amountinwords = numSvc.doubleToWords( result.amount ).toUpperCase(); 
+		
+		result.payments = rptdb.getOtherPayments( p ); 
+
+		def afs = rptdb.getRemittedAFs( p ); 
+		afs.eachWithIndex{ o,idx-> o.lineno = idx; } 
+
+		result.remittedforms = afs.findAll{ it.formtype == 'serial' } 
+		result.nonserialremittances = afs.findAll{ it.formtype != 'serial' } 
+		afs.clear(); 
+
+		buildAF( result.remittedforms ); 
+		buildAF( result.nonserialremittances ); 
+		result.nonserialremittances.each{
+			it.receivedamt = (it.qtyreceived ? it.qtyreceived : 0) * it.denomination; 
+			it.beginamt = (it.qtybegin ? it.qtybegin : 0) * it.denomination; 
+			it.issuedamt = (it.qtyissued ? it.qtyissued : 0) * it.denomination; 
+			it.endingamt = (it.qtyending ? it.qtyending : 0) * it.denomination; 
+		}
+		
+		resolveCompatibility( result ); 
+
+		Base64Cipher cipher = new Base64Cipher();
+		if( reminfo.collector?.signature !=null ) {
+			result.collector.signature = cipher.decode( reminfo.collector.signature );
+		}
+		if(reminfo.liquidatingofficer?.signature) {
+			result.liquidatingofficer.signature =  cipher.decode(reminfo.liquidatingofficer.signature)
+		}
+		return result; 
+	} 
+
+	private void resolveCompatibility( result ) {
+		// 
+		// to support older report 
+		// 
+		result.txnno = result.controlno; 		
+		result.remittancedate = result.controldate; 
+		result.otherpayments = result.payments; 
+		result.nonserialsummary = result.nonserialremittances; 
+
+		if ( result?.cashbreakdown ) {
+			def coins = 0.0;
+			def denoms = [ 1000, 500, 200, 100, 50, 20, 10, 5, 1, 0.50, 0.25, 0.10, 0.05, 0.01 ]; 
+			denoms.each{ d-> 
+				def dd = result.cashbreakdown.find{( it.denomination == d )} 
+				if ( dd ) {
+					def str = d.toString().replace('.',''); 
+					result.put("dqty"+ str, dd.qty ); 
+					result.put("damt"+ str, dd.amount); 
+					
+					if ( d < 10 ) coins += dd.amount; 
+				}
+			}
+
+			if ( coins > 0 ) { 
+				result.put("damtCoins", coins); 
+			} 
+		}
+	}
+
+	private void buildAF( items ) { 
+		def unissuedlist = items.findAll{( it.qtyissued == 0 )} 
+		items.removeAll( unissuedlist ); 
+
+		items.findAll{ it.formtype != 'serial' }.each{
+			it.beginstartseries = it.beginendseries = null; 
+			it.issuedstartseries = it.issuedendseries = null; 
+			it.endingstartseries = it.endingendseries = null; 
+			it.receivedstartseries = it.receivedendseries = null; 
+		}
+
+		def groupindex = 1000; 
+		def serials = unissuedlist.findAll{ it.formtype == 'serial' } 
+		unissuedlist.removeAll( serials ); 
+
+		serials.groupBy{[ formno: it.formno, prefix: it.prefix, suffix: it.suffix ]}.each{ k,v-> 
+			v.sort{ it.startseries } 
+
+			def nextseries = 0; 
+			v.each{ vo-> 
+				if ( vo.startseries == nextseries ) {
+					vo.groupindex = groupindex;  
+				} else {
+					vo.groupindex = groupindex + 1; 
+				} 
+				groupindex = vo.groupindex; 
+				nextseries = vo.nextseries; 
+			} 
+
+			v.groupBy{ it.groupindex }.each{ kk,vv-> 
+				def fo = vv.first(); 
+				def receivedstartseries = vv.collect{ it.receivedstartseries }.findAll{( it )}.min{( it )}
+				def receivedendseries = vv.collect{ it.receivedendseries }.findAll{( it )}.max{( it )}
+				def endingstartseries = vv.collect{ it.endingstartseries }.findAll{( it )}.min{( it )}
+				def endingendseries = vv.collect{ it.endingendseries }.findAll{( it )}.max{( it )}
+				def beginstartseries = vv.collect{ it.beginstartseries }.findAll{( it )}.min{( it )}
+				def beginendseries = vv.collect{ it.beginendseries }.findAll{( it )}.max{( it )}
+
+				fo.qtyreceived = vv.findAll{( it.qtyreceived > 0 )}.sum{ it.qtyreceived } 
+				if ( fo.qtyreceived == null ) fo.qtyreceived = 0; 
+
+				fo.qtyending = vv.findAll{( it.qtyending > 0 )}.sum{ it.qtyending } 
+				if ( fo.qtyending == null ) fo.qtyending = 0; 
+
+				fo.qtybegin = vv.findAll{( it.qtybegin > 0 )}.sum{ it.qtybegin } 
+				if ( fo.qtybegin == null ) fo.qtybegin = 0; 
+
+				fo.receivedstartseries = receivedstartseries; 
+				fo.receivedendseries = receivedendseries; 
+				fo.beginstartseries = beginstartseries; 
+				fo.beginendseries = beginendseries; 
+
+				def e1 = [ receivedstartseries, beginstartseries ].findAll{( it )}.min{( it )} 
+				def e2 = [ receivedendseries, beginendseries ].findAll{( it )}.max{( it )} 
+				fo.endingstartseries = ( e1 ? e1 : endingstartseries ); 
+				fo.endingendseries = ( e2 ? e2 : endingendseries ); 
+				items << fo; 
+			} 
+		} 
+		serials.clear(); 		
+
+		unissuedlist.groupBy{[ formno: it.formno, prefix: it.prefix, suffix: it.suffix ]}.each{ k,v-> 
+			def fo = v.first(); 
+			def qtyreceived = 0; def qtyending = 0; def qtybegin = 0; 
+			v.each{
+				if ( it.qtyreceived > 0 ) qtyreceived += it.qtyreceived; 
+				if ( it.qtyending > 0 ) qtyending += it.qtyending; 
+				if ( it.qtybegin > 0 ) qtybegin += it.qtybegin; 
+			} 
+			fo.qtyreceived = qtyreceived;
+			fo.qtyending = qtyending; 
+			fo.qtybegin = qtybegin; 
+			fo.receivedstartseries = fo.receivedendseries = null; 
+			fo.endingstartseries = fo.endingendseries = null; 
+			fo.beginstartseries = fo.beginendseries = null; 
+			items << fo; 
+		} 
+		unissuedlist.clear(); 
+
+		items.sort{ it.lineno } 	
+		items.each{
+			it.qtyreceived = (it.qtyreceived ? it.qtyreceived : null); 
+			it.qtybegin = (it.qtybegin ? it.qtybegin : null); 
+			it.qtyissued = (it.qtyissued ? it.qtyissued : null); 
+			it.qtyending = (it.qtyending ? it.qtyending : null); 
+
+			if ( it.formtype == 'serial' ) {
+				it.receivedstartseriesstr = formatSeries( it.receivedstartseries, it.serieslength );
+				it.receivedendseriesstr = formatSeries( it.receivedendseries, it.serieslength );
+				it.beginstartseriesstr = formatSeries( it.beginstartseries, it.serieslength );
+				it.beginendseriesstr = formatSeries( it.beginendseries, it.serieslength );
+				it.issuedstartseriesstr = formatSeries( it.issuedstartseries, it.serieslength );
+				it.issuedendseriesstr = formatSeries( it.issuedendseries, it.serieslength );
+				it.endingstartseriesstr = formatSeries( it.endingstartseries, it.serieslength );
+				it.endingendseriesstr = formatSeries( it.endingendseries, it.serieslength );
+			}
+		} 
+	} 
+
+	private def formatSeries( seriesno, serieslength ) {
+		if ( seriesno == null ) return; 
+		if ( serieslength == null || serieslength <= 0 ) return; 
+
+		return seriesno.toString().padLeft(serieslength, '0'); 
+	}
+} 

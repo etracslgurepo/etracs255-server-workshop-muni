@@ -1,0 +1,25 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.services.extended.*;
+
+public class BusinessApplicationHistoryService  {
+
+	@ActiveDB("business_application")
+	def em;
+
+	@ProxyMethod	
+	public def getList(o) {
+		def list = em.getListByBusiness( o );
+		list.each {
+			if( it.apptype.matches('NEW|RENEW|RETIRE|ADDITIONAL|RETIRELOB')  ) {
+				it.filetype = 'business_application';
+			}
+			else {
+				it.filetype = 'business_change'
+			}
+		}
+		return list;
+	}
+
+}

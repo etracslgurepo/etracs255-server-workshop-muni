@@ -1,0 +1,18 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+
+class BPReportUtilService
+{
+	
+	@Service("DateService")
+	def dtSvc
+
+	@ProxyMethod
+	public def buildPeriod( year, qtr, month, day ) {
+		if( month && day ) return 'For the day of ' + month.caption + ' ' + day + ', ' + year;
+		if( month ) return 'For the month of ' + month.caption + ', ' + year;
+		if( qtr ) return 'For the ' + dtSvc.getQtrs().find{it.index == qtr}.caption + ' of ' + year;
+		return 'For the Year ' + year; 
+	}
+
+}

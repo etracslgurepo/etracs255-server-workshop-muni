@@ -1,0 +1,35 @@
+<schema>
+
+	<element tablename="jev">
+		<field name="objid" primary="true" prefix="JEV"/>
+		<field name="state" />
+		<field name="jevno" />
+		<field name="jevdate" type="date"/>
+		
+		<field name="refid" required="true"/>
+		<field name="refno" caption="Ref No" required="true"/>
+		<field name="refdate" caption="Ref Date" required="true"/>
+		<field name="reftype" />
+
+		<field name="postedby_objid" />
+		<field name="postedby_name" caption="Posted By"/>
+		<field name="dtposted" type="timestamp"/>
+		<field name="txntype" />
+		<field name="amount" type="decimal" caption="Amount"/>
+
+		<field name="verifiedby_objid" />
+		<field name="verifiedby_name" caption="Verified By"/>
+		<field name="dtverified" type="timestamp"/>
+
+		<complex name="fund" ref="fund" jointype="many-to-one" includefields="objid,code,title" required="false">
+			<key field="fundid" target="objid" />
+		</complex>
+
+		<complex name="items" ref="jevitem" jointype="one-to-many">
+			<key field="objid" target="jevid" />
+		</complex>
+
+		<field name="batchid" />
+	</element>
+
+</schema>

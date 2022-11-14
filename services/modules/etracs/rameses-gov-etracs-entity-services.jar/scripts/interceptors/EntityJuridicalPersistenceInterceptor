@@ -1,0 +1,82 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import java.rmi.server.UID;
+import com.rameses.util.*;
+import com.rameses.io.*;
+import com.rameses.services.extended.*;
+
+class EntityJuridicalPersistenceInterceptor  {
+
+	@Service('DateService')
+	def dtSvc;
+
+	@Service('SequenceService')
+    def seqSvc;
+
+	@Service("JuridicalEntityNameMatchService")
+	def matchSvc;
+
+	
+	@DataContext("entity_address")
+	def addressEm;
+
+	@DataContext("entityjuridical")
+	def entityEm;
+
+	@Before(pattern="PersistenceService.(create|update)", eval="#{args[0]._schemaname == 'entityjuridical'}", index=100)
+	public void beforeSave( evt ) {
+		def o = evt.args[0];
+		if ( o.name ) { 
+			o.entityname = o.name; 
+		}
+	}
+
+	@Before(pattern="PersistenceService.create", eval="#{args[0]._schemaname == 'entityjuridical'}", index=101)
+	public void beforeSaveCreate( evt ) {
+		def o = evt.args[0];
+
+		//check if there are name matches
+		if( !o.ignore_warning ) {
+			def list = matchSvc.getMatches( [name:o.name]);
+			if(list) {
+				throw new Warning("entityjuridical:matchname:warning", [list: list] );
+			}
+		}
+	}
+
+	@Before(pattern="PersistenceService.create", eval="#{args[0]._schemaname == 'entityjuridical'}", index=101)
+	public void beforeCreate( evt ) {
+		def o = evt.args[0];
+		if ( !o.address?.text ) throw new Exception("Address is required");
+		if ( o.orgtype=='SING' ) throw new Exception("Please select another org type"); 
+
+		if ( !o.objid ) o.objid = "JUR"+new UID();
+        if ( !o.entityno ) { 
+        	def stype = 'J';
+            def seqno = seqSvc.getNextFormattedSeriesA( "JURIDICAL_ENTITY", 6 );
+            if ( o.prefix ) { 
+                o.entityno = ''+ o.prefix +'-'+ seqno + stype; 
+            } else { 
+                o.entityno = ''+ stype + seqno; 
+            } 
+        } 
+		o.type = 'JURIDICAL';
+		o.state = 'ACTIVE';
+
+		//create the address first
+		def addr = addressEm.create( o.address );
+		o.address.objid = addr.objid;	
+	}
+
+	@After(pattern="PersistenceService.create", eval="#{args[0]._schemaname == 'entityjuridical'}")
+	public void afterCreate( evt ) {
+		def o = evt.args[0];
+		addressEm.find([objid: o.address.objid]).update([parentid: o.objid]);
+	}
+
+	@After( pattern="ListService.getList", eval="#{args[0].name == 'entitytype'}", index=10 )
+	public void getEntityTypeList( evt) {
+		def list = evt.result;
+		list << 'JURIDICAL'
+	}
+}

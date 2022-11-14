@@ -1,0 +1,25 @@
+<schema adapter="main">
+	
+	<element tablename="entity_ctc">
+		<field name="objid" primary="true" prefix="EPH"/>
+		<field name="entityid" required="true"/>
+		<field name="nonresident" required="true" type="integer" defaultValue="0"/>
+
+		<field name="ctcno" required="true" caption="CTC No"/>
+		<field name="dtissued" required="true" caption="Date Issued"/>
+		<field name="placeissued" required="true" caption="Place Issued"/>
+		<!-- 
+			this is in preparation for linkage to ETRACS. 
+			If LGU is an ETRACS member then the lgu objid will be filled up. 
+		-->
+		<field name="lgu_objid" required="false"/>
+		<field name="lgu_name" required="false" caption="City/Town"/>
+		<field name="barangay_objid" required="false"/>
+		<field name="barangay_name" required="true" caption="Barangay"/>
+
+		<field name="createdby_objid" required="true"/>
+		<field name="createdby_name" required="true"/>
+		<field name="system" required="true" type="integer" defaultValue="0"/>
+	</element>
+
+</schema>

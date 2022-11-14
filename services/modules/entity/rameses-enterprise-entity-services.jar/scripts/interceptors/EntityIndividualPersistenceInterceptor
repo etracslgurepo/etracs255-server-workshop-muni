@@ -1,0 +1,118 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import java.rmi.server.UID;
+import com.rameses.util.*;
+import com.rameses.io.*;
+
+
+class EntityIndividualPersistenceInterceptor  {
+
+	@Service('DateService')
+	def dtSvc;
+
+	@Service('SequenceService')
+    def seqSvc;
+
+	def INDEX_CHAR_COUNT = 300;
+
+	@DataContext("entity_address")
+	def addressEm;
+
+	@DataContext("entityindividual")
+	def entityEm;
+
+	@Service('LogService')
+	def logSvc 
+
+	@Service('ListService')
+	def listSvc 
+
+	@Service('LOVService') 
+	def LOV; 
+
+	@Before(pattern="PersistenceService.(create|update)", eval="#{args[0]._schemaname == 'entityindividual'}", index=100)
+	public void beforeSave(def evt ) {
+		def o = evt.args[0];
+
+		//validate birthdate if given
+		if ( o.birthdate ) {
+			def birthdate = dtSvc.resolveDate( o.birthdate ); 
+			def age = dtSvc.calculateAge( birthdate );
+			if(age <0) throw new Exception("Age must not be less than zero. Please check birthdate");
+		} 
+
+		//format name if given
+		if(o.lastname && o.firstname) {
+			o.name = o.lastname+', '+o.firstname + (o.middlename ? ' '+o.middlename : ''); 
+			o.entityname = o.name; 
+		}
+
+		if( o.religion ) {
+			listSvc.add( [name:'religion', value: o.religion ] );
+		}
+		if( o.citizenship ) {
+			listSvc.add( [name:'citizenship', value: o.citizenship ] );
+		}
+		if( o.profession ) {
+			listSvc.add( [name:'profession', value: o.profession ] );
+		}
+	}
+
+	@Before(pattern="PersistenceService.create", eval="#{args[0]._schemaname == 'entityindividual'}", index=101)
+	public void beforeCreate(def evt ) {
+		def o = evt.args[0];
+		if(!o.address?.text) throw new Exception("Address is required");
+
+		if ( !o.objid ) o.objid = "IND"+new UID();
+        if ( !o.entityno ) { 
+        	def stype = 'I';
+            def seqno = seqSvc.getNextFormattedSeriesA( "INDIVIDUAL_ENTITY", 6 );
+            if ( o.prefix ) {
+                o.entityno = ''+ o.prefix +'-'+ seqno + stype; 
+            } else { 
+                o.entityno = ''+ stype + seqno; 
+            } 
+        }
+		o.type = 'INDIVIDUAL';
+		o.state = 'ACTIVE';
+		//create the address first
+		o.parentid = null;
+		def addr = addressEm.create( o.address );
+		o.address.objid = addr.objid; 
+	}
+
+	//update the address default 
+	@After(pattern="PersistenceService.create", eval="#{args[0]._schemaname == 'entityindividual'}")
+	public void afterCreate(def evt ) {
+		def o = evt.args[0];
+		addressEm.find([objid: o.address.objid]).update([parentid: o.objid]);
+	}
+
+	@After(pattern="PersistenceService.read", eval="#{args[0]._schemaname == 'entityindividual'}")
+	public void afterOpen(def evt) {
+		def o = evt.result;
+		if (!o) return 
+		//o.photo = getPhoto( o );
+		if (o.birthdate) {  
+			def birthyear = dtSvc.getYear( o.birthdate );
+			o.age = dtSvc.serverYear - birthyear;
+			o.seniorcitizen = (o.age >= 60);
+		} 
+		if( o.gender ) {
+			o.gendername = LOV.GENDER.get( o.gender );
+		}
+		if( o.civilstatus ) {
+			o.civilstatusname = LOV.CIVIL_STATUS.get( o.civilstatus );
+		}		
+	}
+
+	
+	@After( pattern="ListService.getList", eval="#{args[0].name == 'entitytype'}", index=-1 )
+	public void getEntityTypeList(def evt) {
+		def list = evt.result;
+		list << 'INDIVIDUAL'
+	}
+
+
+
+}

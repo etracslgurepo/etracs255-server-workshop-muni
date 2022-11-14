@@ -1,0 +1,47 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+import java.rmi.server.UID
+
+class RPTReportCancelledPropertiesService
+{
+	@Env 
+	def env 
+
+    @ActiveDB('rptreport_cancelled_properties')
+    def em
+
+    @Service('RPTUtil')
+    def util
+
+    @Service('DateService')
+    def dtSvc 
+
+
+    @Async
+	@ProxyMethod
+	public Map buildReport( params ) {
+		util.required('LGU', params.lgu)
+		params.lguid = params.lgu.objid 
+		params.filter = ''
+
+		if (params.barangay) {
+			params.filter = ' AND rp.barangayid = $P{barangayid} '
+			params.barangayid = params.barangay.objid 
+		}
+
+		util.buildStartEndDateFilter(params)
+
+		def items = em.getList(params)
+		if (!items) throw new Exception('Records not found.')	
+
+		def p = [
+			PERIOD 		: util.buildPeriod(params),
+		]
+
+		return [
+			parameters  : p, 
+			reportdata  : items,
+		]
+	}
+}

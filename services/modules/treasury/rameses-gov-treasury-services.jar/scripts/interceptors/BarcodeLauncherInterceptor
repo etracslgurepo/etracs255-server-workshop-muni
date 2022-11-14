@@ -1,0 +1,44 @@
+import com.rameses.annotations.*;
+
+class BarcodeLauncherInterceptor {
+
+	@Service( dynamic=true )
+	def dynaSvc; 
+
+	@Before(pattern="PersistenceService.create", eval="#{args[0]._schemaname == 'barcode_launcher'}")
+	public void beforeCreate( evt ) { 
+		def param = evt.args[0];
+		param.system = ( param.system.toString().matches('0|1') ? param.system : 0); 
+	} 
+
+	@Before(pattern="PersistenceService.update", eval="#{args[0]._schemaname == 'barcode_launcher'}")
+	public void beforeUpdate( evt ) { 
+		def param = evt.args[0];
+		if ( param.paymentorder.toString() == '1' ) {
+			param.collectiontype = [objid: '{NULL}']; 
+		}
+	} 
+
+	@After(pattern="PersistenceService.update", eval="#{args[0]._schemaname == 'barcode_launcher'}")
+	public void afterUpdate( evt ) { 
+		def param = evt.args[0];
+		logAction( param, evt.result ); 
+	} 
+
+	void logAction( param, result ) {
+		if ( !param._action ) return;
+
+		if ( !param.objid ) throw new Exception('objid  parameter is required in logging actions');
+
+		def logSvc = dynaSvc.lookup('LogService'); 
+		def _schemaname = ( param._schemaname ? param._schemaname : 'barcode_launcher' ); 
+		def _refid = param.objid; 
+
+		if ( param._action == 'activate' ) {
+			logSvc.logA( param._action, _schemaname, _refid, 'Activate');
+		}
+		else if ( param._action == 'deactivate' ) {
+			logSvc.logA( param._action, _schemaname, _refid, 'Deactivate');		
+		} 
+	}
+}

@@ -1,0 +1,32 @@
+<schema>
+    <element tablename="vw_rptledger_cancelled_faas">
+        <field name="objid" primary="true" />
+        <field name="state" caption="State"/>
+        <field name="faasid" />
+        <field name="lastyearpaid" caption="Last Qtr Paid"/>
+        <field name="lastqtrpaid" caption="Last Year Paid"/>
+        <field name="barangayid" />
+        <field name="taxpayer_objid" />
+        <field name="fullpin" caption="PIN" searchable="true" indexed="true" width="200"/>
+        <field name="tdno" caption="TD No." searchable="true" indexed="true" width="140"/>
+        <field name="cadastrallotno" caption="Lot No." searchable="true" indexed="true" />
+        <field name="rputype" caption="Kind" width="50"/>
+        <field name="txntype_objid" />
+        <field name="classification_objid" />
+        <field name="classcode" caption="Class" width="50"/>
+        <field name="totalav" caption="A.V." type="decimal" />
+        <field name="totalmv" caption="M.V." type="decimal" />
+        <field name="totalareaha" caption="Area (ha)"/>
+        <field name="taxable"  type="integer" />
+        <field name="owner_name" caption="Owner Name" searchable="true" indexed="true" width="220"/>
+        <field name="prevtdno" caption="Prev. TD No." searchable="true" indexed="true" width="140"/>
+        <field name="titleno" caption="Title No."  searchable="true" indexed="true" />
+        <field name="administrator_name" caption="Administrator" indexed="true" width="200"/>
+        <field name="blockno" caption="Block No." indexed="true" />
+        <field name="lguid" />
+        <field name="beneficiary_objid" />
+        <field name="classification" caption="Classification"/>
+        <field name="barangay" caption="Barangay" indexed="true" width="180"/>
+        <field name="lgu" caption="LGU" indexed="true" />
+    </element>
+</schema>

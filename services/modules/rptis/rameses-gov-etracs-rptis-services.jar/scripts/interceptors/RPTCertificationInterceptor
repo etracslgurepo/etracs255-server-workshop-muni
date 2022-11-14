@@ -1,0 +1,15 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+
+class RPTCertificationInterceptor
+{
+	@Service('LogService')
+	def logSvc
+
+	@After(pattern="RPTCertificationService.createCertification.*") 
+	public void logCreate( evt ) {
+		def cert = evt.result 
+		logSvc.log( 'issue', cert.opener, cert.objid)
+	}
+}
+

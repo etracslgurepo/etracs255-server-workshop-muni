@@ -1,0 +1,49 @@
+import com.rameses.annotations.*
+import com.rameses.eserver.*;
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class RPTReceiptCompromiseInterceptor
+{
+	@DataContext('itemaccount')
+	def em_itemaccount
+
+	@Service('RPTReceiptCompromiseService')
+	def svc 
+
+	@Service('Var') 
+	def var;
+
+	@After(pattern="PersistenceService.read", eval="#{ args[0]._schemaname == 'cashreceipt' && result.collectiontype?.handler?.toString().matches('rptcompromise') }", index=1000)
+	public void afterOpenCashReceiptSchema( evt ) {
+		openReceipt( evt );  
+	} 
+
+	@After(pattern="CashReceiptService.open", eval="#{result.collectiontype?.handler.toString().matches('rptcompromise')}") 
+	public void openReceipt( evt ) {
+		def receipt = evt.result
+		svc.open(receipt) 
+		svc.formatReceiptForPrinting(receipt)
+	}
+
+	@Before(pattern="CashReceiptService.post", eval="#{args[0]?.collectiontype?.handler.toString().matches('rptcompromise')}") 
+	public void beforePostReceipt( evt ) {
+		def receipt = evt.args[0]
+		svc.buildPostingItems(receipt)
+	}
+
+
+	@After(pattern="CashReceiptService.post", eval="#{args[0]?.collectiontype?.handler.toString().matches('rptcompromise')}") 
+	public void afterPostReceipt( evt ) {
+		def receipt = evt.result
+		svc.create(receipt)
+		svc.formatReceiptForPrinting(receipt)
+	}
+
+	@After(pattern="CashReceiptVoidService.post", eval="#{result.receipt.collectiontype?.handler.toString().matches('rptcompromise')}") 
+	public void afterVoidReceipt( evt ) {
+		svc.voidReceipt(evt.result.receipt)
+	}
+
+}
+

@@ -1,0 +1,28 @@
+<schema>
+	
+	<element tablename="remittance_af">
+		<field name="objid" primary="true"/>
+		<field name="remittanceid" required="true"/>
+		<field name="controlid" required="true"/>
+
+		<complex name="afcontrol" ref="af_control" jointype="many-to-one" includefields="afid,stubno">
+			<key field="controlid" target="objid"/>
+		</complex>
+			
+		<field name="receivedstartseries" />
+		<field name="receivedendseries" />
+		<field name="beginstartseries" />
+		<field name="beginendseries" />
+		<field name="issuedstartseries" />
+		<field name="issuedendseries" />
+		<field name="endingstartseries" />
+		<field name="endingendseries" />
+		<field name="qtyreceived" />
+		<field name="qtybegin" />
+		<field name="qtyissued" />
+		<field name="qtyending" />
+		<field name="qtycancelled" />
+		<field name="remarks" />
+	</element>
+	
+</schema>

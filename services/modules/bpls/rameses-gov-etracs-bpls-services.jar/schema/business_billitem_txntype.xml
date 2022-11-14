@@ -1,0 +1,16 @@
+<schema>
+	<element tablename="business_billitem_txntype">
+		<field name="objid" primary="true" prefix="BPLSTTYPE"/>
+		<field name="title" required="true"/>
+		<field name="category" />
+		<field name="feetype" required="true"/>
+
+		<field name="domain" />
+		<field name="role" />
+
+		<complex name="account" ref="itemaccount" jointype="many-to-one" required="false" includefields="objid,title,code">
+			<key field="acctid" target="objid" />
+		</complex>	
+
+	</element>
+</schema>

@@ -1,0 +1,11 @@
+<schema>
+	<element tablename="vw_machine_smv">
+		<field name="objid" primary="true" />
+		<field name="parent_objid" />
+		<field name="machine_objid" />
+		<field name="code" caption="Code" searchable="true" />
+		<field name="name" caption="Machine"  searchable="true" indexed="true" />
+		<field name="expr" caption="Computation" />
+		<field name="previd" />
+	</element>
+</schema>

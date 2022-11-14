@@ -1,0 +1,15 @@
+<schema>
+    <element tablename="rptbill">
+        <field name="objid" primary="true" /> 
+        <field name="taxpayer_objid" required="true" /> 
+        <field name="taxpayer_name" /> 
+        <field name="taxpayer_address" /> 
+        <field name="barcode"  /> 
+        <field name="expirydate" required="true" /> 
+        <field name="postedby" required="true" /> 
+        <field name="postedbytitle" required="true" /> 
+        <field name="dtposted" required="true" /> 
+        <field name="billtoyear" required="true" /> 
+        <field name="billtoqtr" required="true" /> 
+    </element>
+</schema>

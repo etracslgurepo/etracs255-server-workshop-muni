@@ -1,0 +1,166 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.rules.common.*;
+
+public class BusinessInfoService  {
+	
+	@ActiveDB("business_application_info")
+	def em;
+
+	@ActiveDB("business_active_info")
+	def activeInfo;
+
+	private void convertInfo(o) {
+		def value = o.value;
+		if( value == null ) return;
+		switch(o.attribute.datatype) {
+			case "decimal":
+				o.decimalvalue = Double.parseDouble(value+"");
+				break;
+			case "integer":
+				o.intvalue = Integer.parseInt(value+"");
+				break;
+			case "string_array":	
+			case "string":
+				o.stringvalue = (String)value;
+				break;
+			case "boolean":
+				value = ( value == 1 || value == true ) ? "true" : "false";
+				boolean b =  Boolean.parseBoolean(value);
+				o.boolvalue = (b) ? 1 : 0; 
+				break;
+		} 
+	}
+
+	private def formatInfo(x)  {
+		switch(x.attribute.datatype) {
+			case "decimal" : return x.decimalvalue; break;
+			case "integer" : return x.intvalue; break;
+			case "string_array" : return x.stringvalue; break;
+			case "string"  : return x.stringvalue; break;
+			case "boolean" : 
+				if(x.boolvalue == 0) return false;
+				if(x.boolvalue == 1) return true;
+				return x.boolvalue; 
+				break;
+		}
+	}
+
+	@ProxyMethod
+	public def getAppInfos(o) {
+		def infos = em.getAppInfos( o );
+		infos.each {
+			it.value = formatInfo(it);
+		}
+		return infos;
+	}	
+
+	@ProxyMethod
+	public def getAssessmentInfos(o) {
+		def infos = em.getAssessmentInfos( o );
+		infos.each {
+			it.value = formatInfo(it);
+		}
+		return infos;
+	}	
+	
+	@ProxyMethod
+	public void addAppInfos(def o) {
+		if(!o.businessid) throw new Exception("businessid is required");
+		if(!o.appinfos) throw new Exception("appinfos is required");
+		if(!o.applicationid) throw new Exception("applicationid is required");
+		if(!o.activeyear) throw new Exception("activeyear is required");
+		em.removeAppInfos( o );
+		o.appinfos.each {
+			it.objid = "BUSINFO"+new UID();
+			it.businessid = o.businessid;
+			it.applicationid = o.applicationid;
+			it.activeyear = o.activeyear;
+			it.type = "appinfo";
+			convertInfo(it);
+			em.create(it);
+		}	
+	}
+
+	@ProxyMethod
+	public void addAssessmentInfos(def o) {
+		if(!o.businessid) throw new Exception("businessid is required");
+		if(!o.assessmentinfos) throw new Exception("assessmentinfos is required");
+		if(!o.applicationid) throw new Exception("applicationid is required");
+		if(!o.activeyear) throw new Exception("activeyear is required");
+		em.removeAssessmentInfos( o );
+		o.assessmentinfos.each {
+			it.objid = "ASSBUSINFO"+new UID();
+			it.businessid = o.businessid;
+			it.applicationid = o.applicationid;
+			it.activeyear = o.activeyear;
+			it.type = "assessmentinfo";
+			convertInfo(it);
+			em.create(it);
+		}	
+	}
+
+	@ProxyMethod
+	public void removeAppInfos(def o) {
+		if(!o.applicationid) throw new Exception("applicationid is required");
+		em.removeAppInfos( [applicationid: o.applicationid ] );
+	}
+
+	@ProxyMethod
+	public void removeAssessmentInfos(def o) {
+		if(!o.applicationid) throw new Exception("applicationid is required");
+		em.removeAssessmentInfos( [applicationid: o.applicationid ] );
+	}
+
+	/********************
+	* ACTIVE INFOS
+	********************/
+	@ProxyMethod
+	public def getActiveAppInfos(o) {
+		def infos = activeInfo.getAppInfos( o );
+		infos.each {
+			it.value = formatInfo(it);
+		}
+		return infos;
+	}	
+
+	
+	@ProxyMethod
+	public void addActiveAppInfos(o) {
+		if(!o.businessid) throw new Exception("businessid is required");
+		if(!o.appinfos) throw new Exception("appinfos is required");
+		if(o.remove_all == true) activeInfo.removeAppInfos( o );
+		o.appinfos.each {
+			it.businessid = o.businessid;
+			it.type = 'appinfo';
+			convertInfo(it);
+			activeInfo.create( it );
+		}
+		activeInfo.cleanupInfos( o );
+	}	
+
+	@ProxyMethod
+	public def getActiveAssessmentInfos(o) {
+		def infos = activeInfo.getAssessmentInfos( o );
+		infos.each {
+			it.value = formatInfo(it);
+		}
+		return infos;
+	}	
+
+	@ProxyMethod
+	public void addActiveAssessmentInfos(o) {
+		if(!o.businessid) throw new Exception("businessid is required");
+		if(!o.assessmentinfos) throw new Exception("assessmentinfos is required");
+		if(o.remove_all == true) activeInfo.removeAssessmentInfos( o );
+		o.assessmentinfos.each {
+			it.businessid = o.businessid;
+			it.type = 'assessmentinfo';
+			convertInfo(it);
+			activeInfo.create( it );
+		}
+		activeInfo.cleanupInfos( o );
+	} 
+}
+

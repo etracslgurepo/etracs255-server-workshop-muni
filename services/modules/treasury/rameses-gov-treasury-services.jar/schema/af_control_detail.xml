@@ -1,0 +1,42 @@
+<schema>
+	<element tablename="af_control_detail">
+		<field name="objid" primary="true" prefix="AFCTRLD" />
+		<field name="state" required="true" type="integer" defaultValue="0"/>
+		<field name="indexno" required="true" />
+		<field name="aftxnid" />
+		<field name="aftxnitemid" />
+		<field name="refid" required="true" />
+		<field name="refno" required="true" caption="Ref No."/>
+		<field name="reftype" required="true" caption="Ref Type"/>
+		<field name="refdate" required="true" caption="Ref Date"/>
+		<field name="txndate" required="true" caption="Txn Date"/>
+		<field name="txntype" required="true" caption="LastTxnType"/>
+		<field name="receivedstartseries" />
+		<field name="receivedendseries"  />
+		<field name="beginstartseries" />
+		<field name="beginendseries"  />
+		<field name="issuedstartseries"  />
+		<field name="issuedendseries" />
+		<field name="endingstartseries"  />
+		<field name="endingendseries" />
+		<field name="qtyreceived" required="true" />
+		<field name="qtybegin" required="true" />
+		<field name="qtyissued" required="true" />
+		<field name="qtycancelled" required="true" />
+		<field name="qtyending" required="true" />
+		<field name="remarks" required="true" />
+
+		<field name="issuedto_objid" />
+		<field name="issuedto_name" caption="Issued To"/>
+
+		<field name="respcenter_objid" />
+		<field name="respcenter_name" caption="RespCenter"/>
+
+		<complex name="parent" ref="af_control" jointype="many-to-one"> 
+			<key field="controlid" target="objid"/> 
+		</complex> 
+		<complex name="statetype" ref="aftxn_type" jointype="many-to-one" required="false"> 
+			<key field="txntype" target="txntype"/> 
+		</complex> 
+	</element>
+</schema>

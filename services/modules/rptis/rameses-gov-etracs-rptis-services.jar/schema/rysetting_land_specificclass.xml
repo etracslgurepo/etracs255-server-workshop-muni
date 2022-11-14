@@ -1,0 +1,16 @@
+<schema>
+	<element tablename="lcuvspecificclass">
+		<field name="objid" primary="true"/>
+		<field name="landrysettingid" required="true"/>
+		<field name="classification_objid" required="true" />
+		<field name="landspecificclass_objid" required="true" />
+		<field name="areatype" required="true" />
+		<field name="previd" />
+		<complex name="landspecificclass" ref="landspecificclass" jointype="many-to-one" required="true">
+			<key field="landspecificclass_objid" target="objid" />
+		</complex>
+		<complex name="classification" ref="propertyclassification" jointype="many-to-one" required="true">
+			<key field="classification_objid" target="objid" />
+		</complex>
+	</element>
+</schema>

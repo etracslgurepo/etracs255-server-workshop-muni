@@ -1,0 +1,43 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+
+
+public class BusinessCashReceiptBarcodeInterceptor {
+
+	@ActiveDB("business_application")
+	def app;
+
+	@Service("BusinessReceivableService")
+	def receivableSvc;
+
+	@Service("BusinessBillingService")
+	def billSvc;
+
+	@ActiveDB("business")
+	def bus;
+
+	@After(pattern="CashReceiptBarcodeService.init", eval="#{ args[0].prefix == '51005' }")
+	public void cashReceiptInit(def evt) {
+		def r = evt.result;
+		def barcodeid = evt.args[0].barcodeid;
+		def b = [:];
+		if(barcodeid.indexOf("-")>0) {
+			b = app.findBusinessInfoByAppno( [appno: barcodeid] );
+			r.applicationid = b.applicationid;
+			r.appno = barcodeid;
+		}
+		else {
+			b = bus.findBusinessInfoByBIN( [bin: barcodeid] );
+		}
+		if(!b) {
+			throw new Exception("business not found for " + barcodeid);
+		}
+		r.bin = b.bin;
+		r.businessid = b.businessid;
+		r.payer = [objid: b.owner.objid, name: b.owner.name, address: b.owner.address.text ];
+		r.paidby = b.tradename;
+		r.paidbyaddress = b.address.text;
+		r.barcodeid = barcodeid;
+	}
+}

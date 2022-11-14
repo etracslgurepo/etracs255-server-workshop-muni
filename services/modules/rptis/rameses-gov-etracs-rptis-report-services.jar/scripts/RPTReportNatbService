@@ -1,0 +1,57 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+
+class RPTReportNatbService
+{
+	@Env
+	def env
+
+    @ActiveDB('rptreport_natb')
+    def em
+     
+	@Service('DateService')
+    def dateSvc
+
+	@Service('ReportParameterService')
+    def reportParamSvc;
+
+    @Service('RPTUtil')
+    def util
+	
+	@Async 
+	@ProxyMethod 
+	public def buildReport( params ) {
+        def handlers = [
+            cover: getCoverData,
+            list: getListing,
+        ]
+        def handler = handlers[params.reportformat.code]
+        return [reportdata: handler(params)]
+	} 
+
+    def getCoverData = { params -> 
+        def reportparams = reportParamSvc.getStandardParameter();
+        def assessor = [
+            name: reportparams.ASSESSORNAME,
+            title: reportparams.ASSESSORTITLE,
+        ]
+        def treasurer = [
+            name: reportparams.TREASURERNAME,
+            title: reportparams.TREASURERTITLE,
+        ]
+        return [
+            period: params.month.caption + ' ' + params.year,
+            treasurer: treasurer,
+            assessor: assessor,
+            submittedthru: params.submittedthru, 
+        ]
+    }
+
+    def getListing = {params ->
+        util.buildStartEndDateFilter(params)
+        def list = em.getList(params)
+        if (!list) throw new Exception('No records found.')
+        return list
+    }
+
+}	

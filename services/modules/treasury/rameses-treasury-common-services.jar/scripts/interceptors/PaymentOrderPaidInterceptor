@@ -1,0 +1,67 @@
+import com.rameses.annotations.*;
+
+class PaymentOrderPaidInterceptor {
+
+	@DataContext( dynamic=true )
+	def dynaEm;
+
+	@Service( dynamic=true )
+	def dynaSvc;
+
+
+	@After(pattern="PersistenceService.read", eval="#{args[0]._schemaname == 'paymentorder_paid'}")
+	public void afterRead( evt ) {
+		def param = evt.args[0];
+		def result = evt.result;
+		resolveData( param, result );
+	}
+
+	@After(pattern="PersistenceService.update", eval="#{args[0]._schemaname == 'paymentorder_paid'}")
+	public void afterUpdate( evt ) { 
+		def param = evt.args[0];
+		logAction( param, evt.result ); 
+
+		if ( param._action == 'delete' ) {
+			def em = dynaEm.lookup('paymentorder_paid'); 
+			em.find([ objid: param.objid.toString()]).delete(); 
+		}
+	} 
+
+
+	@After(pattern="PersistenceService.read", eval="#{args[0]._schemaname == 'cashreceipt'}")
+	public void afterReadCashReceipt( evt ) {
+		def result = evt.result;
+		def em = dynaEm.lookup('paymentorder_paid'); 
+		def po = em.find([ receiptid: result.objid.toString() ]).select('objid,txndate,typeid').first();
+		if ( po ) {
+			result._paymentorderid = po.objid; 
+			result.paymentorder = po; 
+		}
+	}
+
+
+	void resolveData( req, res ) {
+		def svc = dynaSvc.lookup('PaymentOrderService');
+		def bc = svc.getBarcodePrefix( req?._connection ); 
+		res.txncode = bc?.barcodeid +":"+ res.objid; 
+		res.checksum = svc.buildCheckSum( res.objid ); 
+	}
+
+
+	void logAction( param, result ) {
+		if ( !param._action ) return;
+
+		if ( !param.objid ) throw new Exception('objid  parameter is required in logging actions');
+
+		def logSvc = dynaSvc.lookup('LogService'); 
+		def _schemaname = ( param._schemaname ? param._schemaname : 'paymentorder_paid' ); 
+		def _refid = param.objid; 
+
+		if ( param._action == 'delete' ) {
+			logSvc.logA( param._action, _schemaname, _refid, 'Delete record');
+		}
+		else if ( param._action == 'close' ) {
+			logSvc.logA( param._action, _schemaname, _refid, 'Mark as closed');
+		}
+	}	
+}

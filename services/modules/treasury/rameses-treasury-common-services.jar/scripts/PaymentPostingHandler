@@ -1,0 +1,25 @@
+import com.rameses.annotations.*;
+
+class PaymentPostingHandler {
+
+	@ProxyMethod 
+	public def getPaymentInfo( params ) {
+		return [:]; 
+	}
+
+	@ProxyMethod 
+	public def getPaymentWorkflow( params ) {
+		return [:]; 
+	}
+
+	@ProxyMethod 
+	public def getVoidInfo( params ) {
+		return [:]; 
+	}	
+
+	@ProxyMethod 
+	public def getVoidWorkflow( params ) {
+		return [:]; 
+	}	
+	
+}

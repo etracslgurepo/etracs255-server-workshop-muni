@@ -1,0 +1,512 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import com.rameses.services.extended.*
+
+public class BatchGRService
+{
+    @Env 
+    def env 
+
+    @Service('DateService')
+    def dtSvc 
+
+    @Service('RPTUtil')
+    def util
+
+    @Service('FAASService')
+    def faasSvc
+
+    @Service('GeneralRevisionService')
+    def svc 
+
+    @Service('RPTRedFlagService')
+    def redFlagSvc 
+
+    @Service('TxnRefService')
+    def txnRefSvc 
+
+    @DataContext('faas') 
+    def em_faas 
+
+    @DataContext('faas_list') 
+    def em_faas_list
+
+    @DataContext('faas_task')
+    def em_faas_task
+
+    @DataContext('faas_previous')
+    def em_faas_previous
+
+    @DataContext('batchgr') 
+    def em_batchgr 
+
+    @DataContext('batchgr_item') 
+    def em_batchgr_item 
+
+    @DataContext('batchgr_task') 
+    def em_task
+
+    @DataContext('rptledger') 
+    def em_rptledger
+
+    @DataContext('rysetting_land') 
+    def em_rysetting_land
+
+    @DataContext('rysetting_bldg') 
+    def em_rysetting_bldg
+
+    @DataContext('rysetting_mach') 
+    def em_rysetting_mach
+
+    @DataContext('rysetting_planttree') 
+    def em_rysetting_planttree
+
+    @DataContext('rysetting_misc') 
+    def em_rysetting_misc
+
+
+    @ProxyMethod
+    public def create(entity) {
+        if (entity.effectivityyear && entity.effectivityyear < entity.ry) {
+            throw new Exception("Effectivity year should be greater than or equal to " + entity.ry);
+        }
+
+        entity.state = 'DRAFT'
+        entity.txnno = util.getNextSequence('BATCHGR')
+        def pdate = dtSvc.parseCurrentDate()
+        entity.txntype = [objid: 'GR']
+        entity.txndate = pdate.date
+        entity.originlgu = (entity.originlgu ?entity.originlgu : [objid: env.ORGID])
+        entity.section = entity.section ? entity.section : '%'
+        entity = em_batchgr.create(entity)
+
+        entity.lguid = entity.lgu.objid
+        entity.barangayid = entity.barangay.objid
+        entity.classificationid = (entity.classification ? entity.classification.objid : '%')
+        entity.rputype = (entity.rputype ? entity.rputype : '%')
+        entity.section = (entity.section ? entity.section : '%')
+        
+        entity.prevry = getPreviousRy(entity)
+        em_batchgr.insertItems(entity)
+        
+        def counts = getCounts(entity)
+        if (counts.count == 0) {
+            throw new Exception('There are no records that match the specified criteria.')
+        }
+        createItemsTxnRef(entity)
+        return open(entity)
+    }
+
+    @ProxyMethod
+    public def update(entity) {
+        def old = open(entity)
+        em_batchgr.update(entity)
+        return entity 
+    }
+
+    @ProxyMethod
+    public def open(entity) {
+        entity = em_batchgr.read(entity)
+        if (!entity) {
+            throw new Exception('Batch record does not exist or has been deleted.')
+        }
+        def task = em_task.where('refid = :objid and enddate is null', entity).first()
+        entity.taskid = task?.objid
+        entity.taskstate= task?.state
+        entity.assigne = task?.assignee
+        return entity
+    }
+
+    @ProxyMethod
+    public void delete(entity) {
+        def gritems = em_batchgr_item.select('newfaasid').where('parent_objid = :objid and newfaasid is not null', entity)
+                        .orderBy("pin, suffix DESC")
+                        .list()
+
+        em_batchgr_item.where(['parent_objid = :objid', entity]).delete()
+        em_task.find([refid: entity.objid]).delete()
+        txnRefSvc.delete(entity.objid)
+        em_batchgr.delete(entity)
+
+    	deleteRevisedFaases(entity, gritems)
+    }
+
+    @ProxyMethod
+    public void validateFaases(batchgr) {
+    	def items = em_batchgr_item.find([parent_objid: batchgr.objid])
+    					.orderBy('pin,suffix,subsuffix')
+    					.list()
+
+    	def errors = []
+		items.each {
+			if (!it.faas.state.matches('CURRENT')) {
+				errors << 'FAAS ' + it.tdno + ' is not yet current.'
+			}
+
+			def ledger = em_rptledger.select('state').find([faasid: it.objid]).first()
+			if (!ledger) {
+				errors << 'Ledger for FAAS ' + it.tdno + ' does not exist or has not been linked.'
+			} else if (!ledger.state.matches('APPROVED')) {
+				errors << 'Ledger for FAAS ' + it.tdno + ' is not yet approved.'
+			}
+		}
+		if (errors) {
+			throw new Exception(errors.join('\n'))
+		}
+    }
+
+
+
+    @ProxyMethod
+    public def getOpenRedflagCount(entity) {
+        return redFlagSvc.getOpenRedflagCount(entity)
+    }
+
+    @ProxyMethod
+    public void insertFaasSignatories(entity) {
+        def _taskid = entity._taskid
+        def currTask = em_task.find([objid: _taskid]).first()
+        if (!currTask) return 
+
+        em_batchgr_item.find([parent_objid: entity.objid]).list().each {
+            faasSvc.insertOnlineFaasSignatory([
+                taskid: _taskid, 
+                faasid: it.newfaasid, 
+                task: currTask
+            ])
+        }
+    }
+
+    @ProxyMethod
+    public void updateSignatories(task){
+        if (task.state.matches('assign.*') || env.action?.matches('return.*'))
+            return;
+
+        def t = [
+            objid       : task.objid,
+            refid       : task.refid,
+            state       : task.state, 
+            action      : task.action, 
+            actor       : task.actor, 
+            enddate     : task.enddate,
+        ]
+        getItems([objid: task.refid]).each{
+            t.refid = it.newfaasid 
+            faasSvc.updateSignatoryInfo(t)
+        }
+    }    
+
+
+    @ProxyMethod
+    public def revise(batchitem) {
+        def entity = open(batchitem.parent)
+        def info = [entity: entity, item: batchitem]
+
+        def olditem = em_batchgr_item.find([objid: batchitem.objid]).first()
+        if (!olditem) {
+            batchitem.state = 'ERROR'
+            batchitem.error = 'Batch Item does not exist or has been deleted.'
+            em_batchgr_item.update(batchitem)
+        } 
+        else if (olditem.state.matches('FORREVISION|ERROR')) {
+            if (checkReconcileRevisedFaas(batchitem)) return info;
+
+            try {
+            	txnRefSvc.deleteByObjid(entity.objid, batchitem.objid)
+
+                def params = [:]
+                params.faas = [objid: batchitem.objid]
+                params.newry = entity.ry 
+                params.effectivityyear = entity.effectivityyear
+                params.effectivityqtr = entity.effectivityqtr
+                params.datacapture = true 
+                params.batchgr = entity 
+                def grfaas = svc.createOnlineGeneralRevision(params)
+
+                batchitem.state = 'REVISED'
+                batchitem.error = null 
+                batchitem.newfaasid = grfaas.objid 
+                batchitem.newfaas = [tdno: grfaas.tdno, fullpin: grfaas.fullpin]
+                em_batchgr_item.update(batchitem)
+            } 
+            catch(e) {
+                handleError(info, e)
+            }
+        }
+        else {
+            // do nothing for cases
+            // where record was updated by another user
+        }
+        return info 
+    }
+
+    def checkReconcileRevisedFaas(batchitem) {
+        def prevfaas = em_faas_previous.find([prevfaasid: batchitem.objid]).first();
+        if (!prevfaas) return false;
+
+        def grfaas = em_faas.select('objid,state,tdno,fullpin').find([objid: prevfaas.faasid]).first();
+        if (grfaas && 'PENDING'.equalsIgnoreCase(grfaas.state)) {
+            batchitem.state = 'REVISED'
+            batchitem.error = null 
+            batchitem.newfaasid = grfaas.objid 
+            batchitem.newfaas = [objid: grfaas.objid, tdno: grfaas.tdno, fullpin: grfaas.fullpin]
+            em_batchgr_item.update(batchitem)
+            return true;
+        }
+        return false;
+    }
+
+    @ProxyMethod
+    public def getItems(entity) {
+        def findby = [parent_objid: entity.objid];
+        
+        if (entity._query) {
+            def query = entity._query;
+            if (query.landpin) findby.pin = query.landpin.pin;
+            if (query.rputype) findby.rputype = query.rputype;
+            if (query.state) findby.state = query.state;
+        }
+
+        return em_batchgr_item.find(findby)
+                .orderBy('pin,suffix,subsuffix')
+                .list()
+    }
+
+    @ProxyMethod
+    public def getItem(item) {
+        return em_batchgr_item.find([objid: item.objid]).first()
+    }
+
+    @ProxyMethod
+    public def getFaasListing( objid ) {
+        return em_batchgr.getFaasListing([objid:objid])
+    }    
+
+
+    @ProxyMethod
+    public def initSubmitToProvince(entity) {
+        return entity
+    }
+
+    @ProxyMethod
+    public def assignNewTdNos(entity){
+        em_batchgr_item.find([parent_objid: entity.objid])
+            .orderBy('pin,suffix,subsuffix')
+            .list().each {
+            if (it.newfaasid && !it.newfaas.tdno) {
+                it.newfaas.objid = it.newfaasid
+                assignFaasNewTdNo(it)
+            }
+        }
+    }
+
+    @ProxyMethod
+    public def submitToProvince(entity){
+        insertFaasSignatories(entity)
+        entity.state = 'FORAPPROVAL'
+        em_batchgr.find([objid: entity.objid]).update([state: entity.state])
+        return entity
+    }    
+
+    @ProxyMethod
+    public def approveFaas(entity, item){
+        def faas = faasSvc.openFaas(item.newfaas)
+        if (!entity.approver) {
+            entity.approver = em_task.find([refid: entity.objid, state: 'approver']).orderBy('enddate desc').first()
+            if (!entity.approver) {
+                throw new Exception('approver is not set.')
+            }
+        }
+        faas.approver = entity.approver 
+        faasSvc.approveFaas(faas)
+    }
+
+    @ProxyMethod
+    public def approve(entity){
+        entity.items = getItems(entity)
+        checkPendingFaases(entity)
+        deleteTxnRefs(entity)
+        entity.state = 'APPROVED'
+        em_batchgr.find([objid: entity.objid]).update([state: entity.state])
+        return entity
+    }
+
+    void deleteTxnRefs(entity){
+        entity.items.each {
+            txnRefSvc.delete(it.newfaas.objid)
+        }
+    }
+
+    void checkPendingFaases(entity){
+        def res = em_batchgr.findPendingFaasesCount(entity)
+        if (res.icount > 0)
+            throw new Exception('Unable to approve resection. There are still pending resectioned FAAS.\nCancel the transaction and approve again.')
+    }    
+
+
+
+
+
+
+
+
+    /*-------------------------------------------------------------------
+    * Update the batchgr item status in cases where 
+    * an existing general revision has already benn created.
+    * Reflect the newfaasid and appropriate status of the item 
+    *-------------------------------------------------------------------*/
+    @ProxyMethod 
+    public def updateItemStatus(item) {
+        def newfaas = em_faas.select('objid,state').find([prevtdno: item.tdno]).first()
+        if (newfaas) {
+            item.state = (newfaas.state == 'CURRENT' ? 'CURRENT' : 'REVISED')
+            item.newfaasid = newfaas.objid
+            em_batchgr_item.update(item)
+        }
+        return item
+    }
+
+    /*-------------------------------------------------------
+    * Exclude the specified item from revision.
+    * If item is land, exclude also all of its improvement
+    -------------------------------------------------------*/
+    @ProxyMethod
+    public void excludeItem(item){
+        excludeFaases(getExcludedItems(item), false);
+    }
+
+    @ProxyMethod
+    public void postOnlineExcludeItem(item) {
+        excludeFaases(getExcludedItems(item), true);
+    }
+
+    @ProxyMethod
+    public def getCounts(entity){
+        def findby = [:];
+        findby.objid = entity.objid;
+        findby.pin = '%'
+        findby.rputype = '%'
+        findby.state = '%'
+        
+        if (entity._query) {
+            def query = entity._query;
+            if (query.landpin) findby.pin = query.landpin.pin;
+            if (query.rputype) findby.rputype = query.rputype;
+            if (query.state) findby.state = query.state;
+        }
+
+        def cnt = em_batchgr.findCounts(findby)
+        if (cnt.count == null) {
+            cnt.land = 0
+            cnt.improvement = 0
+            cnt.count = 0
+            cnt.revised = 0
+            cnt.currentcnt = 0
+            cnt.error = 0
+        }
+        cnt.current = cnt.currentcnt
+        return cnt 
+    }
+
+    void handleError(info, e) {
+        def sw = null 
+        def pw = null 
+        try {
+            sw = new StringWriter()
+            pw = new PrintWriter(sw)
+            e.printStackTrace( pw)
+
+            info.item.state = 'ERROR'
+            info.item.error = sw.toString()
+            em_batchgr_item.update(info.item)
+        }
+        catch( ex ) {
+            info.item.state = 'ERROR'
+            em_batchgr_item.update(info.item)
+            ex.printStackTrace()
+        }
+        finally{
+                if( sw ) try{ sw.close() } catch( ex ) {}
+                if( pw ) try{ pw.close() } catch( ex ){}
+        }
+    }
+
+    void assignFaasNewTdNo(item){
+        def faas = em_batchgr.findFaasInfo(item.newfaas)
+        if (!faas) {
+            throw new Exception('FAAS ' + item.newfaas.objid + ' does not exist or has been deleted.')
+        }
+        
+        faasSvc.updateTDNo(faas)
+        faasSvc.updateTdNoByRecord(faas)
+    }   
+
+    void deleteRevisedFaases(entity, gritems) {
+    	gritems.each {
+            faasSvc.deleteFaasById(it.newfaasid)
+        }
+    }
+
+    void createItemsTxnRef(entity) {
+    	getItems(entity).each {
+    		txnRefSvc.insertRef(it.objid, entity.objid, 'FAAS is referenced by Batch GR ' + entity.txnno);
+    	}
+    }
+
+    void excludeFaases(items, isonline) {
+    	items.each {
+            em_batchgr_item.delete(it)
+            txnRefSvc.deleteByObjid(it.parent.objid, it.objid)
+    		if (it.newfaasid) {
+                if (isonline) {
+                    faasSvc.onlineDeleteFaasById(it.newfaasid)
+                } else {
+                    faasSvc.deleteFaasById(it.newfaasid)
+                }
+    		}
+    	}
+    }
+
+    def getPreviousRy(entity) {
+        def prevry  = null;
+        if (entity.rputype == 'land') 
+            prevry = em_rysetting_land.where('ry < :ry', entity).orderBy('ry desc').first()
+        else if (entity.rputype == 'bldg') 
+            prevry = em_rysetting_bldg.where('ry < :ry', entity).orderBy('ry desc').first()
+        else if (entity.rputype == 'mach') 
+            prevry = em_rysetting_mach.where('ry < :ry', entity).orderBy('ry desc').first()
+        else if (entity.rputype == 'planttree') 
+            prevry = em_rysetting_planttree.where('ry < :ry', entity).orderBy('ry desc').first()
+        else if (entity.rputype == 'misc') 
+            prevry = em_rysetting_misc.where('ry < :ry', entity).orderBy('ry desc').first()
+        else 
+            prevry = em_rysetting_land.where('ry < :ry', entity).orderBy('ry desc').first()
+
+        def kinds = [
+            land: 'Land', 
+            bldg: 'Building', 
+            mach: 'Machinery', 
+            planttree: 'Plant/Tree', 
+            misc: 'Miscellaneous'
+        ]
+
+        def kind = kinds[entity.rputype] ? kinds[entity.rputype] : 'Land'
+        if (!prevry) throw new Exception('Previous revision year setting for ' + kind + ' does not exist')
+        return prevry.ry 
+    }
+
+    def getExcludedItems(item) {
+        def old = em_batchgr_item.find([objid: item.objid]).first()
+        if (!old) {
+            throw new Exception('Item  does not exist or has been deleted.')
+        }
+
+        def items = [];
+        if (item.rputype == 'land') {
+            items = em_batchgr_item.find([parent_objid: item.parent.objid, pin: item.pin]).orderBy('suffix desc').list()
+        } else {
+            items = em_batchgr_item.find([objid: item.objid]).list()
+        }
+        return items;
+    }
+}

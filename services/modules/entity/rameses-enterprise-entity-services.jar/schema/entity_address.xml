@@ -1,0 +1,27 @@
+<schema adapter="main">
+	<element tablename="entity_address">
+		<field name="objid" primary="true" prefix="ADDR"/>
+		<field name="parentid" required="false"/>
+		<field name="type" required="true"/>
+		<field name="addresstype"/>
+		<field name="barangay_objid" />
+		<field name="barangay_name"/>
+		<field name="city" />
+		<field name="municipality" />
+		<field name="province"/>
+		<field name="bldgno" />
+		<field name="bldgname" />
+		<field name="unitno" />
+		<field name="street" />
+		<field name="subdivision" />
+		<field name="text" required="true"/>
+
+		<field name="pin" />
+		<complex name="parent" ref="entity" jointype="many-to-one" required="false"
+			includefields="entityno,address.objid">
+			<key field="parentid" target="objid" />
+		</complex>  
+		<field name="primary" expr1="1" expr="CASE WHEN parent.address.objid=objid THEN 1 ELSE 0 END" 
+			caption="Default"/>
+	</element>
+</schema>

@@ -1,0 +1,14 @@
+<schema>
+
+	<element name="lob" tablename="lob">
+		<field name="objid" primary="true" prefix="LOB"/>
+		<field name="state" required="true" caption="State" visible="false"/>
+		<field name="name" required="true" caption="Name" searchable="true" indexed="true" width=""/>
+		<field name="classification_objid" required="true" caption="Classification" searchable="true"/>
+		<field name="psicid" caption="PSIC No" width="150" maxWidth="150"/>
+		<complex name="psic" ref="psic_subclass" jointype="many-to-one" required="false" includefields="code,description">
+			<key field="psicid" target="code" />
+		</complex> 
+	</element>
+
+</schema>

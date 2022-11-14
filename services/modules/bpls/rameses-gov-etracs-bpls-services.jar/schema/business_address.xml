@@ -1,0 +1,28 @@
+<schema>
+	
+	<element name="business_address" tablename="business_address">
+		<field name="objid" primary="true"/>
+		<field name="businessid" />
+		<field name="type" required="true"/>
+		<field name="addresstype"/>
+		<field name="unitno" />
+		<field name="bldgno" />
+		<field name="bldgname" />
+		<field name="street" />
+		<field name="subdivision" />
+		<field name="barangay_objid" />
+		<field name="barangay_name" />
+		<field name="city" />
+		<field name="province" />
+		<field name="municipality" />
+		<field name="pin"/>
+		<field name="monthlyrent"/>
+		<field name="lessor_objid" />
+		<field name="lessor_name"/>
+		<field name="lessor_address_text"/>
+		<field name="rentedaddressid" />	
+		<field name="ownedaddressid" />	
+	</element>	
+
+</schema>
+

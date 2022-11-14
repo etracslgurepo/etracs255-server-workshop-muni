@@ -1,0 +1,34 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import java.util.concurrent.*;
+
+class AsyncHandlerService  {	
+
+	@Cache
+	def cache;
+
+	@Context
+	def context;
+
+	//@Schedule(interval=5)
+	public List getColumns( params ) {
+		if( !cache['ASYNC']  ) {
+			cache.put('ASYNC', new LinkedBlockingQueue());
+		}
+		def queue = cache['ASYNC'];
+		def b = null;
+		while( (b=queue.poll())!=null ) {
+			final def c = b;
+			def f = {
+			   try {
+			   	  c();
+			   }
+			   catch(e) {
+			   	   e.printStackTrace();
+			   }
+			} as Runnable;	
+			context.submitAsync( f ); 
+		}
+	} 
+	
+}

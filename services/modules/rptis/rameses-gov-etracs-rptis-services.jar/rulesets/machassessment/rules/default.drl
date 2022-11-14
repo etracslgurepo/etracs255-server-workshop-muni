@@ -1,0 +1,134 @@
+package machassessment;
+
+import rptis.facts.*;
+import rptis.mach.facts.*;
+import java.util.*;
+import com.rameses.rules.common.*;
+
+global RuleAction action;
+
+
+
+rule "init"
+	agenda-group "INITIAL"
+	salience 500000
+	no-loop
+	when
+		MU   : MachineActualUse()
+	then	
+		Map map = new HashMap();
+		map.put("machuse", MU);
+		action.execute( "init-info", map, drools );
+end
+
+rule "calc-machine-al"
+	agenda-group "ASSESSLEVEL"
+	salience 500000
+	no-loop
+	when
+		MU   : MachineActualUse()
+		MACH : MachineDetail(machuse == MU)
+	then	
+		Map map = new HashMap();
+		map.put("machuse", MU);
+		map.put("machine", MACH);
+		action.execute( "calc-mach-al", map, drools );
+end
+
+
+rule "calc-machine-av"
+	agenda-group "ASSESSEDVALUE"
+	salience 500000
+	no-loop
+	when
+		MU   : MachineActualUse(MUTAXABLE: taxable)
+		MACH : MachineDetail(machuse == MU, taxable==MUTAXABLE, MV:marketvalue, AL:assesslevel)
+	then	
+		Map bindings = new HashMap();
+		bindings.put("MV", MV);
+		bindings.put("AL", AL);
+
+		Map map = new HashMap();
+		map.put("machine", MACH);
+		map.put( "expr", (new ActionExpression("@ROUNDTOTEN( MV * AL / 100.0)", bindings)) );
+		action.execute( "calc-mach-av", map, drools );
+end
+
+rule "summarize-machine-info"
+	agenda-group "AFTER-ASSESSEDVALUE"
+	salience 500000
+	no-loop
+	when
+		MU   : MachineActualUse(MUTAXABLE: taxable)
+		MACH : MachineDetail(machuse == MU, taxable == MUTAXABLE)
+	then	
+		MU.setBasemarketvalue( MU.getBasemarketvalue() + MACH.getBasemarketvalue());
+		MU.setMarketvalue( MU.getMarketvalue() + MACH.getMarketvalue());
+		MU.setAssesslevel( MACH.getAssesslevel());
+		MU.setAssessedvalue( MU.getAssessedvalue() + MACH.getAssessedvalue());
+end
+
+
+
+
+rule "build-assessment"
+	agenda-group "SUMMARY"
+	salience 500000
+	no-loop
+	when
+		MU  : MachineActualUse()
+	then	
+		Map map = new HashMap();
+		map.put("machuse", MU);
+		action.execute( "add-assessment-info", map, drools );
+end
+
+
+rule "calc-total-av"
+	agenda-group "AFTER-SUMMARY"
+	salience 1
+	no-loop
+	
+	when
+		RPU: rptis.facts.RPU (  REFID:objid ) 
+		RA: rptis.facts.RPUAssessment (  actualuseid != null,taxable == true ,AV:assessedvalue ) 
+	then
+		Map bindings = new HashMap();
+		bindings.put("RPU", RPU );
+		bindings.put("REFID", REFID );
+		bindings.put("RA", RA );
+		bindings.put("AV", AV );
+		
+		Map _p0 = new HashMap();
+		_p0.put( "refid", REFID );
+		_p0.put( "var", new KeyValue("TOTAL_VALUE", "TOTAL_VALUE") );
+		_p0.put( "aggregatetype", "sum" );
+		_p0.put( "expr", (new ActionExpression("AV", bindings)) );
+		action.execute( "add-derive-var",_p0,drools);
+end
+
+
+
+rule "recalc-rpu-total-av"
+	agenda-group "AFTER-SUMMARY"
+	salience 5
+	no-loop
+	
+	when
+		
+		RPU: rptis.facts.RPU (  REFID:objid ) 
+		VAR: rptis.facts.RPTVariable (  refid == REFID,varid matches "TOTAL_VALUE",TOTAL_AV:value ) 
+	then
+		Map bindings = new HashMap();
+		bindings.put("RPU", RPU );
+		bindings.put("REFID", REFID );
+		bindings.put("VAR", VAR );
+		bindings.put("TOTAL_AV", TOTAL_AV );
+		Map _p0 = new HashMap();
+		_p0.put( "rpu", RPU );
+		_p0.put( "expr", (new ActionExpression("@ROUNDTOTEN(TOTAL_AV)", bindings)) );
+		action.execute( "recalc-rpu-totalav",_p0,drools);
+end
+
+	
+	

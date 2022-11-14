@@ -1,0 +1,86 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import com.rameses.services.extended.*
+
+
+/*----------------------------------------------------------------
+* Revision Setting Synchronization support shared 
+* from province to municipalities 
+-----------------------------------------------------------------*/
+class RevisionSettingSyncDataInterceptor
+{
+    @Service('RPTMainSyncDataService')
+    def mainSyncSvc    
+
+    @Service('RPTSyncDataService')
+    def syncSvc
+
+    @Service('RPTRevisionSettingSyncDataService')
+    def settingSvc
+
+    @DataContext('sys_org')
+    def em_org
+
+
+    /*---------------------------------------------------------
+    *
+    * SCHEDULING SUPPORT
+    *
+    ---------------------------------------------------------*/
+    @After(pattern="ProvinceRevisionSettingDataSyncService.sendToMunicipality") 
+    public void scheduleSubmitToMunicipality( evt ) {
+        def params = evt.result 
+        def municipalities = em_org
+                .select('orgid:{objid}, orgcode:{code}, orgclass')
+                .find([orgclass: 'MUNICIPALITY'])
+                .list()
+
+        municipalities.each{
+            def data = getDataForSync(it, 'RPT-REVISION-SETTING-SYNC')
+            data.info.putAll(params)
+            data.info.lgu = it
+            mainSyncSvc.createDataForSync(data)
+        }
+    }
+
+    /* scheduler */
+    @After(pattern="RPTMainSyncDataService.scheduleSync", eval="#{result.action.matches('RPT-REVISION-SETTING-SYNC')}", index=50000) 
+    public void scheduleForSync( evt ) {
+        def data = evt.result 
+        settingSvc.schedule(data)
+    }   
+
+
+    /*---------------------------------------------------------
+    *
+    * SEND/RECEIVE HANDLERS
+    *
+    ---------------------------------------------------------*/
+    @After(pattern="RPTMainSyncDataService.asyncSend", eval="#{result.action.matches('RPT-REVISION-SETTING-SYNC')}") 
+    public void send( evt ) {
+        def syncdata = evt.result 
+        settingSvc.send(syncdata)
+    }   
+
+    @After(pattern="RPTMainSyncDataService.receive", eval="#{args[0].action.matches('RPT-REVISION-SETTING-SYNC')}") 
+    public void receiveData(evt){
+        def syncdata = evt.args[0]
+        settingSvc.receive(syncdata)
+    }
+
+
+
+    def getDataForSync(municipality, action) {
+        def reftype = 'rpt-revision-setting'
+        def data = [:]
+        data.objid = 'SS' + new java.rmi.server.UID()
+        data.reftype = reftype
+        data.refno = reftype
+        data.orgid = em_org.select('objid').find([root: 1]).val()
+        data.remote = municipality
+        data.action = action
+        data.info = [:]
+        return data
+    }
+}
+

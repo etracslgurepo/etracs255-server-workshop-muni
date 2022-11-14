@@ -1,0 +1,67 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import java.rmi.server.UID;
+import com.rameses.util.*;
+import com.rameses.io.*;
+import com.rameses.services.extended.*;
+
+class UserService extends ActiveCrudListService {
+
+	@ActiveDB(value='user', em='admin')
+	def	em; 
+
+	@ActiveDB(value='usergroup', em='admin')
+	def	usergroup; 
+
+	@Env
+	def env;
+	
+	@Service("Var")
+	def var;
+
+	@ProxyMethod
+	public def getColumns( param ) {
+		return  [
+			[name:'username', caption:'User Name'],
+			[name:'lastname', caption:'Last Name'],
+			[name:'firstname', caption:'First Name'],
+			[name:'middlename', caption:'Middle Name'],
+			[name:'jobtitle', caption:'Job Title'],
+			[name:'state', caption:'Status']
+		]
+	}
+
+	public void beforeList( o ) {
+		if(!o.searchtext)
+			o.searchtext = '%';
+		else	
+			o.searchtext = '%' + o.searchtext + '%';
+	}
+
+	public void beforeCreate( def o ) {
+		o.name = o.lastname + ", "+ o.firstname;
+		if (o.middlename) o.name = o.name + " " + o.middlename;
+		def pwd = var.system_pwd;
+		if(!pwd) pwd = "!1234#";
+		o.pwd = Encoder.MD5.encode(pwd, o.username); 
+	}
+
+	@ProxyMethod 
+	public def getUsergroups( entity ) {
+		return em.getUsergroups(entity); 
+	}
+
+	@ProxyMethod 
+	public void removeUsergroup( entity ) {
+		usergroup.delete( entity, "member" );
+	}
+
+	@ProxyMethod 
+	public void addUsergroup( entity ) {
+		usergroup.create( entity, "member" );
+	}
+
+
+}
+
+

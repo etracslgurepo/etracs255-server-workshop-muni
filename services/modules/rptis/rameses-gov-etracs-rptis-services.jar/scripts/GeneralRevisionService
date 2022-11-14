@@ -1,0 +1,191 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+import com.rameses.util.*;
+
+class GeneralRevisionService
+{
+	
+	@ActiveDB('generalrevision')
+	def grdb 
+
+	@PersistenceContext('main')
+	def em
+    
+	@Env
+	def env
+
+	@Service('DateService')
+	def dtSvc
+
+	@Service('FAASService')
+	def faasSvc 
+
+
+	@Service('RPUService')
+	def rpuSvc
+
+	@Service('RealPropertyService')
+	def rpSvc 
+
+
+    @Service('Var')
+	def var
+
+	
+	@Service('RPTUtil')	
+	def utilSvc
+
+	@ActiveDB(value='dbimage', adapter="image")
+	def em_dbimage 
+
+	@Service('RPTRequirementRuleService')
+    def ruleSvc
+    
+    @Service('RPTRequirementService')
+    def reqSvc
+
+    @DataContext('faas_sketch')
+    def em_sketch
+
+
+
+	@ProxyMethod
+	public def initOnlineGeneralRevision( info ) {
+		def faas = initGeneralRevision(info)
+		faasSvc.createFaas(faas)
+		insertSketch(faas)
+		return faas 
+	}
+
+
+	@ProxyMethod
+	public def createDataCaptureGeneralRevision( info ) {
+		info._checkTxnRef = true 
+		def faas = initGeneralRevision( info )
+		def entity = faasSvc.createFaas(faas)
+		insertSketch(faas)
+		return entity 
+	}	
+
+	@ProxyMethod
+	public def createOnlineGeneralRevision( info ) {
+		info._checkTxnRef = true 
+		def faas = initGeneralRevision( info )
+		faas.datacapture = false
+		faas.state = 'PENDING'
+		def entity = faasSvc.createFaas(faas)
+		insertSketch(faas)
+		return entity 
+	}	
+
+
+	@ProxyMethod
+	public def initGeneralRevision( info ) {
+		utilSvc.required('Property to process', info.faas)
+		utilSvc.required('New Revision Year', info.newry)
+		info.txntype = faasSvc.getTxnType('GR');
+		def faas = faasSvc.initTransaction(info);
+		if (info.effectivityyear) faas.effectivityyear = info.effectivityyear;
+		if (info.effectivityqtr) faas.effectivityqtr = info.effectivityqtr;
+		
+		if (faas.rpu.rputype == 'land'){
+			faas.rpu.realpropertyid = faas.rp.objid
+		}
+		else {
+			def landrpu = grdb.findCurrentRevisedLandRpu([objid:faas.rpu.landrpuid, ry:info.newry])
+			if (!landrpu)
+				landrpu = grdb.findCurrentRevisedLandRpuByPin([pin:faas.rp.pin, ry:info.newry])
+			if (!landrpu)
+				landrpu = grdb.findRevisedLandRpu([previd:faas.rpu.landrpuid, ry:info.newry])
+			if (!landrpu) 
+				landrpu = grdb.findRevisedLandByRealPropertyId([realpropertyid:faas.rpu.realpropertyid, ry:info.newry])
+			if (!landrpu) 
+				throw new Exception('Land RPU is not yet revised for Revision Year ' + info.newry + '.')
+			faas.rp = rpSvc.open([objid:landrpu.realpropertyid])
+			faas.realpropertyid = faas.rp.objid
+			faas.rpu.realpropertyid = faas.rp.objid 
+			faas.rpu.landrpuid = landrpu.objid 
+		}
+		faas.rpu.ry = info.newry
+		faas.rp.ry = info.newry 
+		faas.rpu.rp = faas.rp
+		faas.restrictions.each{ it.objid = 'FR' + new java.rmi.server.UID()}
+		if (!faas.memoranda) faas.memoranda = info.batchgr?.memoranda
+		buildDefaultSignatories(faas, info)
+		rpuSvc.reviseRpu(faas.rpu)
+		buildRequirements(faas)
+		return faas 
+	}
+
+	void buildRequirements(faas){
+		def requirements = ruleSvc.getRequirements([
+			txntype 		: faas.txntype,
+			txntypemode 	: '',
+			attributes		: [],
+			rputype    		: faas.rpu.rputype, 
+			classificationid : faas.rpu.classification?.objid,
+		])
+
+		requirements.unique().each{
+			reqSvc.create([
+				objid  				: 'R' + new java.rmi.server.UID(),
+				requirementtypeid 	: it.objid,
+				handler 			: it.handler,
+				refid 				: faas.objid,
+				value_objid 		: null,
+				value_txnno			: null,
+				value_txndate 		: null,
+				value_txnamount 	: 0.0,
+				value_remarks 		: null,
+				complied 			: 0,
+			])
+		}
+	}
+
+	void buildDefaultSignatories(faas, info){
+		faas.taxmapper = (info.batchgr ? info.batchgr.taxmapper : [:])
+		faas.appraiser = (info.batchgr ? info.batchgr.appraiser : [:])
+		faas.recommender = (info.batchgr ? info.batchgr.recommender : [:])
+		faas.approver = (info.batchgr ? info.batchgr.approver : [:])
+	}
+
+	void insertSketch(faas){
+		def param = [:]
+		param.newrefid = faas.objid
+		param.prevrefid = faas.previousfaases[0].prevfaasid
+		param.ry = faas.rpu.ry 
+		try{
+			em_dbimage.insertPreviousSketch(param)
+			em_dbimage.insertPreviousSketchItems(param)
+		}
+		catch(e){
+			//ignore 
+		}
+
+		//insert sketch drawing
+		def olddrawing = em_sketch.find([objid: param.prevrefid]).first()
+		if (olddrawing) {
+			olddrawing.objid = faas.objid
+			em_sketch.save(olddrawing)
+		}
+
+	}
+
+	/*--------------------------------------------------------
+	*
+	* Support Methods
+	*
+	* --------------------------------------------------------*/
+
+	/* returns the list of revision settings which is greater than the specified ry*/
+	@ProxyMethod
+	public def getRyList(lguid, ry, rputype ) {
+		lguid = (lguid ? lguid : var.lgu_objid)
+		ry = (ry == null ? var.current_ry : ry)
+		rputype = (rputype ? rputype : 'LAND')
+		return em.sqlContext.createNamedQuery('generalrevision:getRyList' + rputype.toUpperCase())
+				.setParameters([lguid:lguid, ry:ry]).resultList.ry.unique() 
+	}
+}
+

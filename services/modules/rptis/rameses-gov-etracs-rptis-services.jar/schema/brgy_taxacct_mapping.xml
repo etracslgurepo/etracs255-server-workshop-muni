@@ -1,0 +1,15 @@
+<schema>
+	<element name="brgy_taxacct_mapping" tablename="brgy_taxaccount_mapping">
+		<field name="barangayid" primary="true" />
+		<field name="basicadvacct_objid" />
+		<field name="basicprevacct_objid" />
+		<field name="basicprevintacct_objid" />
+		<field name="basicprioracct_objid" />
+		<field name="basicpriorintacct_objid" />
+		<field name="basiccurracct_objid" />
+		<field name="basiccurrintacct_objid" />
+	</element>
+</schema>
+
+
+

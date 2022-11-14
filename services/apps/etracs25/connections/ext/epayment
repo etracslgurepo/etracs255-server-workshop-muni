@@ -1,0 +1,5 @@
+provider=script
+app.host=${app_server_ip}:8095
+app.cluster=osiris3
+app.context=enterprise
+readTimeout=60000

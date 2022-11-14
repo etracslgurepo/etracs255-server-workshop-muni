@@ -1,0 +1,86 @@
+import com.rameses.annotations.*
+
+class QueryService {
+
+	@Service("SchemaService")
+	def schemaSvc;
+
+	@DataContext(dynamic=true)
+	def db;
+
+	def buildEm(def o ) {
+		//o.debug = true;
+		if(!o._schemaname) 
+			throw new Exception('Please specify a name in QueryService.getList or findFirst');
+
+		def em = db.lookup(o._schemaname);
+		if ( o.debug ) em.debug = true;
+				
+		if ( !o.where && !o.findBy && !o._limit )
+			throw new Exception("QueryService.getList or findFirst. Please indicate a where,findBy or limit property");
+
+		//for where first argument is the condition, second is the value.	
+		if ( o.where ) {
+			if(o.where.size() == 1) {
+				em.where( o.where[0] )		
+			}
+			else if (o.where.size()==2) {
+				em.where( o.where[0], o.where[1] );			
+			}
+		}
+
+		em.pagingKeys( o._pagingKeys ); 
+		em.select( o.select ? o.select : '*' ); 
+
+		if( o.findBy ) em.find( o.findBy );
+		if( o._start ) em.start = o._start ;	
+		if( o._limit ) em.limit = o._limit;		
+
+		if( o.orWhereList ) {
+			o.orWhereList.each {
+				em.orWhere( it[0], it[1] );
+			}
+		}
+		if( o.orderBy ) {
+			em.orderBy(o.orderBy);
+		}
+		if( o.groupBy ) {
+			em.groupBy(o.groupBy);
+		}
+                if( o.vars ) {
+                    o.vars.each {k,v->
+                        em.vars(k,v);
+                    }
+                }
+		//additional customizations for the query.
+		if( o._queryHandler ) {
+			o._queryHandler( em );
+		}
+
+		return em;
+	}
+
+
+	@ProxyMethod
+	public def findFirst( def o ) {
+		def em = buildEm(o);
+		return em.first();
+	}
+
+	@ProxyMethod
+	public def getList( def o ) {
+		def em = buildEm(o);
+		return em.list();
+	}
+
+	@ProxyMethod
+	public def getNodeList( def o ) {
+		return [];
+	}
+
+	@ProxyMethod
+	public def getSchema( def o ) {
+		return  schemaSvc.getSchema(o);
+	}
+
+}

@@ -1,0 +1,39 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+
+class MunicipalityRedFlagRemoteCallHandler
+{   
+	@Service('RPTRedFlagService')
+	def redflagSvc 
+
+	@Service('NotificationService')
+	def notifySvc		
+
+	@Service('RPTUtil')
+	def util
+
+
+	@ProxyMethod 
+	public void postRedFlag(redflag){
+		redflagSvc.save(redflag)
+		notifyRecommender(redflag)
+	}
+
+	void notifyRecommender(redflag){
+		def currtask = redflagSvc.getCurrentTask(redflag)
+		def message = util.capitalize(currtask.filetype) + ' ' + redflag.refno + ' Red Flag #' + redflag.caseno 
+		message += ' was submitted by ' + redflag.filedby.name 
+
+		def msg = [
+            objid     : redflag.refid,
+            recipientid : (currtask.assignee?.objid ? currtask.assignee?.objid : '-'),
+            recipienttype : 'user',
+            senderid  : (redflag.filedby.objid ? redflag.filedby.objid : '-'),
+            sender    : redflag.filedby.name,
+            message   : message,
+            filetype  : (currtask?.filetype ? currtask.filetype : '-'),
+            data 	  : [taskid: currtask.objid],
+        ]
+        notifySvc.addMessage(msg)
+	}
+}

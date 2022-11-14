@@ -1,0 +1,49 @@
+import com.rameses.annotations.*
+import com.rameses.eserver.*;
+import com.rameses.common.*;
+
+class BatchGRInterceptor
+{
+    @DataContext('batchgr') 
+    def em_batchgr
+
+    @DataContext('batchgr_item') 
+    def em_batchgr_item 
+	
+	@Before(pattern="FAASService.deleteFaas") 
+	public void resetBatchItem( evt ) {
+		def faas = evt.args[0]
+		em_batchgr_item.where('newfaasid = :objid', [objid: faas.objid])
+				.update([state:'FORREVISION', newfaasid:null])
+	}
+
+	@After(pattern="FAASService.approveFaas") 
+	public void approveBatchItem( evt ) {
+		def faas = evt.args[0]
+
+		def batchitem = em_batchgr_item.find([newfaasid: faas.objid]).first() 
+		if (!batchitem) return 
+		
+		batchitem.state = 'CURRENT'
+		em_batchgr_item.update(batchitem)
+		postCompletedBatch(batchitem)
+	}
+
+	/*-----------------------------------------------------
+	* Set batchgr state to COMPLETED if all
+	* items state are CURRENT
+	-----------------------------------------------------*/
+	void postCompletedBatch(batchitem){
+		def param = [parentid: batchitem.parent.objid, state : 'CURRENT']
+
+		def hasforapproval = em_batchgr_item
+						.where('parent_objid = :parentid and state <> :state', param)
+						.first()
+
+		if (!hasforapproval){
+			em_batchgr.find([objid: batchitem.parent.objid]).update([state: 'COMPLETED'])
+		}
+	}
+
+}
+

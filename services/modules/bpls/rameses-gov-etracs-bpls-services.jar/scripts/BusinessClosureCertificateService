@@ -1,0 +1,104 @@
+import com.rameses.annotations.*; 
+
+class BusinessClosureCertificateService {
+
+	@DataContext('business_closure') 
+	def closure_db; 
+
+	@Service('DateService') 
+	def dateSvc; 
+
+	@Env
+	def env;
+
+	@ProxyMethod 
+	public def getInfo( param ) {
+		if ( !param.businessid ) throw new Exception('businessid is required') 
+
+		def info = closure_db.findInfo([ businessid: param.businessid ]); 
+		if ( !info ) throw new Exception('Business record not found'); 
+
+		return info; 
+	} 
+
+	public def create( param ) {
+		def rundate = dateSvc.getServerDate(); 
+		param.dtissued = rundate;
+		param.dtcreated = rundate;
+		param.createdby = [objid: env.USERID, name: env.FULLNAME]; 
+		return closure_db.create( param ); 
+	} 
+
+	public def getReport( param ) { 
+		def info = getInfo( param ); 
+		if ( info ) {
+			if ( !info.ind?.objid ) {
+				info.fullname = info.owner?.name; 
+			}
+			else if ( info.ind?.gender.toString().toUpperCase() == 'M') {
+				info.fullname = 'MR. '+ info.ind.name; 
+			}
+			else if ( info.ind?.gender.toString().toUpperCase() == 'F') {
+				info.fullname = 'MRS. '+ info.ind.name; 
+			}
+			else if ( info.ind?.gender ) {
+				info.fullname = info.ind.name; 
+			}
+
+			info.fullname = capitalize( info.fullname ); 
+			info.ownerfulladdress = capitalize( info.owner?.address?.text ).replaceAll("\\s"," "); 
+			info.businessfulladdress = capitalize( info.address?.text ).replaceAll("\\s"," "); 
+			info.businessname = capitalize( info.businessname ); 
+			info.tradename = capitalize( info.tradename ); 
+
+			def dtformatter = new java.text.SimpleDateFormat('MMMMM, yyyy'); 
+
+			def dtissued = info.closure.dtissued;
+			info.fulldtissued = ''+ buildDay( dtissued )+' day of '+ dtformatter.format( dtissued ); 
+
+			def dtgiven = dateSvc.getBasicServerDate(); 
+			info.dtgiven = new java.sql.Date( dtgiven.time ); 
+			info.fulldtgiven = ''+ buildDay( dtgiven )+' day of '+ dtformatter.format( dtgiven ); 
+		} 
+		return info;  
+	}
+
+	private def capitalize( str ) {
+		if ( !str ) return ""; 
+
+		def buff = new StringBuilder(); 
+		str.split(" ").eachWithIndex{ o,idx-> 
+			if ( idx > 0 ) buff.append(" "); 
+
+			boolean caps = true;
+			def chars = o.toCharArray();
+			for (int i=0; i<chars.length; i++) {
+				if ( Character.isLetter( chars[i])) {
+					if ( caps )
+						chars[i] = Character.toUpperCase( chars[i]); 
+					else 
+						chars[i] = Character.toLowerCase( chars[i]); 
+
+					caps = false; 
+				}
+			}
+			buff.append(new String(chars)); 
+		}
+		return buff.toString(); 
+	}
+
+	def buildDay( date ){
+        def dt = new java.text.SimpleDateFormat('dd').format(date);
+        if ( dt.startsWith('0')) dt = dt.substring(1); 
+        
+        if( dt.matches('01|1|21|31') )
+            return dt + 'st';
+        else if( dt.matches('02|2|22') )
+            return dt + 'nd';
+        else if(dt.matches('03|3|23')) 
+            return dt + 'rd';
+        else 
+        	return dt + 'th';
+    } 
+
+}

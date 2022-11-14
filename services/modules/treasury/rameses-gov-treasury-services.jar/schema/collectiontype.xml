@@ -1,0 +1,36 @@
+<schema>
+
+	<element  tablename="collectiontype">
+		<field name="objid" primary="true" prefix="COLLTYPE"/>	
+		<field name="state" caption="Status" required="true" defaultValue="DRAFT"/>
+		<field name="name" caption="Name" required="true" searchable="true"/>
+		<field name="title" caption="Title" required="true" searchable="true"/>
+		<field name="formno" caption="FormNo" required="true" indexed="true"/>
+		<field name="handler" caption="Handler" required="true"/>
+		
+		<field name="barcodekey" caption="BarcodeKey"/>
+		<field name="sortorder" />
+		<field name="fund_objid"  />
+		<field name="fund_title" caption="Fund" indexed="true"/>
+		<field name="category" caption="Category" />
+		<field name="system" caption="System"  type="integer"/>
+
+		<field name="allowbatch" type="integer" defaultValue="0"/>
+		<field name="allowonline"  type="integer"  defaultValue="0"/>
+		<field name="allowoffline"  type="integer"  defaultValue="0"/>
+		<field name="allowpaymentorder"  type="integer"  defaultValue="0"/>
+		<field name="allowkiosk"  type="integer"  defaultValue="0"/>
+		<field name="allowcreditmemo"  type="integer"  defaultValue="0"/>
+
+		<complex name="af" ref="af" jointype="many-to-one" required="false" includfields="objid,formtype">	
+			<key field="formno" target="objid" />
+		</complex>	
+
+		<complex name="info" serializer="default"/>
+
+		<field name="queuesection" />
+		<field name="connection"  />
+		<field name="servicename" />
+	</element>
+
+</schema>

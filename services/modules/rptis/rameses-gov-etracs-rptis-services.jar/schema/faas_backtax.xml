@@ -1,0 +1,14 @@
+<schema>
+	<element tablename="faasbacktax">
+		<field name="objid" primary="true" />
+		<field name="faasid" required="true" />
+		<field name="ry" required="true" type="integer" />
+		<field name="tdno" />
+		<field name="bmv" required="true" type="decimal" />
+		<field name="mv" required="true" type="decimal" />
+		<field name="av" required="true" type="decimal" />
+		<field name="effectivityyear" required="true" type="integer" />
+		<field name="effectivityqtr" required="true" type="integer" />
+		<field name="taxable" required="true" type="boolean" />
+	</element>
+</schema>

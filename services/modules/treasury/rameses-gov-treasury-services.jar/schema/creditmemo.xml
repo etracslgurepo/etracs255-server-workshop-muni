@@ -1,0 +1,34 @@
+<schema>
+
+	<element tablename="creditmemo" >
+		<field name="objid" primary="true" prefix="CR"/>
+		<field name="state" required="true" defaultValue="OPEN" caption="State" />
+		<field name="controlno" required="true" caption="Control No" searchable="true" indexed="true"/>
+		<field name="payer_objid" required="true" />
+		<field name="payer_name" required="true" caption="Payer Name" searchable="true" indexed="true"/>
+		<field name="payer_address_objid" required="true" />		
+		<field name="payer_address_text" required="true" caption="Payer Address"/>
+		<field name="refdate" required="true" caption="RefDate" indexed="true"/>
+		<field name="refno" required="true" caption="RefNo" searchable="true" indexed="true"/>
+		<field name="amount" required="true" type="decimal" caption="Amount"/>
+		<field name="particulars"  required="true" caption="Particulars" />
+		<field name="bankaccount_objid" required="true"/>
+		<field name="bankaccount_code" required="true" caption="BankAccountCode" />
+		<field name="bankaccount_title"  required="true" caption="BankAccount" />
+
+		<complex name="bankaccount" ref="bankaccount" jointype="many-to-one" includefields="code,title,fund.*,acctid">
+			<key field="bankaccount_objid" target="objid"/>
+		</complex>
+			
+		<field name="type_objid" required="true"/>
+		<field name="type_title" required="true" caption="TxnType" />
+		<field name="dtissued" required="true" caption="TxnDate" />
+		<field name="issuedby_objid" required="true" />
+		<field name="issuedby_name" required="true" caption="IssuedBy" />
+
+		<complex name="items" ref="creditmemoitem" jointype="one-to-many">
+			<key field="objid" target="parentid" />
+		</complex>
+	</element>
+
+</schema>

@@ -1,0 +1,73 @@
+import com.rameses.annotations.*
+import com.rameses.eserver.*;
+import com.rameses.common.*;
+
+class MiscRpuInterceptor
+{
+	@Service('MiscRPUService')
+	def svc 
+
+
+	@Service('MiscRPUGRService')
+	def grSvc 
+
+
+	@After(pattern="RPUService.initRpu", eval="#{result.rputype == 'misc'}") 
+	public void initMiscRpu( evt ) {
+		svc.initMiscRpu(evt.result)
+	}
+
+
+	@After(pattern="RPUService.generateNewIds", eval="#{result.rputype == 'misc'}") 
+	public void generateNewIds( evt ) {
+		svc.generateNewIds(evt.result)
+	}
+
+
+	@After(pattern="RPUService.calculateAssessment", eval="#{result.rputype == 'misc'}") 
+	public void calculateAssessment( evt ) {
+		svc.calculateAssessment(evt.result)
+	}
+
+	
+	@After(pattern="RPUService.openRpu", eval="#{result.rputype == 'misc'}") 
+	public void openMiscRpu( evt ) {
+		def rpu = evt.result
+		rpu.putAll( svc.openMiscRpu(rpu.objid) )	
+	}
+	
+
+	@After(pattern="RPUService.createRpu", eval="#{result.rputype == 'misc'}") 
+	public void createMiscRpu( evt ) {
+		svc.createMiscRpu(evt.result)
+	}
+
+
+	@After(pattern="RPUService.updateRpu", eval="#{result.rputype == 'misc'}") 
+	public void updateMiscRpu( evt ) {
+		svc.updateMiscRpu(evt.result)
+	}
+
+	@Before(pattern="RPUService.deleteRpu", eval="#{args[0].rputype == 'misc'}") 
+	public void deleteMiscRpu( evt ) {
+		svc.deleteMiscRpu(evt.args[0])
+	}
+
+	@Before(pattern="RPUService.deleteItems", eval="#{args[0].rputype == 'misc'}") 
+	public void deleteRpuItems( evt ) {
+		def rpu = evt.args[0]
+		svc.deleteItems(rpu)
+	}		
+
+	@After(pattern="RPUService.reviseRpu", eval="#{result.rputype == 'misc'}") 
+	public void reviseRpu( evt ) {
+		try {
+			grSvc.reviseMiscRpu(evt.result)
+		}
+		catch(Exception e) {
+			throw e			
+		}
+		
+	}
+}
+

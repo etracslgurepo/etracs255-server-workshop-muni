@@ -1,0 +1,25 @@
+<schema>
+	
+	<element tablename="business_taxcredit">
+		<field name="objid" primary="true"/>
+		<field name="businessid" required="true"/>
+		<field name="totaldr" />
+		<field name="totalcr" />
+		<field name="balance" />
+		<field name="currentlineno" />
+	</element>	
+
+	<element name="item" tablename="business_taxcredit_item">
+		<field name="objid" primary="true"/>
+		<field name="parentid" required="true"/>
+		<field name="lineno" required="true"/>
+		<field name="refid" required="true"/>
+		<field name="refno" required="true"/>
+		<field name="refdate" required="true"/>
+		<field name="reftype" required="true"/>
+		<field name="particulars" />
+		<field name="dr" required="true"/>
+		<field name="cr" required="true"/>
+	</element>	
+
+</schema>

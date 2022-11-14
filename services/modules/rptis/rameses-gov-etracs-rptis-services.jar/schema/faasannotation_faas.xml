@@ -1,0 +1,18 @@
+<schema>
+	<element tablename="faasannotation_faas">
+		<field name="objid" primary="true" prefix="FAF" />
+        <field name="parent_objid" required="true"/>
+		<field name="faas_objid" required="true"/>
+		<complex name="parent" ref="faasannotation" jointype="many-to-one" required="false"
+			includefields="state,txnno,txndate,fileno">
+			<key field="parent_objid" target="objid" />
+		</complex>
+		<complex name="faas" ref="faas_list" jointype="many-to-one" required="false"
+			includefields="state,tdno,fullpin,classcode,totalareaha,totalareasqm,totalmv,totalav">
+			<key field="faas_objid" target="objid" />
+		</complex>
+	</element>
+</schema>
+
+
+

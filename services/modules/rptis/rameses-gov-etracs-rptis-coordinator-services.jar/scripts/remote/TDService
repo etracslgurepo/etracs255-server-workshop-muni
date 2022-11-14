@@ -1,0 +1,14 @@
+import com.rameses.annotations.*
+import com.rameses.util.*
+import com.rameses.common.*
+import com.rameses.services.extended.*
+
+class TDService  {
+    @Service(value="TDOnlineService", connection="local-etracs")
+    def svc;
+
+    @ProxyMethod
+    public def verifyTaxDec( def params ) {
+        return svc.verifyTaxDec(params)
+    }
+}

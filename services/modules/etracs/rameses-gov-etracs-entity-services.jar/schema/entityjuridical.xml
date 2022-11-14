@@ -1,0 +1,17 @@
+<schema>
+	
+	<element  tablename="entityjuridical" extends="entity">
+		<field name="objid" required="true" primary="true"/>
+		<field name="tin" />
+		<field name="dtregistered" />
+		<!--<field name="placeregistered" />-->
+		<field name="orgtype" caption="OrgType"/> <!-- SINGLEPROPERTORSHIP, CORPORATION, etc -->
+		<field name="nature" /> <!-- RETAILER, WHOLESALER -->
+		<field name="administrator_name" /> 
+		<field name="administrator_objid" /> 		
+		<field name="administrator_address_text" /> 
+		<field name="administrator_address_objid" /> 
+
+		<field name="administrator_position" /> 
+	</element>
+</schema>

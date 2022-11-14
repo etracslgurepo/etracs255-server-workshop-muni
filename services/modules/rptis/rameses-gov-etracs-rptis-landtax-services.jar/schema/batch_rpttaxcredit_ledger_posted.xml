@@ -1,0 +1,7 @@
+<schema>
+    <element tablename="batch_rpttaxcredit_ledger_posted">
+        <field name="objid" primary="true" />
+        <field name="parentid" required="true" />
+        <field name="barangayid" required="true" />
+    </element>
+</schema>

@@ -1,0 +1,43 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.services.extended.*;
+
+public class BusinessApplicationGlobalInterceptor {
+
+	@Service("BusinessPaymentService")
+	def paySvc;
+
+	@ActiveDB('business_application_task') 
+	def taskdb; 
+
+	@Service('Var') 
+	def sysvar; 
+
+	@After(pattern="BusinessApplicationService.revert") 
+	public void afterRevert( evt ) { 
+		def params = evt.args[0]; 
+		params.applicationid = params.objid; 
+
+		if ( params.action=='revert' && params.fromstate=='release' ) { 
+			def list = paySvc.getApplicationPayments( params ); 
+			if ( list ) { 
+				throw new Exception('Cannot revert since payments have already been made');  
+			} 
+		} 
+	} 
+
+	@After(pattern="BusinessApplicationService.open", index=100) 
+	public void afterOpen( evt ) {
+		def app = evt.result; 
+		if ( !app ) return; 
+		
+		def tasks = taskdb.getTasks([ refid: app.objid ]); 
+		if ( tasks ) app.currenttask = tasks.last(); 
+
+		def opt = sysvar.businesspermit_issuance_on_release; 
+		app._option = [ 
+			businesspermit_issuance_on_release: (opt=='true') 
+		];  
+	} 
+} 

@@ -1,0 +1,66 @@
+import com.rameses.annotations.*;
+
+class ItemAccountInterceptor {
+
+	@DataContext('itemaccount')
+	def em_itemaccount; 
+
+	@Before(pattern="PersistenceService.create", eval="#{ args[0]._schemaname == 'itemaccount' }")
+	public void beforeCreate( evt ) {
+		def param = evt.args[0]; 
+		if ( !param.generic ) param.generic = 0;  
+		if ( !param.hidefromlookup ) param.hidefromlookup = 0;  
+	}
+
+	@After(pattern="PersistenceService.read", eval="#{ args[0]._schemaname == 'itemaccount' }")
+	public void afterRead( evt ) {
+		def result = evt.result; 
+		if ( !result.generic ) result.generic = 0;  
+		if ( !result.hidefromlookup ) result.hidefromlookup = 0;  
+	}
+
+
+	@Before(pattern="PersistenceService.update", eval="#{ args[0]._schemaname == 'itemaccount' }")
+	public void beforeUpdate( evt ) {
+		def param = evt.args[0]; 
+		if ( param._action == 'changeState' ) {
+			if ( param.findBy ) {
+				param._changeState_findBy = param.findBy; 
+			} 
+			else if ( param.objid ) { 
+				param._changeState_findBy = [ objid: param.objid ]; 
+			}
+		}
+		else if ( param._action == 'changeType' ) {
+			if ( param.findBy ) {
+				param._changeType_findBy = param.findBy; 
+			} 
+			else if ( param.objid ) { 
+				param._changeType_findBy = [ objid: param.objid ]; 
+			}
+		}
+	}
+
+	@After(pattern="PersistenceService.update", eval="#{ args[0]._schemaname == 'itemaccount' }")
+	public void afterUpdate( evt ) {
+		def param = evt.args[0]; 
+		if ( param._action == 'changeState' && param._changeState_findBy ) {
+			def findby = param.remove('_changeState_findBy');
+			if ( !findby ) return; 
+
+			def acct = em_itemaccount.find( findby ).select('objid,state').first(); 
+			if ( acct ) {
+				em_itemaccount.find([ parentid: acct.objid ]).update([ state: acct.state ]); 
+			}
+		}
+		else if ( param._action == 'changeType' && param._changeType_findBy ) {
+			def findby = param.remove('_changeType_findBy');
+			if ( !findby ) return; 
+
+			def acct = em_itemaccount.find( findby ).select('objid,type').first(); 
+			if ( acct ) {
+				em_itemaccount.find([ parentid: acct.objid ]).update([ type: acct.type ]); 
+			}
+		}
+	}
+}

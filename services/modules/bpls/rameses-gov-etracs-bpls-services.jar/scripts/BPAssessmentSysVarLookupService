@@ -1,0 +1,24 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.services.extended.*
+
+public class BPAssessmentSysVariableLookupService {
+
+	@PersistenceContext("main")
+	def em;
+	
+	@ProxyMethod
+	public def getColumns(def o) {
+		return [
+			[name:"name", caption:"Name"],
+			[name:"datatype", caption:"Datatype"],
+		];
+	}
+
+	@ProxyMethod
+	public def getList(o) {
+		return em.sqlContext.createNamedQuery("bpassessment_sysvar:getList").resultList;
+	}
+
+}

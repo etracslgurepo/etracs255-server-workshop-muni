@@ -1,0 +1,13 @@
+<schema>
+
+	<element tablename="sys_rule_condition_var">
+		<field name="objid" primary="true"/>
+		<field name="parentid" required="true"/>
+		<field name="ruleid" required="true"/>
+		<field name="varname" required="true"/>
+		<field name="datatype" required="true"/>
+		<field name="pos" required="true"/>
+	</element>	
+
+</schema>	
+

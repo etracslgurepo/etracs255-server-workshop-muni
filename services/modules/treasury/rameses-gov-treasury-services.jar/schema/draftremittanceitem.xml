@@ -1,0 +1,15 @@
+<schema>
+	<element tablename="draftremittanceitem">
+		<field name="objid" primary="true"/> 
+		<field name="remittanceid" required="true"/> 
+		<field name="controlid" required="true"/> 
+		<field name="batchid" /> 
+		<field name="amount" required="true"/> 
+		<field name="totalcash" required="true"/> 
+		<field name="totalnoncash" required="true"/> 
+		<field name="cancelled" required="true"/> 
+		<field name="voided" required="true"/> 
+		<field name="lockid" /> 
+	</element>
+</schema>
+

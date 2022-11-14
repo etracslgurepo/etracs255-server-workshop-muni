@@ -1,0 +1,19 @@
+<schema>
+    <element tablename="rptledger_avdifference">
+        <field name="objid" primary="true" prefix="RL"/>
+        <field name="parent_objid" required="true" />
+        <field name="rptledgerfaas_objid" required="true" />
+        <field name="year" required="true" type="integer" />
+        <field name="av" required="true" type="decimal" />
+        <field name="paid" required="true" type="boolean" />
+
+        <complex name="parent" ref="rptledger" jointype="many-to-one" 
+             includefields="faasid,tdno,lastyearpaid,lastqtrpaid">
+                <key field="parent_objid" target="objid" />
+        </complex>
+        <complex name="rptledgerfaas" ref="rptledger_faas" jointype="many-to-one" 
+             includefields="tdno,classification.objid,classification.code,actualuse.objid,actualuse.code">
+                <key field="rptledgerfaas_objid" target="objid" />
+        </complex>
+    </element>
+</schema>

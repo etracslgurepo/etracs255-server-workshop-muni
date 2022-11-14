@@ -1,0 +1,17 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class RPTLedgerPaymentInterceptor
+{
+    @Service('RPTLedgerPaymentService')
+    def svc
+
+    @Before(pattern="PersistenceService.removeEntity", eval="args[0]._schemaname=='rptledger'") 
+    public void deleteManualLedger( evt ) {
+        def ledger = evt.args[0] 
+        svc.delete(ledger)
+    }
+
+}
+

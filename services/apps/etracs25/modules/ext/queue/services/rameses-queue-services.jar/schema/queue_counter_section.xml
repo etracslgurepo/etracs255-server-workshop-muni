@@ -1,0 +1,6 @@
+<schema adapter="queue">
+	<element tablename="queue_counter_section">
+		<field name="counterid" primary="true"/> 
+		<field name="sectionid" primary="true"/> 
+	</element> 
+</schema>

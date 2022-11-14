@@ -1,0 +1,27 @@
+<schema>
+	<element tablename="rpttracking">
+		<field name="objid" primary="true"  />
+		<field name="filetype" />
+		<field name="trackingno" searchable="true" indexed="true" caption="Txn No." />
+		<field name="dtfiled" caption="Date Filed" />
+		<field name="taxpayer_objid" />
+		<field name="txntype_objid" caption="Txn Type"/>
+		<field name="releasedate" caption="Tentative Release Date"/>
+		<field name="releasemode" caption="Mode" />
+		<field name="receivedby" caption="Received By" searchable="true" indexed="true" />
+		<field name="remarks" caption="Remarks" searchable="true" />
+		<field name="landcount" type="integer" />
+		<field name="bldgcount" type="integer" />
+		<field name="machcount" type="integer" />
+		<field name="planttreecount" type="integer" />
+		<field name="misccount" type="integer" />
+		<field name="pin" searchable="true" indexed="true" />
+		<complex name="taxpayer" ref="entity" jointype="many-to-one" 
+			includefields="name,address.text,mobileno">
+			<key field="taxpayer_objid" target="objid" />
+		</complex>
+		<complex name="txntype" ref="faas_txntype" jointype="many-to-one" >
+			<key field="txntype_objid" target="objid" />
+		</complex>
+	</element>
+</schema>

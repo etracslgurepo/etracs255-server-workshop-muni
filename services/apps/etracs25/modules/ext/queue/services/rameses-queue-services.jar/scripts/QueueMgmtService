@@ -1,0 +1,36 @@
+import com.rameses.annotations.*;
+
+class QueueMgmtService {
+	
+	@DataContext(value='queue_group') 
+	def qg; 
+
+	@DataContext(value='queue_section') 
+	def qgsection; 
+
+	@ProxyMethod
+	public def open(def m) {
+		m = qg.find( m ).first();
+		m.sections = qgsection.find( [groupid: m.objid] ).list();
+		return m;
+	}
+
+	@ProxyMethod
+	public def create(def m) {
+		qg.create(m);
+		m.sections.each {
+			it.groupid = m.objid;
+			qgsection.create(it);
+		}
+	}
+
+	@ProxyMethod
+	public def update(def m) {
+	}
+
+	@ProxyMethod
+	public def removeEntity(def m) {
+		
+	}
+
+}

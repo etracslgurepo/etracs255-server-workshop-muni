@@ -1,0 +1,23 @@
+<schema>
+	<element name="cancelannotation" tablename="cancelannotation">
+		<field name="objid" primary="true"/>
+        <field name="state" required="true"/>
+		<field name="txnno" />
+		<field name="txndate" />
+		<field name="annotationid" required="true" />
+		<field name="fileno" required="true" />
+		<field name="remarks" />
+		<field name="signedby" required="true" />
+		<field name="signedbytitle" required="true" />
+		<field name="dtsigned" />
+		<field name="orno" />
+		<field name="ordate" />
+		<field name="oramount" type="decimal"  />
+		<complex name="annotation" ref="faasannotation" jointype="many-to-one" required="false" includefields="faas.*">
+			<key field="annotationid" target="objid" />
+		</complex>
+	</element>
+</schema>
+
+
+

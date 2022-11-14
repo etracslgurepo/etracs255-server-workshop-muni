@@ -1,0 +1,95 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import com.rameses.services.extended.*
+import com.rameses.util.*;
+
+class RPTCloudNotificationService
+{   
+    @Env 
+    def env 
+
+    @Service('OrgService')
+    def orgSvc
+
+
+    @Service(value='CloudNotificationService', connection='notification_proxy')
+    def remote;
+
+    @Context
+    def appContext 
+
+    @ProxyMethod 
+    public def sendMessage( msg ) { 
+        try{
+        	msg.channel = (appContext.conf.cloud_channel ? appContext.conf.cloud_channel : 'etracs')
+        	if (!msg.objid) msg.objid = 'MSG' + new java.rmi.server.UID(); 
+            if (!msg.message) msg.message='Message ' + msg.objid;
+            remote.addMessage(msg); 
+            return msg; 
+        }
+        catch(e){
+            println 'RPTCloudNotificationService.sendMessage [ERROR] ' + e.message 
+            println e.printStackTrace();
+        }
+    } 
+
+    @ProxyMethod 
+    public def sendAttachment( msg ) { 
+        try{
+            remote.addAttachment( msg ); 
+            return msg; 
+        }
+        catch(e){
+            println 'RPTCloudNotificationService.sendAttachment [ERROR] ' + e.message 
+            println e.printStackTrace();
+        }
+    } 
+
+
+    @ProxyMethod
+    public def createAsyncRequest(servicename, methodname, data){
+        def args = [data] as Object[];
+        def asyncreq = new AsyncRequest(servicename, methodname, args, env); 
+        asyncreq.contextName = 'etracs25';      
+        return [asyncreq]
+    }        
+
+    @ProxyMethod
+    public def sendAsyncMessage( asyncreq, lguid ) {
+        sendMessage(createAsyncMessage(asyncreq, lguid))
+    }
+
+    @ProxyMethod
+    public def createAsyncMessage( asyncreq, lguid ) {
+        if (env == null){
+            buildEnv();
+        }
+
+        return [
+            origin   : env.ORGID.replaceAll('-.*?', ''),
+            data     : asyncreq,
+            channel  : (appContext.conf.cloud_channel ? appContext.conf.cloud_channel : 'etracs'),
+            channelgroup : buildOrgCodeFromLguId(lguid),
+            groupid  : 'n/a',
+            filetype : '-',
+            messagetype : '-',
+        ]
+    }
+
+    def buildOrgCodeFromLguId(lguid){
+        def org = orgSvc.open([objid:lguid])
+        if (!org)
+            throw new Exception('buildOrgCode [Error]: Invalid LGUID ' + lguid + '.')
+        return org.code.replaceAll('-', '');
+    }
+
+    void buildEnv(){
+        def root = orgSvc.findRoot()
+        env.ORGID = root.objid
+        env.ORGCLASS = root.orgclass
+        env.ORGNAME = root.name
+        env.USERID = 'system'
+        env.FULLNAME = 'system'
+    }
+
+} 

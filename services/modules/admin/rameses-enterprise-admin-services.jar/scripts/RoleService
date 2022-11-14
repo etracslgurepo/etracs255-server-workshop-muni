@@ -1,0 +1,67 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import java.rmi.server.UID;
+import com.rameses.util.*;
+import com.rameses.io.*;
+import com.rameses.services.extended.*;
+
+class RoleService extends ActiveCrudListService {
+
+	@ActiveDB(value='usergroup', em='admin')
+	def	em; 
+
+	@Env
+	def env;
+
+	@ProxyMethod
+	public def getColumns( param ) {
+		return  [
+			[name:'role', caption:'Role'],
+			[name:'title', caption:'Title'],
+			[name:'domain', caption:'Domain']
+		]
+	}
+
+	public void beforeList( o ) {
+		if(!o.searchtext)
+			o.searchtext = '%';
+		else	
+			o.searchtext = '%' + o.searchtext + '%';
+		o._listMethod = 'getLookup'	
+	}
+
+	public void beforeCreate( def o ) {
+		o.objid = o.domain +"."+ o.role		
+	} 
+
+	public void afterCreate( def o ) {
+		o.permissions.each{ 
+			it.usergroup = o  
+			em.create(it, "permission")
+		}
+	}
+
+	public void beforeUpdate( def o ) {
+		em.removePermissions( o )
+	}	
+
+
+	public void afterUpdate( def o ) {
+		o.permissions.each{ 
+			it.usergroup = o 
+			em.save(it, "permission") 
+		}
+		
+	}
+
+	public void afterOpen( def o ) {
+		o.permissions =  em.getPermissions(o).each { it.newitem =  false }
+	}
+
+	public void beforeRemoveEntity(def o){
+		em.removePermissions( o )
+	}
+
+}
+
+

@@ -1,0 +1,38 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+import java.rmi.server.UID
+
+class MunicipalityLookupService{
+	
+	@PersistenceContext('main')	
+	def em
+	
+	@ProxyMethod 
+	public def getColumns( params ) {
+		return [
+			[name:'name', caption:'Name'],  
+			[name:'indexno', caption:'Index-No'],
+			[name:'pin', caption:'PIN'] 
+		];
+	}
+
+	@ProxyMethod
+	public def getList( params ) {
+		params.searchtext = (params.searchtext? params.searchtext: '')
+		params.name = params.searchtext + '%'
+		def qry = em.sqlContext.createNamedQuery('municipality:lookup')
+
+		if (params._start != null)
+			qry.setFirstResult( params._start )
+		if (params._limit)
+			qry.setMaxResults(params._limit)
+			
+		return qry.setParameters(params).resultList 
+	}
+
+	@ProxyMethod
+	public def getById( objid ) {
+		return em.sqlContext.createNamedQuery('municipality:getById')
+				.setParameter('objid', objid).singleResult	
+	}
+}

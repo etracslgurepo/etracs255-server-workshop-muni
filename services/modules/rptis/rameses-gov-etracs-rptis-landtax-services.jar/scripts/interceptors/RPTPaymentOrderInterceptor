@@ -1,0 +1,19 @@
+import com.rameses.annotations.*
+import com.rameses.eserver.*;
+import com.rameses.common.*;
+
+class RPTPaymentOrderInterceptor
+{
+	@Service('RPTReceiptService')
+    def receiptSvc 
+
+	@After(pattern="PaymentOrderService.fetchPaymentInfo", eval="#{result.txntype == 'rptcol'}") 
+	public void fetchInfo( evt ) {
+		def entity = evt.result 
+		def bill = [billid:entity.refid, rptitems:[[rptledgerid:entity.info.rptledgerid ]]]
+		entity.rptitems = [[rptledgerid:bill.rptledgerid]]
+        entity.items = receiptSvc.getSummarizedCashReceiptItems(bill)
+	}
+
+}
+

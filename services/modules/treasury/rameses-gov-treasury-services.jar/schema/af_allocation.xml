@@ -1,0 +1,8 @@
+<schema>
+	<element tablename="af_allocation">
+		<field name="objid" primary="true" caption="ID" searchable="true" visible="true"/>
+		<field name="name" required="true" caption="Name" searchable="true"/>
+		<field name="respcenter_objid" required="true" />
+		<field name="respcenter_name" required="true" caption="Resp. Center"/>
+	</element>
+</schema>

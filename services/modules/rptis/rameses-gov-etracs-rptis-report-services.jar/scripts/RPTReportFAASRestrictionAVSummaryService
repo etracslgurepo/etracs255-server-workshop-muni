@@ -1,0 +1,79 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class RPTReportFAASRestrictionAVSummaryService
+{
+	@Env 
+	def env 
+
+    @DataContext('faas_restriction_type')
+    def faas_restriction_typeDb
+
+    @ActiveDB('rptreport_faas_restriction_av_summary')
+    def em
+
+    @Service('RPTUtil')
+    def util
+
+
+    @Async
+    @ProxyMethod
+    public def generateReport( params ) {
+    	buildFilter(params)
+    	params.imonth = getMonthIndex(params)
+
+		def list = em.getRestrictionAvSummary(params)
+		if( ! list ) throw new Exception('Record not found.')
+
+        if (!params.hidezeroav){
+            buildMissingRestrictions(list)
+        }
+
+        def reportparams = [:]
+        reportparams.PERIOD = params.period.caption 
+
+		return [
+			parameters  : reportparams, 
+			reportdata 	: list,
+		]
+    }
+
+    void buildMissingRestrictions(list){
+        def firstitem = list[0]
+        faas_restriction_typeDb.list().each{rt->
+            if (firstitem.restriction.objid != rt.objid){
+                def item = [:]
+                item.lguname = firstitem.lguname 
+                item.restriction = rt 
+                item.isother = [idx:rt.isother, name:(rt.isother == 0 ? '' : 'OTHERS')]
+                item.totalav = null
+                list << item
+            }
+        }
+    }
+
+    def getMonthIndex(params){
+    	if (params.month){
+			return params.month.index 
+		}
+		else {
+			def qtrs = [1:3, 2:6, 3:9, 4:12]
+			return qtrs[params.qtr]
+		}
+    }
+
+    void buildFilter(params){
+        params.filter = ''
+        util.buildStartEndDateFilter(params)
+
+        if (params.lgu){
+            params.filter += ' and f.lguid = $P{lguid} '
+            params.lguid = params.lgu.objid 
+        }
+        if (params.barangay){
+            params.filter += ' and rp.barangayid = $P{barangayid} '
+            params.barangayid = params.barangay.objid 
+        }
+    }
+}

@@ -1,0 +1,227 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.common.*
+import com.rameses.services.extended.*
+
+class BankDepositReportService  {
+
+	@PersistenceContext("main")
+	def em; 
+
+	@ActiveDB('bankdepositreport')
+	def adb;
+
+	@ActiveDB('fund')
+	def fund_em;	
+
+	@Service("NumberService")
+	def numSvc;
+
+	@Service("DateService")
+	def dtsvc;
+
+	@Service('ReportParameterService')
+	def paramSvc;
+
+	@Env 
+	def env 
+
+	@ProxyMethod 
+	def generateRCDByFund( deposit, fund ) {
+		def data = deposit.clone();
+		data.fund = fund; 
+		def params = [bankdepositid: data.objid, fundname: fund.objid ]
+		if ( data._INCLUDE_SUBFUND == true ) { 			
+			def list = fund_em.findAllSubAcct([ objid: params.fundname ]).collect{ it.objid }   
+			if ( list ) { 
+				list << params.fundname; 
+				params.fundfilter = "'"+ list.join("','") +"'"; 
+			} 
+		} 
+
+		data.collectionsummaries = adb.getCollectionSummaryByAFAndFund( params );
+		if( data.collectionsummaries ) {
+			data.amount = data.collectionsummaries.amount.sum();
+			data.amountinwords = numSvc.doubleToWords( data.amount );
+		}
+		data.liquidations = adb.getLiquidations( params ); 
+		
+		data.remittancedeposits =  []
+		data.remittancedeposits.addAll( adb.getCashFundSummary( params ));
+		data.remittancedeposits.addAll( adb.getCheckFundSummary( params ));
+
+		if ( ! data.remittancedeposits ){
+			data.remittancedeposits.addAll(adb.getDepositSlipSummaryByFund(params))
+		}
+
+		data.remittedforms=[]
+		data.nonserialremittances = [[:],[:]]
+		return data;
+	}
+
+	@ProxyMethod 
+	def generateDepositReportByFund( deposit, fund ) {
+		def data = deposit.clone();
+		data.fund = fund; 
+		def params = [bankdepositid: data.objid, fundname: fund.objid ];
+		if ( data._INCLUDE_SUBFUND == true ) { 			
+			def list = fund_em.findAllSubAcct([ objid: params.fundname ]).collect{ it.objid }   
+			if ( list ) { 
+				list << params.fundname; 
+				params.fundfilter = "'"+ list.join("','") +"'"; 
+			} 
+		} 
+
+		data.collectionsummaries = adb.getCollectionSummaryByAFAndFund( params );
+		if( data.collectionsummaries ) {
+			data.amount = data.collectionsummaries.amount.sum()
+			data.amountinwords = numSvc.doubleToWords( data.amount )
+		}
+		
+		data.remittancedeposits =  []
+		data.remittancedeposits.addAll( adb.getCashFundSummary( params ));
+		data.remittancedeposits.addAll( adb.getCheckFundSummary( params ));
+
+		if ( ! data.remittancedeposits ){
+			data.remittancedeposits.addAll(adb.getDepositSlipSummaryByFund(params))
+		}
+
+		data.remittedforms=[]
+		data.nonserialremittances = [[:],[:]]
+		return data;
+	}
+
+
+	@ProxyMethod 
+	def generateRCDByBankAccount( deposit, bankaccount ) {
+		def data = [
+			dtposted: deposit.dtposted,
+            txnno : deposit.txnno,
+            cashiername: deposit.cashier.name,
+            cashiertitle: deposit.cashier.title,
+		]
+		def info = em.sqlContext.createNamedQuery('bankdepositreport:getDepositAmount')
+					.setParameters([bankdepositid: deposit.objid, bankaccountid: bankaccount.objid] )
+					.singleResult
+		data.summaries = info.summaries ? em.serializer.read(info.summaries) : [] 
+		
+		if( info) {
+			data.fund = info.fund
+			data.amount = info.amount 
+			data.amountinwords = numSvc.doubleToWords( info.amount )
+			if( info.totalcash > 0.0) {
+				data.cashier1 = deposit.cashier.name
+				data.depositref1 = info.bankcode + ' - Cash Deposit D/S ' + info.bankacctno
+				data.depositamt1 = info.totalcash
+			}
+
+			if( info.totalnoncash > 0.0 && data.cashier1 ) {
+				data.cashier2 = deposit.cashier.name
+				data.depositref2 = info.bankcode + ' - Check Deposit D/S ' + info.bankacctno
+				data.depositamt2 = info.totalnoncash
+			} else if ( info.totalnoncash > 0.0  ) { 
+				data.cashier1 = deposit.cashier.name
+				data.depositref1 = info.bankcode + ' - Check Deposit D/S '  + info.bankacctno
+				data.depositamt1 = info.totalnoncash
+			}
+
+		}
+
+		return data;
+	}
+
+	@ProxyMethod 
+	def exportNGASToCsv( deposit ) {
+		def formatDate = { date, format -> 
+			return new java.text.SimpleDateFormat(format).format(date); 
+		}
+		def sparam =  paramSvc.getStandardParameter()
+
+		StringBuffer sb = new StringBuffer();
+        sb.append("Republic of the Philippines\n");
+        sb.append(sparam.LGUFORMALNAME + "\n");
+        sb.append(sparam.ACCOUNTANTOFFICENAME + "\n");
+        sb.append("Date : " + formatDate( deposit.dtposted, 'MMM dd yyyy' ) );
+        sb.append("\n\n");
+		sb.append("Collector,O.R. Date,O.R. No.,Name of Payor,Particulars,Amount,Code \n");
+		
+		def list = em.sqlContext.createNamedQuery("bankdepositreport:getCashReceiptByBankdepositid")
+		             .setParameter("bankdepositid", deposit.objid )
+					 .resultList;
+					 
+		def vr = [:];
+		def prevremittanceid = null 
+		
+		def append = { val, showinfo  ->
+			def collectorname = ( showinfo ? val.collectorname.replaceAll(",", " ") : '')
+			def receiptdate   = ( showinfo ? formatDate( val.receiptdate, 'MM/dd/yyyy' ) : '')
+			def serialno      = ( showinfo ? ((val.serialno) ? val.serialno : val.afid) : '')
+			def payorname     = ( showinfo ? val.payorname.replaceAll(","," ") : '')
+			
+			sb.append( collectorname + ',' );
+			sb.append( receiptdate + ',' );
+			sb.append( serialno + ',' );
+			sb.append( payorname + ',' );
+			if( val.voided == 0 ){
+				sb.append( val.accttitle + ',' );
+				sb.append( val.amount + ',' );
+				sb.append( val.acctno );
+			}else{
+				sb.append( '*** VOID ***,' );
+				sb.append( '0.0,' );
+				sb.append( '***' );
+			}
+			sb.append( '\n' );
+		}
+		
+		def getSerialNo = { receipt -> 
+			return receipt.serialno ? receipt.serialno : receipt.afid 
+		}
+		
+		def prevserialno = null 
+		list.each{
+			if( prevserialno != getSerialNo(it) ) {
+				append( it, true );
+				prevserialno = getSerialNo( it ) 
+			}
+			else {
+				append( it, false );
+			}
+		}
+		sb.append("Generated by: ETRACS 2.5\n")
+		sb.append("Run Date: " + formatDate( new Date(), 'MM-dd-yyyy hh:mm:ss a' ) )
+		return sb.toString();
+
+	}
+
+	@ProxyMethod 
+	def generateReportByRevenueItem( deposit ) {
+		def data = deposit.clone();
+		def params = [ bankdepositid: deposit.objid ]
+		data.acctsummaries = adb.getRevenueItemSummaryByFund(params )
+
+		//TODO: Temporary fix while the billing and collection is updated
+		// adb.updateBrgyShares(params)
+
+		data.brgyshares  = adb.getBarangayShares(params)
+		data.hasbrgyshares = data.brgyshares.size() > 0
+		if( ! data.acctsummaries ) throw new Exception("No record(s) found ");
+
+		data.amount = data.acctsummaries.amount.sum(); 
+		return data;
+	}
+
+
+	@ProxyMethod 
+	def getFundlist( bankdepositid ) {
+		return em.sqlContext.createNamedQuery('bankdepositreport:getFundlist').setParameter('bankdepositid', bankdepositid ).resultList
+	}
+
+	@ProxyMethod 
+	def getBackAccountList( bankdepositid ){
+		return em.sqlContext.createNamedQuery('bankdepositreport:getBackAccountList').setParameter('bankdepositid', bankdepositid ).resultList
+
+	}
+
+}

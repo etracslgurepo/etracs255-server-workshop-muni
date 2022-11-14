@@ -1,0 +1,28 @@
+<schema>
+	<element name="planttreerpu" tablename="planttreerpu">
+		<field name="objid" primary="true"  />
+		<field name="landrpuid" required="true" />
+		<field name="productive" required="true" type="decimal" />
+		<field name="nonproductive" required="true" type="decimal" />
+	</element>
+
+	<element name="planttreedetail" tablename="planttreedetail">
+		<field name="objid" primary="true" />
+		<field name="planttreerpuid" />
+		<field name="landrpuid" />
+		<field name="planttreeunitvalue_objid" required="true" />
+		<field name="planttree_objid" required="true" />
+		<field name="actualuse_objid" required="true" />
+		<field name="productive" required="true" type="decimal" />
+		<field name="nonproductive" required="true" type="decimal" />
+		<field name="nonproductiveage" />
+		<field name="unitvalue" required="true" type="decimal" />
+		<field name="basemarketvalue" required="true" type="decimal" />
+		<field name="adjustment" required="true" type="decimal" />
+		<field name="adjustmentrate" required="true" type="decimal" />
+		<field name="marketvalue" required="true" type="decimal" />
+		<field name="assesslevel" required="true" type="decimal" />
+		<field name="assessedvalue" required="true" type="decimal" />
+		<field name="areacovered" type="decimal" />
+	</element>
+</schema>

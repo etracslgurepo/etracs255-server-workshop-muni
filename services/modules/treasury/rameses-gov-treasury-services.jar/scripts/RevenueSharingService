@@ -1,0 +1,87 @@
+import com.rameses.annotations.*;
+import com.rameses.rules.common.*;
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.common.*;
+import treasury.facts.*;
+import treasury.actions.*;
+import treasury.utils.*;
+import enterprise.utils.*;
+import java.util.*;
+import enterprise.facts.Org;
+
+
+class RevenueSharingService {
+	
+	@Service
+	def self; 
+
+	@Service("RuleExecutorService")
+	def ruleSvc;
+
+	@DataContext('sys_org') 
+	def sys_org;
+
+
+	@ProxyMethod
+	public def getFacts( def receipt ) { 
+		// to be intercepted by other services 
+		return []; 
+	} 
+
+	@ProxyMethod
+	public def execute( def rct ) {
+		if(!rct.receiptdate ) throw new Exception("RevenueSharingService.getSharing error. receiptdate is required in parameters");
+		if(!rct.items ) throw new Exception("RevenueSharingService.getSharing error. items is required in parameters");
+
+		def facts = self.getFacts( rct ); 
+		if ( facts == null ) facts = []; 
+
+		if ( rct.receiptdate instanceof String ) {
+			rct.receiptdate = java.sql.Date.valueOf( rct.receiptdate );  
+		} 
+		facts << new CashReceipt( receiptdate: rct.receiptdate );
+
+		if ( rct.collectiontype?.objid ) { 
+			facts << new CollectionType( 
+				objid: rct.collectiontype.objid, 
+				name: rct.collectiontype.name, 
+				handler: rct.collectiontype.handler 
+			); 
+		}
+
+		if( rct.org?.objid ) {
+			def org = sys_org.find([ objid: rct.org.objid ]).first(); 
+			facts << new Org( orgid: org.objid, type: org.orgclass, root: (org.root==1)); 
+		}
+
+
+		def acctUtil = new ItemAccountUtil();
+		rct.items.each {
+			def b = [objid: it.objid, amount: it.amount, refid: it.objid ]; 
+			b.account = acctUtil.createAccountFact( it.item );  
+			facts << new BillItem( b );
+		}
+
+		/*
+		if( rct.collectiongroup &&  !facts.find{it.class == treasury.facts.CollectionGroup.class } ) {
+			def cg = params.collectiongroup;
+			facts << new treasury.facts.CollectionGroup( objid:cg.objid, name: cg.name );
+		}
+		*/
+
+		def ctx = RuleExecutionContext.currentContext;
+		if( ctx == null ) { ctx = new RuleExecutionContext(facts); };
+		if(!ctx.env.acctUtil) ctx.env.acctUtil = acctUtil; 
+
+		ruleSvc.execute( "revenuesharing", facts, null, null );
+		def shareList = facts.findAll{ it instanceof RevenueShare };
+		def resultList = []; 
+		shareList.each {
+			resultList << it.toMap();
+		}
+		return resultList;
+	}
+
+}

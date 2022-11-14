@@ -1,0 +1,15 @@
+<schema>
+	<element tablename="treasury_variableinfo">
+		<field name="objid" primary="true"/>
+		<field name="state" required="true" defaultValue="ACTIVE"/>
+		<field name="name" required="true"/>
+		<field name="datatype" required="true"/>
+		<field name="caption" required="true"/>
+		<field name="description"/>
+		<field name="system" required="true"/>
+		<complex name="arrayvalues" serializer="default"/>
+		<field name="sortorder" required="true"/>
+		<field name="category" />
+		<field name="handler" />
+	</element>
+</schema>

@@ -1,0 +1,245 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+
+class PaymentOrderService {
+
+	@DataContext( dynamic=true ) 
+	def dynaEm; 
+
+	@Service(dynamic=true)
+	def dynaSvc;
+
+	@Service
+	def self;
+
+	@Env
+	def env;
+
+	@ProxyMethod
+	public def getBarcodePrefix( def conn ) {
+		// implementation to this method 
+		// is done by an Interceptor and 
+		// barcodeid must be overidden  
+		return [ barcodeid: null ]; 
+	} 
+
+	@ProxyMethod
+	public def getRootOrg() {
+		// implementation to this method 
+		// is done by an Interceptor and 
+		// the result must be overidden  
+		return [:]; 
+	} 
+
+	@ProxyMethod
+	public def initData( def param ) {
+		def org = self.getRootOrg(); 
+		def keygen = KeyGen.generateAlphanumKey( "", 7 ); 
+		if ( org?.objid ) {
+			param.objid = org.objid.toString().replace('-','') + keygen;
+		} 
+		else {
+			param.objid = keygen;
+		}
+
+		def dateSvc = dynaSvc.lookup('DateService'); 
+		param.txndate = dateSvc.getServerDate();
+
+		def cal = Calendar.instance;
+		cal.setTime( param.txndate );
+		cal.add( Calendar.HOUR, 24 );
+		param.expirydate = new java.sql.Timestamp( cal.getTimeInMillis() );
+		param.issuedby = [objid:env.USERID, name:env.FULLNAME];
+
+		if ( param._origin ) {
+			if ( param.issuedby.objid == null ) 
+				param.issuedby.objid = param._origin;
+
+			if ( param.issuedby.name == null ) 
+				param.issuedby.name = param._origin;
+		}
+
+		return param;
+	}
+
+	@ProxyMethod
+	public def create( def o ) {
+		if (!o.connection) throw new Exception("connection is required");
+		if (!o.typeid) throw new Exception("paymentorder typeid is required");
+		
+		if (!o.paidby) throw new Exception("Paid by is required");
+		if (!o.paidbyaddress) throw new Exception("Paid by address is required");
+		if (!o.items && !o.params) throw new Exception("items or params is required");
+
+		if (o.params) {
+			if (!o.refno) throw new Exception("refno is required when params is specified");
+		}
+
+		def em = dynaEm.lookup('paymentorder_type'); 
+		o.type = em.find([ objid: o.typeid ]).first();
+		if ( !o.type ) 
+			throw new Exception("'"+ o.typeid +"' paymentorder_type record not found");
+
+		o = self.initData( o );
+
+		if ( o.items ) { 
+			//validate items
+			o.items.eachWithIndex{ oo,idx-> 
+				if ( !oo.item?.objid ) throw new Exception("items["+ idx +"].item.objid  property is required");
+				if ( !oo.item?.code ) throw new Exception("items["+ idx +"].item.code  property is required");
+				if ( !oo.item?.title ) throw new Exception("items["+ idx +"].item.title  property is required");
+				if ( !oo.item?.fund?.objid ) throw new Exception("items["+ idx +"].item.fund.objid  property is required");
+				if ( oo.amount == null ) throw new Exception("items["+ idx +"].amount  property is required");
+			}
+			o.amount =  NumberUtil.round( o.items.sum{( it.amount ? it.amount : 0.0 )} );
+		} 
+
+		if (o.amount == null) 
+			throw new Exception("amount is required");
+		if (o.amount <= 0.0) 
+			throw new Exception("amount must be greater than zero");
+
+		em = dynaEm.lookup('paymentorder'); 
+		em.create( o );
+
+		def bc = self.getBarcodePrefix( o.connection ); 
+		o.barcode = bc?.barcodeid +":"+ o.objid; 
+		return o;
+	}
+
+	@ProxyMethod
+	public def getBilling(o) {
+		def em = dynaEm.lookup('paymentorder'); 
+		def po = em.find([ objid: o.refno ]).first(); 
+		if ( po ) {
+			if ( po.state.toString().toUpperCase() == 'DRAFT' )	
+				throw new Exception("'"+ o.refno +"' payment order is not yet approved");
+			if ( po.state.toString().toUpperCase() != 'OPEN' )	
+				throw new Exception("'"+ o.refno +"' payment order is no longer available for payment");
+		}
+		else {
+			em = dynaEm.lookup('paymentorder_cancelled'); 
+			po = em.find([ objid: o.refno ]).select('objid').first(); 
+			if ( po ) throw new Exception("'"+ o.refno +"' payment order is no longer available for payment");
+
+			em = dynaEm.lookup('paymentorder_paid'); 
+			po = em.find([ objid: o.refno ]).select('objid').first(); 
+			if ( po ) throw new Exception("'"+ o.refno +"' payment order is no longer available for payment");
+		}
+
+		if ( !po ) throw new Exception("'"+ o.refno +"' payment order record not found");
+		
+		def result = [:];
+		result.txndate = po.txndate; 
+		result.expirydate = po.expirydate; 
+		result.payer = po.payer;
+		result.paidby = po.paidby;
+		result.paidbyaddress = po.paidbyaddress;
+		result.remarks = po.particulars;
+		result.amount = po.amount;
+		result._paymentorderid = po.objid;
+		result.type = po.type;
+		
+		if( po.items ) {
+			result.items = [];
+			po.items.each {
+				def v = [:];
+				v.item = [objid: it.item.objid, code:it.item.code, title: it.item.title, fund: it.item.fund ];
+				v.amount = it.amount;
+				v.remarks = it.remarks;
+				result.items << v;
+			} 	
+			result.amount = NumberUtil.round( result.items.sum{it.amount} );
+		}	
+
+		result.refno = po.refno; 
+		result.params = po.params;
+		result.email = po.email;
+		result.mobileno = po.mobileno;
+		return result;
+	}
+
+	@ProxyMethod
+	public void postPayment( param ) {
+		def poid = param?.objid; 
+		if ( !poid ) throw new Exception("objid  parameter is required in PaymentOrderService.postPayment");
+
+		def receipttype = param?.receipttype; 		
+		if ( !receipttype ) throw new Exception("receipttype  parameter is required in PaymentOrderService.postPayment");
+
+		def receipt = param?.receipt;
+		def receiptid = receipt?.objid; 
+		if ( !receiptid ) throw new Exception("receipt.objid  parameter is required in PaymentOrderService.postPayment");
+
+		def receiptno = receipt?.receiptno; 
+		if ( !receiptno ) throw new Exception("receipt.receiptno  parameter is required in PaymentOrderService.postPayment");
+
+		def receiptdate = receipt?.receiptdate; 		
+		if ( !receiptdate ) throw new Exception("receipt.receiptdate  parameter is required in PaymentOrderService.postPayment");
+
+		def em = dynaEm.lookup('paymentorder'); 
+		def poFindBy = [ objid: poid ]; 
+		def po = em.find( poFindBy ).first(); 
+		if ( !po ) throw new Exception("'"+ poid +"' payment order record not found"); 
+
+		po.receiptid = receiptid;
+		po.receiptno = receiptno;
+		po.receiptdate = receiptdate; 
+		po.receipttype = receipttype; 
+		
+		def logSvc = dynaSvc.lookup('LogService'); 
+		logSvc.logA( 'paid', 'paymentorder', poid, 'Paid');
+
+		em.find( poFindBy ).delete(); 
+
+		po.state = 'PAID'; 
+		em = dynaEm.lookup('paymentorder_paid'); 
+		em.create( po ); 
+	}
+
+	@ProxyMethod
+	public void verifyCheckSum( objid, checksum ) {
+		if ( checksum.toString() == '0' ) {
+			// do nothing 
+			return;
+		}
+
+		def newchecksum = buildCheckSum( objid ); 
+		if ( newchecksum != checksum ) {
+			println '\n\nnewchecksum: '+ newchecksum +', oldchecksum: '+ checksum; 
+			throw new Exception("Invalid Payment Order "+ po.objid);
+		}
+	}
+
+	@ProxyMethod(local=true)
+	public def buildCheckSum( objid ) {
+		def em = dynaEm.lookup('paymentorder'); 
+		def po = em.find([ objid: objid ]).select('objid,amount,email').first(); 
+		if ( !po ) {
+			em = dynaEm.lookup('paymentorder_paid'); 
+			po = em.find([ objid: objid ]).select('objid,amount,email').first(); 
+		}
+
+		if ( !po ) throw new Exception("'"+ objid +"' payment order not found");
+
+		def buff = new StringBuilder();
+		buff.append( po.objid ); 
+		buff.append( new java.text.DecimalFormat('0.00').format( po.amount ));
+		buff.append( po.email.toString()); 
+		return com.rameses.util.Encoder.MD5.encode( buff.toString(), po.objid);
+	}
+
+
+	@ProxyMethod
+	public def verify( objid, amount ) {
+		if ( !objid ) throw new Exception("objid  argument is required");
+		if ( amount == null ) throw new Exception("amount  argument is required");
+
+		def em = dynaEm.lookup('paymentorder'); 
+		def po = em.find([ objid: objid ]).select('objid,amount').first(); 
+		if ( !po ) throw new Exception("'"+ objid +"' payment order not found");
+
+		if ( amount != po.amount ) 
+			throw new Exception("Payment Order amount mismatched"); 
+	} 
+}

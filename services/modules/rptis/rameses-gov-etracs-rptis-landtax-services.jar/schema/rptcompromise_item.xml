@@ -1,0 +1,23 @@
+<schema>
+	<element tablename="rptcompromise_item">
+        	<field name="objid" primary="true" prefix="RCI"/>
+        	<!-- references rptcompromise -->
+                <field name="parentid" required="true"/>
+                <field name="rptledgerfaasid" required="true"/>
+                <field name="revtype" required="true" caption="Revenue" />
+                <field name="revperiod" required="true" caption="Period" />
+                <field name="year" type="integer" required="true" caption="Year"/>
+                <field name="qtr" type="integer" required="true" caption="Qtr"/>
+                <field name="amount" type="decimal" required="true" caption="Amount"/>
+                <field name="amtpaid" type="decimal" required="true" caption="Amount Paid"/>
+                <field name="interest" type="decimal" required="true" caption="Interest"/>
+                <field name="interestpaid" type="decimal" required="true" caption="Interest Paid"/>
+                <field name="balance" expr="amount - amtpaid + interest - interestpaid" caption="Balance"/>
+                <field name="priority" type="integer" required="true" />
+                <field name="taxdifference" type="boolean" required="true" />
+                <complex name="ledgerfaas" ref="rptledger_faas" jointype="many-to-one"
+                        includefields="tdno,assessedvalue">
+                        <key field="rptledgerfaasid" target="objid" />
+                </complex>
+	</element>
+</schema>

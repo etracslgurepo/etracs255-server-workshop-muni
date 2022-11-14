@@ -1,0 +1,15 @@
+<schema>
+	<element name="rpt_requirement" tablename="rpt_requirement">
+		<field name="objid" primary="true"/>
+		<field name="requirementtypeid" required="true"/>
+		<field name="handler" required="true"/>
+		<field name="refid" required="true" />
+		<field name="value_objid" />
+		<field name="value_txnno" />
+		<field name="value_txndate" />
+		<field name="value_txnamount" type="decimal"  />
+		<field name="value_remarks" />
+		<field name="complied" type="integer" required="true"/>
+	</element>
+</schema>
+

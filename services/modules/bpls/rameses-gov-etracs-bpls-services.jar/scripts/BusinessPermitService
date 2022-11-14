@@ -1,0 +1,405 @@
+import com.rameses.annotations.*;
+import com.rameses.services.extended.*;
+import java.rmi.server.UID;
+
+class BusinessPermitService  {
+
+	@DataContext(dynamic=true)
+	def dynaEm;
+
+	@DataContext("sys_org")
+	def sys_org;
+
+	@ActiveDB("business_permit")
+	def em;
+
+	@DataContext('business_permit') 
+	def permit_db; 
+
+	@DataContext('business_permit_lob') 
+	def permitlob_db; 
+
+	@DataContext('business_application') 
+	def app_db; 
+
+	@ActiveDB("business_billing")
+	def billEm;
+
+	@ActiveDB("entity_address")
+	def entity_address;
+
+	@Service("BusinessApplicationService")
+	def appSvc;
+
+	@Service("Var")
+	def sysvar;
+
+	@Service("DateService")
+	def dateSvc;
+
+	@Service("SequenceService")
+	def seqSvc;
+
+	@Service("BusinessMasterService")
+	def bizInfo;
+
+	@Service("BusinessLobService")
+	def lobSvc;
+
+	@Service("BusinessPaymentService")
+	def paySvc;
+
+	@Service("OrgService")
+	def orgSvc;
+
+	@Env
+	def env;
+
+	@ProxyMethod
+	public def init( params ) { 
+		def adb = permit_db.find([ businessid: params.businessid ]);
+		def perm = adb.where('plateno is not null').orderBy('activeyear desc, dtissued desc').first(); 
+		params.prevplateno = perm?.plateno; 
+		return params; 
+	}
+
+	@ProxyMethod
+	public def create( o ) {
+		if ( !o.businessid ) throw new Exception("Please specify businessid");
+		if ( !o.applicationid ) throw new Exception("Please specify applicationid");
+
+		boolean temporary = ( o.temporary.toString() == 'true'); 
+
+		//check permit if exist to prevent duplication
+		def perminfo = em.findPermit( o ); 
+		if ( perminfo ) throw new Exception('Business Permit already exist. Please reload your screen');  
+
+		def parentperm = null; 
+		if ( o.parentapplicationid ) { 
+			parentperm = em.findPermitByApplication([applicationid: o.parentapplicationid]); 
+		} 
+		
+		//check first if you are allowed to release the permit
+		def app = appSvc.open( [objid: o.applicationid] );
+		def buz = app.business;
+		def expirydate = o.expirydate;
+		if ( !expirydate ) {
+			expirydate = dateSvc.getMonthEndDate( dateSvc.parse('yyyy-MM-dd', app.appyear+"-12-01") );	
+		}
+
+		def permitstat = em.findPermitCount([ businessid: o.businessid, activeyear: app.appyear ]); 
+		def permitver = permitstat.icount;  
+		def plateno = o.plateno;
+		def permitno = o.permitno;
+		if ( permitno ) {
+			//do nothing 
+		} else if ( parentperm?.permitno ) {
+			def pno = parentperm.permitno; 
+			def strver = '-0'; 
+			if (pno.endsWith(strver)) { 
+				pno = pno.substring(0, pno.lastIndexOf(strver)); 
+			} 
+
+			permitno = pno +'-'+ permitver; 
+			plateno = parentperm.plateno;
+
+		} else {
+			def lgucode = orgSvc.getRoot()?.code;
+			if ( !lgucode ) throw new Exception("LGU code is null. Please check OrgService.getRoot. Ensure there is a root org");
+
+			lgucode = lgucode.replace("-", "");	
+			def prefix = "BP-" + app.appyear;
+			if ( temporary ) { 
+				prefix = "TMP-BP-"+ app.appyear;
+			}
+			permitno = prefix+"-"+seqSvc.getNextFormattedSeries(prefix)+"-"+permitver; 
+		}
+
+		def dtissued = o.dtissued;
+		if ( !dtissued ) dtissued = dateSvc.getServerDate(); 
+
+		def permit = [:];
+		permit.objid = "BPPMT"+new UID();
+		permit.businessid = app.business.objid;
+		permit.applicationid = app.objid;
+		permit.state = 'ACTIVE';
+		permit.activeyear = app.appyear;
+		permit.version = permitver;
+		permit.permittype = 'STANDARD';
+		permit.dtissued = dtissued;
+		permit.issuedby = [objid: env.USERID, name: env.FULLNAME];
+		permit.expirydate = expirydate;
+		permit.permitno = permitno;
+		permit.plateno = plateno; 
+		permit.remarks = o.remarks; 
+		if ( temporary ) {
+			permit.permittype = 'TEMPORARY'; 
+			permit.expirydate = dateSvc.add( permit.dtissued, '90d' ); 
+		}
+		em.create( permit ); 
+		return permit; 
+	} 
+
+
+	@ProxyMethod
+	public def open(def o ) {
+		if(!o.applicationid) throw new Exception("applicationid is required");		
+		def r = em.findPermitByApplication( o );
+		r.barcode = '51005:'+r.bin;
+		r.payments.each {
+			it.refdate = dateSvc.parse( 'yyyy-MM-dd', it.refdate);
+			it.amount = new BigDecimal(it.amount);
+		}
+		r.lobs = appSvc.getAppLobs( [applicationid: o.applicationid ] );
+		if(r.lobs) {
+			r.lobnames = r.lobs*.name.join(",");
+		}
+		return r;
+	}
+
+	@ProxyMethod
+	public def getReport( o ) {
+		if ( !o.applicationid ) throw new Exception("applicationid is required");
+
+		def app = app_db.find([ objid: o.applicationid ]).first(); 
+		if ( !app ) throw new Exception('Application record does not exist'); 
+
+		def varvalue = sysvar.getProperty( 'businesspermit_split_printing', null );  
+		boolean splitPrinting = ( "true" == varvalue.toString() ); 
+
+		def stateFilters = ['COMPLETED'];
+		varvalue = sysvar.getProperty( 'businesspermit_issuance_on_release', null );  
+		if ( varvalue.toString().matches('true|1')) {
+			stateFilters << 'RELEASE'; 
+		} 
+
+		o.statefilter = stateFilters.collect{"'"+ it +"'"}.join(", "); 
+
+		//
+		// when businesspermit_split_printing is set to true 
+		// the application lobs are not merge instead they are  
+		// displayed separately according to the LOBs specified 
+		// in the application record.  
+		// 
+		def perm = null; 
+		if ( splitPrinting ) { 
+			perm = em.findPermitByApplication( o ); 
+		} else { 
+			perm = em.findPermitForReport( o ); 
+		}
+		
+		def lobs = em.getApplicationLOBs( o ); 
+		if ( splitPrinting ) { 
+			lobs = lobSvc.getAppLobs( o ); 
+			lobs = lobs.findAll{( it.assessmenttype.toString().toUpperCase() != 'RETIRE' )} 
+		} else {
+			lobs = permitlob_db.find([ parentid: perm.objid ]).orderBy(' txndate ').list(); 
+		} 
+
+		if ( !lobs ) throw new Exception('No available active LOB'); 
+
+		perm.lobs = lobs; 
+		perm.parentapplicationid = app.parentapplicationid; 
+ 
+		def addr = em.findBusinessAddress([ objid: perm.address?.objid ]);
+		if ( addr ) { 
+	 		resolveAddress( addr );  
+
+			addr.showextended = false; 
+			perm.businessaddress = formatAddress( addr ); 
+			addr.showextended = true; 
+			perm.businessfulladdress = formatAddress( addr ); 
+
+			if ( addr.pin ) perm.pin = addr.pin; 
+		} 
+
+		addr = perm.owner?.address; 
+		if ( addr?.objid ) {
+			addr = entity_address.read([ objid: addr.objid ]);
+		} else {
+			addr = null; 
+		} 
+		
+		if ( addr ) {
+			addr.showextended = false; 
+			perm.owneraddress = formatAddress( addr ); 
+			addr.showextended = true; 
+			perm.ownerfulladdress = formatAddress( addr ); 
+		} 
+
+		perm.apptype = (perm.parentapptype? perm.parentapptype: perm.apptype); 
+		perm.lobnames = perm.lobs*.name.join(","); 
+		perm.payments = em.getPayments(o);
+		if ( splitPrinting ) { 
+			perm.payments = perm.payments.findAll{ it.applicationid==o.applicationid } 
+		} 
+		perm.barcode = '51005:'+perm.bin;
+
+		//if ( perm.permittype.toString().toUpperCase() == 'TEMPORARY') {
+			perm.pendingrequirements = em.getPendingRequirements([ applicationid: perm.applicationid ]); 
+		//} 
+
+		if ( perm.orgtype == 'SING') perm.orgtypedesc = 'SINGLE PROPRIETORSHIP';
+		else if ( perm.orgtype == 'CORP') perm.orgtypedesc = 'CORPORATION';
+		else if ( perm.orgtype == 'COOP') perm.orgtypedesc = 'COOPERATIVE';
+		else if ( perm.orgtype == 'ASSO') perm.orgtypedesc = 'ASSOCIATION';
+		else if ( perm.orgtype == 'REL') perm.orgtypedesc = 'RELIGIOUS';
+		else if ( perm.orgtype == 'FOUND') perm.orgtypedesc = 'FOUNDATION';
+		else if ( perm.orgtype == 'PART') perm.orgtypedesc = 'PARTNERSHIP';
+		else if ( perm.orgtype == 'GOV') perm.orgtypedesc = 'GOVERNMENT';
+		else if ( perm.orgtype == 'SCH') perm.orgtypedesc = 'SCHOOL';
+		else if ( perm.orgtype == 'NGO') perm.orgtypedesc = 'NON-GOVERNMENT ORGANIZATION';
+		else if ( perm.orgtype == 'NONS') perm.orgtypedesc = 'NON-STOCK';
+		else if ( perm.orgtype == 'NONP') perm.orgtypedesc = 'NON-PROFIT';
+		else perm.orgtypedesc = perm.orgtype; 
+
+		if ( app.business?.owner ) {
+			perm.owner = app.business.owner; 
+			if ( perm.owner.objid && perm.owner.type ) {
+				def ownerEm = dynaEm.lookup("entity" + perm.owner.type.toLowerCase()); 
+				def ownerData = ownerEm.find([ objid: perm.owner.objid.toString() ]).first(); 
+				if ( ownerData ) perm.owner.putAll( ownerData );  
+			}
+		}
+
+		return perm;
+	}
+
+	private String formatAddress( addr ) {
+		def list = []; 
+		def bldgaddr = (addr.unitno? addr.unitno+' ':'') + (addr.bldgno? addr.bldgno+' ':'') + (addr.bldgname? addr.bldgname+' ':''); 
+		if (bldgaddr.trim()) list << bldgaddr.trim(); 
+		if ( addr.street ) list << addr.street; 
+		if ( addr.subdivision ) list << addr.subdivision;
+		if ( addr.barangay?.name ) list << addr.barangay.name;
+
+		boolean show_extended = false; 
+		if ( addr.showextended ) {
+			show_extended = true; 
+		} else if ( addr.type == 'nonlocal' ) { 
+			show_extended = true; 
+		}
+
+		if ( show_extended ) {
+			if ( addr.municipality ) list << addr.municipality;
+			if ( addr.city ) list << addr.city;
+			if ( addr.province ) list << addr.province; 
+		} 
+		return list.join(", ").replaceAll(",,",","); 
+	} 
+
+	private void resolveAddress( addr ) { 
+		if ( !addr?.type.toString().toLowerCase().matches('local|government|rented')) return; 
+
+		def rorg = sys_org.find([ root: 1]).first(); 
+		def orgclasstype = rorg?.orgclass.toString().toUpperCase();
+		if ( orgclasstype=='MUNICIPALITY' ) {
+			addr.municipality = (addr.municipality ? addr.municipality : rorg.name); 
+
+			def porg = sys_org.find([ objid: rorg.parent?.objid ]).first(); 
+			addr.province = (addr.province ? addr.province : porg.name);
+
+		} else if ( orgclasstype=='CITY' ) { 
+			addr.city = (addr.city ? addr.city : rorg.name); 
+
+		} else if ( orgclasstype=='PROVINCE' ) {
+			addr.province = (addr.province ? addr.province : rorg.name); 
+		} 
+	} 
+	
+	/*
+	@ProxyMethod
+	public void rebuildPermit( o ) {
+		def p = em.read( [objid: o.objid] );
+		def b = bizInfo.open( [objid: p.businessid] );
+		copy(p,b);
+		em.update( p );	
+	}
+
+	@ProxyMethod
+	public def reissuePermit( o ) {
+		em.deactivatePermit(o);
+		return create(o);
+	}
+	*/
+
+	@ProxyMethod
+	public void updatePlateno( o ) {
+		em.updatePlateno( o);
+	}
+
+	@ProxyMethod
+	public void updateRemarks( params ) { 
+		if ( !params.objid ) throw new Exception('objid parameter is required'); 
+
+		em.updateRemarks( params ); 
+	}
+
+	@ProxyMethod 
+	public def buildPermitLOB( params ) { 
+		def perm = permit_db.find([ objid: params.permitid ]).first(); 
+		if ( !perm ) return null; 
+
+		/*
+		def lobs = []; 		
+		em.getAppLOBs([ permitid: perm.objid ]).each{ o-> 
+			if ( o.apptype.toString().toUpperCase().matches('RETIRE|RETIRELOB')) {
+				def x = lobs.find{ it.lobid==o.lobid } 
+				if ( x ) lobs.remove( x ); 
+
+			} else { 
+				lobs << o; 
+			} 
+		}
+		*/ 
+
+		def stateFilters = ['COMPLETED'];
+		def varvalue = sysvar.getProperty( 'businesspermit_issuance_on_release', null );  
+		if ( varvalue.toString().matches('true|1')) {
+			stateFilters << 'RELEASE'; 
+		} 
+
+		def qmap = [ permitid: perm.objid ]; 
+		qmap.statefilter = stateFilters.collect{"'"+ it +"'"}.join(", "); 
+
+		def lobs = em.getBuildLobs( qmap ); 
+		if ( !lobs ) throw new Exception('failed to build permit lobs'); 
+
+		permitlob_db.find([ parentid: perm.objid ]).delete(); 
+		lobs.each{ o-> 
+			o.objid = 'PLOB' + new UID(); 
+			o.parentid = perm.objid; 
+			permitlob_db.create( o );  
+		} 
+
+		def xdb = permitlob_db.find([ parentid: perm.objid ]); 
+		return xdb.orderBy(' txndate ').list(); 
+	} 
+
+	@ProxyMethod 
+	public def issueOfficialPermit( params ) { 
+		if ( !params.permitid ) throw new Exception('permitid parameter is required'); 
+
+		def perm = permit_db.find([ objid: params.permitid ]).first();  
+		if ( !perm ) throw new Exception('Business Permit transaction does not exist'); 
+
+		if ( !perm.permittype.toString().equalsIgnoreCase("TEMPORARY")) 
+			throw new Exception('Official permit has already been issued to this application'); 
+
+		def m = [:]; 
+		def prefix = "TMP-"; 
+		m.permitno = perm.permitno;
+		if ( m.permitno.startsWith( prefix )) {
+			m.permitno = m.permitno.replaceFirst( prefix, "");  
+		} 
+		m.dtissued = dateSvc.getServerDate(); 
+		m.expirydate = dateSvc.getMonthEndDate( dateSvc.parse('yyyy-MM-dd', perm.activeyear+"-12-01") );	
+		m.permittype = 'STANDARD'; 		
+		if ( params.plateno ) m.plateno = params.plateno; 
+		if ( params.remarks ) m.remarks = params.remarks; 
+
+		permit_db.find([ objid: params.permitid ]).update( m ); 
+		params.putAll( m ); 
+		return params; 
+	}
+} 

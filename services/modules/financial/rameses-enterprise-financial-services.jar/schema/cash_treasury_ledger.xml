@@ -1,0 +1,15 @@
+<schema>
+
+	<element tablename="cash_treasury_ledger">
+		<field name="objid"  primary="true" prefix="CSHTRYLDGR"/>
+		<field name="jevid" required="true" />
+		<field name="itemacctid" required="true" />
+		<field name="dr" required="true" type="decimal"/>
+		<field name="cr" required="true" type="decimal"/>
+
+		<complex name="jev" ref="jev" jointype="many-to-one" includefields="jevno,jevdate,refno,fund.*"  required="false">
+			<key field="jevid" target="objid"/>
+		</complex>	
+	</element>
+
+</schema>

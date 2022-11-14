@@ -1,0 +1,34 @@
+<schema>
+	<element tablename="resection">
+		<field name="objid" primary="true" prefix="R" />
+		<field name="state" required="true" defaultState="DRAFT" caption="State" searchable="true" indexed="true" />
+		<field name="txnno" required="true" caption="Txn No." searchable="true" />
+		<field name="txndate" required="true" caption="Txn Date" />
+		<field name="lgu_objid" required="true" />
+		<field name="barangay_objid" required="true" />
+		<field name="pintype" required="true" caption="PIN Type" />
+		<field name="section" required="true"  caption="Section" searchable="true" indexed="true" />
+		<field name="originlgu_objid" required="true" />
+		<field name="memoranda" required="true" />
+		<field name="taskid"  />
+		<field name="taskstate"  />
+		<field name="assignee_objid"  />
+
+		<complex name="lgu" ref="sys_org" jointype="many-to-one"
+			includefields="name,orgclass">
+			<key field="lgu_objid" target="objid" />
+		</complex>
+		<complex name="barangay" ref="barangay" jointype="many-to-one"
+			includefields="indexno,pin,name">
+			<key field="barangay_objid" target="objid" />
+		</complex>
+		<complex name="originlgu" ref="sys_org" jointype="many-to-one"
+			includefields="name,orgclass">
+			<key field="originlgu_objid" target="objid" />
+		</complex>
+
+		<complex name="items" ref="resection_item" jointype="one-to-many" orderBy="faas.pin,faas.claimno,faas.suffix,">
+			<key field="objid" target="parent_objid" />
+		</complex>
+	</element>
+</schema>

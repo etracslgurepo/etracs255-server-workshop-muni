@@ -1,0 +1,16 @@
+<schema>
+	<element tablename="landtax_report_rptdelinquency">
+		<field name="objid" primary="true" prefix="RD" />
+		<field name="rptledgerid" required="true" />
+		<field name="barangayid" required="true" />
+		<field name="year" required="true" type="integer" />
+		<field name="qtr" type="integer" />
+		<field name="revtype" required="true" />
+		<field name="amount" required="true" type="decimal" />
+		<field name="interest" required="true" type="decimal" />
+		<field name="discount" required="true" type="decimal" />
+		<field name="dtgenerated" required="true" />
+		<field name="generatedby_name" />
+		<field name="generatedby_title" />
+	</element>
+</schema>

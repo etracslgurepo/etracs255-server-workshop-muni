@@ -1,0 +1,11 @@
+<schema>
+	<element tablename="businessrequirementtype">
+		<field name="objid" primary="true"/>
+		<field name="code" required="true"/>
+		<field name="title" required="true"/>
+		<field name="handler" />
+		<field name="agency" />
+		<field name="sortindex" required="true"/>
+		<field name="verifier" />
+	</element>	
+</schema>

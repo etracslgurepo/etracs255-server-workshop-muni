@@ -1,0 +1,59 @@
+<!-- 
+if object_id('dbo.vw_batchcapture_collection', 'V') IS NOT NULL 
+  drop view dbo.vw_batchcapture_collection; 
+go 
+
+create view vw_batchcapture_collection as 
+select 
+	bc.objid, bc.state, bc.txndate, bc.defaultreceiptdate, bc.txnmode, bc.stub, bc.formno, bc.formtype, 
+	bc.controlid, bc.serieslength, bc.prefix, bc.suffix, bc.totalamount, bc.totalcash, bc.totalnoncash, 
+	bc.collectiontype_objid, bc.collectiontype_name, bc.collector_objid, bc.collector_name, bc.collector_title, 
+	bc.capturedby_objid, bc.capturedby_name, bc.capturedby_title, bc.org_objid, bc.org_name, 
+	bc.postedby_objid, bc.postedby_name, bc.postedby_date, bc.endseries, 
+	min(bce.series) as startseries, min(bce.series)+1 as currentseries 
+from batchcapture_collection bc 
+	inner join batchcapture_collection_entry bce on bce.parentid = bc.objid 
+group by  
+	bc.objid, bc.state, bc.txndate, bc.defaultreceiptdate, bc.txnmode, bc.stub, bc.formno, bc.formtype, 
+	bc.controlid, bc.serieslength, bc.prefix, bc.suffix, bc.totalamount, bc.totalcash, bc.totalnoncash, 
+	bc.collectiontype_objid, bc.collectiontype_name, bc.collector_objid, bc.collector_name, bc.collector_title, 
+	bc.capturedby_objid, bc.capturedby_name, bc.capturedby_title, bc.org_objid, bc.org_name, 
+	bc.postedby_objid, bc.postedby_name, bc.postedby_date, bc.endseries 
+go 
+
+--> 
+<schema>
+	<element tablename="vw_batchcapture_collection">
+		<field name="objid" primary="true"/> 
+		<field name="state" caption="Status" /> 
+		<field name="txndate" caption="TxnDate" /> 
+		<field name="defaultreceiptdate" caption="DefaultReceiptDate" indexed="true"/> 
+		<field name="txnmode" caption="TxnMode" /> 
+		<field name="stub" caption="StubNo" /> 
+		<field name="formno" caption="FormNo" indexed="true"/> 
+		<field name="formtype" caption="FormType" /> 
+		<field name="controlid" /> 
+		<field name="serieslength" /> 
+		<field name="prefix" caption="Prefix" /> 
+		<field name="suffix" caption="Suffix" /> 
+		<field name="totalamount" caption="TotalAmount" /> 
+		<field name="totalcash" caption="TotalCash" /> 
+		<field name="totalnoncash" caption="TotalNonCash" /> 
+		<field name="collectiontype_objid" /> 
+		<field name="collectiontype_name" caption="CollectionType" indexed="true"/> 
+		<field name="collector_objid" /> 
+		<field name="collector_name" caption="Collector" indexed="true" searchable="true"/> 
+		<field name="collector_title" /> 
+		<field name="capturedby_objid" /> 
+		<field name="capturedby_name" caption="CapturedBy" indexed="true" searchable="true"/> 
+		<field name="capturedby_title"/> 
+		<field name="org_objid" /> 
+		<field name="org_name" caption="Org" indexed="true"/> 
+		<field name="postedby_objid" /> 
+		<field name="postedby_name" caption="PostedBy" indexed="true"/> 
+		<field name="postedby_date" /> 
+		<field name="endseries" caption="EndSeries" indexed="true"/> 
+		<field name="startseries" caption="StartSeries" indexed="true"/> 
+		<field name="currentseries" caption="CurrentSeries" indexed="true"/> 
+	</element>
+</schema>

@@ -1,0 +1,40 @@
+import com.rameses.annotations.*;
+
+class OnlinePaymentOrderInterceptor {
+
+	@Service( dynamic=true )
+	def dynaSvc;
+
+	// @After( pattern="PaymentOrderService.initData", index=-1 )
+	// public void afterInitData( evt ) { 
+	// 	def res = evt.result; 
+	// 	def potype = res.type;
+
+	// 	def svc = dynaSvc.lookup('PersistenceService', 'treasury'); 
+	// 	def param = [ _schemaname: 'collectiontype' ]; 
+	// 	param.objid = potype?.collectiontype?.objid.toString(); 
+	// 	param.select = "objid,name,handler,connection,servicename";
+		
+	// 	def ct = svc.read( param ); 
+	// 	if ( !ct ) throw new Exception("'"+ param.objid +"' record not exist in collectiontype"); 
+
+	// 	potype.collectiontype.putAll( ct ); 
+
+	// 	if ( res.params ) { 
+	// 		if (ct.connection && ct.servicename) {
+	// 			def billSvc = dynaSvc.lookup( ct.servicename, ct.connection ); 
+	// 			def billparam = [:];
+	// 			billparam.putAll( res.params ); 
+	// 			billparam.refno = res.refno;
+	// 			billparam.billdate = new java.sql.Date( res.txndate.time ); 
+	// 			billparam.showdetails = true;
+				
+	// 			def billres = billSvc.getBilling( billparam ); 
+	// 			res.items = billres?.items; 
+
+	// 			if ( !res.items ) 
+	// 				throw new Exception("No items property found in "+ ct.servicename +".getBilling");
+	// 		}
+	// 	}
+	// } 
+}

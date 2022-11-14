@@ -1,0 +1,98 @@
+import com.rameses.annotations.*;
+import java.rmi.server.*;
+import com.rameses.rules.common.*;
+import com.rameses.util.*;
+import com.rameses.services.extended.*;
+
+
+public class RPTRequirementRuleService
+{
+	@Service('QueryService')
+	def querySvc 
+
+	@ActiveDB("rule")
+	def ruleDB;
+
+	@Service('RPTUtil')
+	def util
+
+
+	@Resource("RuleService")
+	def ruleSvc;
+
+	def RULESET 		= 'rptrequirement'
+	def FACT_PACKAGE 	= 'rptrequirement.'
+
+	
+	@ProxyMethod
+	public def getFaasTxnAttributeTypes( params ) {
+		if (!params.searchtext) params.searchtext = ''
+		params.searchtext += '%'
+		return querySvc.getList([_schemaname:'faastxntypeattribute', where:['1=1']])
+	}
+
+
+	@ProxyMethod
+	public def getRequirements( txninfo ) {
+		def requirements = []
+		def facts 		 = createFacts(txninfo) 
+		def actions 	 = buildActions(requirements)
+		def grps  		 = ruleDB.getRulegroups( [ruleset: RULESET] );
+
+		grps.each{g ->
+			ruleSvc.execute( RULESET, facts, actions, g.name);
+		}
+    	return requirements
+	}
+
+	def buildActions(requirements){
+		def actions = new RuleAction();
+		actions.addCommand('add-requirement', new AddRequirement(querySvc:querySvc, requirements:requirements))
+		return actions 
+	}
+
+	def createFacts(txninfo){
+		def facts 			= []
+		def fact 			= ruleSvc.createFact(RULESET, FACT_PACKAGE + 'RPTTxnInfoFact')
+		fact.txntype 		= txninfo.txntype.objid
+		fact.txntypemode 	= txninfo.txntypemode
+		fact.planRequired 	= (txninfo.planrequired == null ? false : txninfo.planrequired)
+		fact.rputype		= txninfo.rputype
+		fact.classificationid = txninfo.classificationid 
+		facts << fact
+		facts << createRpu(txninfo)
+		if (txninfo.attributes == null) txninfo.attributes = []
+		def titled = txninfo.attributes.find{it.attribute == 'TITLED'}
+		if (!titled) {
+			txninfo.attributes << [attribute: 'UNTITLED']
+		}
+		txninfo.attributes.each{ 
+			fact = ruleSvc.createFact(RULESET, FACT_PACKAGE + 'TxnAttributeFact')
+			fact.txntype = txninfo.txntype.objid 
+			fact.attribute = it.attribute 
+			facts << fact 
+		}
+
+		return facts;
+	}
+
+	def createRpu(txninfo) {
+		def rpufact = new rptis.facts.RPU()
+		rpufact.rputype = txninfo.rputype 
+		return rpufact 
+	}
+	
+}
+
+
+public class AddRequirement implements RuleActionHandler {
+	def querySvc
+	def requirements
+	public void execute(def params, def drools) {
+		def q = [_schemaname:'rpt_requirement_type', findBy:[objid:params.requirementtype.key]]
+		def requirement = querySvc.findFirst(q)
+		if (requirement){
+			requirements << requirement 
+		}
+	}
+}

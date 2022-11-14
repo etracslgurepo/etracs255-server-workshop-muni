@@ -1,0 +1,4 @@
+provider=email
+mail.from=bpls-mailer@gmail.com
+mail.smtp.host=${mail_server_ip}
+mail.smtp.port=2527

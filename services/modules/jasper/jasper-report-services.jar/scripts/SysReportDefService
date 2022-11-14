@@ -1,0 +1,149 @@
+import com.rameses.annotations.*;
+import groovy.text.*;
+import java.util.regex.*;
+import com.rameses.osiris2.reports.*;
+import com.rameses.osiris3.sql.*;
+
+class SysReportDefService {
+	
+	@PersistenceContext("main")
+	def em;
+
+	@DataContext("sys_report_def")
+	def reportDefEm;
+	
+	@Service("UserRoleService")
+	def userRole;
+
+	@Env 
+	def env;
+
+	private void setParams( def qry, def params ) {
+		if(!params) return;
+		if( params instanceof List) {
+			for(int i=0;i<params.size();i++) {
+				qry.setParameter(i+1, params[i] );
+			}
+		}
+		else if( params instanceof Map ) {
+			qry.setParameters(params);
+		}
+	}
+	
+	private Map getResultSet(String statement, def params) {
+		Map m = [:];
+		try {
+			def qry = em.sqlContext.createQuery(statement);
+			setParams( qry, params );
+			m.results = qry.resultList;
+			setParams( qry, params );
+			m.metaData = qry.metaData;
+			return m;
+		}
+		catch(e) {
+			print e.message + ":" + statement;
+		}
+	}
+
+	@ProxyMethod
+	public def testStatement(def o) {
+		def qry = em.sqlContext.createQuery("SELECT 1");
+		def dialect =  qry.dialect;
+
+		def sql = "SELECT * FROM ( " + o.statement + ") z";
+		sql = dialect.getPagingStatement(sql, 0, 1, null );
+
+		qry = em.sqlContext.createQuery(sql);
+
+		def result = qry.resultList;
+		return [state:"OK", result: result];
+	}
+
+	@ProxyMethod
+	public def fetchFields(def o) {
+		def qry = em.sqlContext.createQuery("SELECT 1");
+		def dialect =  qry.dialect.name;
+		def sql = "SELECT * FROM ( " + o.statement + ") z";
+		qry = em.sqlContext.createQuery(sql);
+		def cols =	qry.metaData;
+
+		def list = [];
+		cols.each {
+			def dtype = "text";
+			if( it.columnClassName.matches(".*.BigDecimal") ) {
+				dtype = "decimal";
+			}
+			else if( it.columnClassName.matches(".*Integer") ) {
+				dtype = "integer";
+			}
+			else if( it.columnClassName.matches(".*(Date|Timestamp)")  ) {
+				dtype = "date";
+			}
+			list << [name: it.columnLabel, type: dtype ];
+		}
+		return list;
+	}
+
+	@ProxyMethod
+	public def testQuery( def o ) {
+		
+		def qry = em.sqlContext.createQuery("SELECT 1");
+		def dialect =  qry.dialect;
+
+		def sql = "SELECT * FROM ( " + o.statement + ") z";
+		sql = dialect.getPagingStatement(sql, 0, 1, null );
+
+		SqlUnit squ = new SqlUnit(sql);
+		if(squ.paramNames && !o.parameters) {
+			def params = [];
+			squ.paramNames.each {
+				params << [name: it, caption: it];
+			}
+			return [parameters: params];
+		}
+		qry = em.sqlContext.createQuery(sql);
+		def res = [:];
+		setParams( qry, o.parameters );
+		res.result = qry.resultList;
+		setParams( qry, o.parameters );
+		res.metaData = qry.metaData;
+
+		return res;
+	}
+
+	@ProxyMethod
+	public def deploy(def o) {
+		return reportDefEm.find( [name: o.name] ).update([state:'DEPLOYED']);
+	}
+
+	@ProxyMethod
+	public def undeploy(def o) {
+		return reportDefEm.find( [name: o.name] ).update([state:'DRAFT']);
+	}
+
+	@ProxyMethod
+	public def getBuiltinParameters( def o ) {
+		def rpt = reportDefEm.find( [name: o.reportid ] ).first();
+		if( rpt.querytype == "SQL" ) {
+			def xsql = "SELECT q.* FROM (" + rpt.statement + ") q ";
+			def qry = em.sqlContext.createQuery(xsql);
+			def list = [];
+			qry.parameterNames.each {
+				list << [name: it];
+			}
+			return list;
+		}
+	}
+
+	@ProxyMethod
+	public def getCustomParameters( def o ) {
+		def rpt = reportDefEm.find( [name: o.reportid ] ).first();
+		if( rpt.querytype == "SQL" ) {
+			def xsql = "SELECT q.* FROM (" + rpt.statement + ") q ";
+			return fetchFields( [statement: xsql] );
+		}		
+	}
+
+
+}
+

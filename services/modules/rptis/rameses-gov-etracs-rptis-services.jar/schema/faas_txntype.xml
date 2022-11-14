@@ -1,0 +1,18 @@
+<schema>
+	<element tablename="faas_txntype">
+		<field name="objid" primary="true"/>
+		<field name="name" />
+		<field name="newledger" type="boolean" />
+		<field name="newrpu" type="boolean" />
+		<field name="newrealproperty" type="boolean" />
+		<field name="displaycode" />
+		<field name="allowEditOwner" type="boolean" />
+		<field name="checkbalance" type="boolean" />
+		<field name="allowEditPin" type="boolean" />
+		<field name="allowEditPinInfo" type="boolean" />
+		<field name="allowEditAppraisal" type="boolean" />
+		<field name="opener" />
+		<field name="reconcileledger" type="boolean" />
+		<field name="allowannotated" type="boolean" />
+	</element>
+</schema>

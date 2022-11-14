@@ -1,0 +1,27 @@
+<schema adapter="main">
+	
+	<element  tablename="entityindividual" extends="entity">
+		<field name="objid" required="true" primary="true" prefix="IND"/>
+		<field name="lastname" caption="Last Name" required="true" indexed="true"/>
+		<field name="firstname" caption="First Name" required="true" indexed="true"/>
+		<field name="middlename" caption="Middle Name"/>
+		<field name="birthdate" caption="Birthdate" datatype="date" outputFormat="yyyy-MM-dd"/>
+		<field name="birthplace" />
+		<field name="citizenship" />
+		<field name="gender" caption="Gender"/>
+		<field name="civilstatus" />
+		<field name="religion" />		
+		<field name="profession" />
+		<field name="photo" />
+		<field name="thumbnail" />
+		<field name="tin" />
+		<field name="sss" />
+		<field name="age" expr="GET_AGE( birthdate )" />
+
+		<complex name="profile" ref="entityprofile" jointype="many-to-one" required="false" includefields="idno">
+			<key field="profileid" target="objid"/>
+		</complex>	
+	</element>	
+	
+
+</schema>

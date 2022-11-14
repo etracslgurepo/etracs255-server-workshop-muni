@@ -1,0 +1,11 @@
+<schema>
+
+	<element name="creditmemotype_account" tablename="creditmemotype_account">
+		<field name="typeid"  primary="true"/>
+		<field name="account_objid"  primary="true"/>
+		<field name="account_title"  />
+		<field name="tag"  />
+		<field name="sortorder" required="true" />
+	</element>
+
+</schema>

@@ -1,0 +1,45 @@
+import com.rameses.annotations.*;
+
+import java.rmi.server.UID;
+import com.rameses.util.*;
+import vehicle.facts.*;
+import treasury.utils.*;
+import treasury.facts.*;
+
+class BasicBillingHandler {
+	
+	@ProxyMethod 
+	public def getHeaderInfo( params ) {
+		return [:]; 
+	}
+
+	@ProxyMethod 
+	public def getBillItems( params, bill ) {
+		return []; 
+	}
+
+	@ProxyMethod 
+	public def getCreditItems( params, bill ) {
+		return []; 
+	}
+
+	@ProxyMethod 
+	public def formatReceiptInfo( params, bill ) {
+		return [:]; 
+	}
+
+	@ProxyMethod 
+	public def getPostPaymentInfo( params, bill ) {
+		return [:]; 
+	}
+
+	@ProxyMethod 
+	public def getPaymentWorkflow( params ) {
+		return [:]; 
+	}
+
+	@ProxyMethod 
+	public def getVoidInfo( rct ) {
+		return [:]; 
+	}
+}

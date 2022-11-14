@@ -1,0 +1,19 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import java.rmi.server.UID;
+import com.rameses.util.*;
+import com.rameses.io.*;
+
+class EntityAddressPersistenceInterceptor  {
+
+	@DataContext("entity")
+	def entityEm;
+
+	@After(pattern="PersistenceService.update", eval="#{args[0]._schemaname == 'entity_address'}", index=100)
+	public void afterUpdateAddress(def evt ) {
+		def o = evt.args[0];
+		entityEm.where("address.objid=:id", [id:o.objid] ).update( ['address_text' : o.text ] );
+	}
+
+
+}

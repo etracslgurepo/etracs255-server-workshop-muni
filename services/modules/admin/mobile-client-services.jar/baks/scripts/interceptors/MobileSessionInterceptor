@@ -1,0 +1,19 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+
+class MobileSessionInterceptor
+{
+	@Service('DefaultMobileSessionService')
+	def svc;
+
+	@After(pattern="SessionService.createSession", eval="env.CLIENTTYPE=='mobile'") 
+	public void createSession( evt ) {
+		def userInfo = evt.args[0];
+		def USERID 	 = userInfo.env.USERID;
+		def USERNAME = userInfo.env.USER;
+		def sessInfo = svc.createSession(USERID, USERNAME, 'mobile'); 
+		userInfo.env.SESSIONID = sessInfo.sessionid; 
+	}
+	
+}    	
+

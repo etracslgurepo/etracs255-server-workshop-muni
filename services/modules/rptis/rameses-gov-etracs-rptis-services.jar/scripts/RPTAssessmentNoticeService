@@ -1,0 +1,301 @@
+import com.rameses.common.*
+import com.rameses.annotations.*
+import com.rameses.util.*
+import com.rameses.services.extended.*
+
+class RPTAssessmentNoticeService 
+{
+	@Env 
+	def env 
+
+	@Service('DateService')
+	def dtSvc 
+
+	@Service('FAASService')
+	def faasSvc 
+
+	@Service('ReportParameterService')
+	def reportSvc	
+
+	@Service('SequenceService')
+	def seqSvc
+
+	@Service('SignatureService')
+	def sigSvc
+
+	@Service('RPTBillingService')
+	def billingSvc
+
+
+	@Service('RPTUtil')
+	def util
+
+	@DataContext('assessmentnotice')
+	def em
+
+	@DataContext('assessmentnotice_item')
+	def em_item
+
+	@DataContext('faas')
+	def em_faas
+
+	@DataContext('sys_org')
+	def em_org
+
+	def STATE_OPEN = 'OPEN'
+	def STATE_DELIVERED = 'DELIVERED'
+
+
+
+	@ProxyMethod
+	public def getStates() {
+		return [
+			STATE_OPEN,
+			STATE_DELIVERED
+		]
+	}
+
+	@ProxyMethod
+	public def getDeliveryTypes() {
+	    return  [
+	        [objid: 'personal', caption: 'Personnally to declarant/representative'],
+	        [objid: 'occupant', caption: 'Actual Occupant'],
+	        [objid: 'mailed', caption: 'Mailed to last known address'],
+	        [objid: 'brgy', caption: 'Barangay assistance'],
+	    ]
+	}
+
+
+	@ProxyMethod
+	public def create(notice) {
+		if (!notice.items){
+			throw new Exception('At least one property must be included.');
+		}
+
+		notice.state  = STATE_OPEN
+		notice.txnno  = getNextSeries(notice)
+		notice.txndate  = dtSvc.serverDate
+		notice.taxpayerid = notice.taxpayer.objid
+		notice.taxpayername = notice.taxpayer.name
+		notice.taxpayeraddress = (notice.taxpayer.address instanceof String ? notice.taxpayer.address : notice.taxpayer.address.text)
+		updateNoticeInfo(notice)
+		notice.assessmentyear = notice.items[0].effectivityyear
+		
+		notice.createdbyid =  (env.USERID ? env.USERID : 'SYSTEM')
+		notice.createdbyname =  (env.FULLNAME ? env.FULLNAME : 'SYSTEM')
+		notice.createdbytitle =  (env.JOBTITLE ? env.JOBTITLE : 'SYSTEM')
+		notice.approvedbyname = reportSvc.standardParameter.ASSESSORNAME
+		notice.approvedbytitle = reportSvc.standardParameter.ASSESSORTITLE
+		if (!notice.approvedbyname) notice.approvedbyname = 'SYSTEM'
+		if (!notice.approvedbytitle) notice.approvedbytitle = 'SYSTEM'
+		if (!notice.info) notice.info = [:]
+		notice.info.treasurer = [
+			name: reportSvc.getStandardParameter().TREASURERNAME,
+			title: reportSvc.getStandardParameter().TREASURERTITLE,
+		]
+		em.create(notice) 
+
+		notice.items.each{
+			it.objid = util.generateId('ANI')
+			it.assessmentnoticeid = notice.objid 
+			em_item.create(it)
+		}
+		return open(notice)
+	}
+
+	@ProxyMethod
+	public def getReportData(param) {
+		def entity = em.read(param)
+		if (!entity) throw new Exception('Assessment does not exist or has been deleted.')
+		
+		entity = open(entity)
+		if ('STANDARD'.equalsIgnoreCase(param.reporttype)) {
+			return entity
+		}
+		return generateAndUpdateNatbInfo(entity);
+	}
+
+
+	@ProxyMethod
+	public def open(entity) {
+		entity.items = getItems(entity)
+		updateNoticeInfo(entity)
+		entity.info = entity.info ? em.serializer.read(entity.info) : [:]
+		return entity 
+	}
+
+	@ProxyMethod 
+	public def loadNotice(notice, faas){
+		def noticeitem = findNoticeItem(faas)
+		if (!noticeitem) {
+			faas = em_faas.select('objid,taxpayer.objid, taxpayer.name,taxpayer.address.text,effectivityyear')
+								.find([objid: faas.objid]).first()
+			notice.items = []
+			notice.items << [
+				assessmentnoticeid: notice.objid, 
+				faasid: faas.objid,
+				effectivityyear: faas.effectivityyear,
+			]
+			notice.taxpayer = faas.taxpayer 
+			notice = create(notice)
+		} else {
+			notice.objid = noticeitem.assessmentnoticeid
+			notice = open(em.read(notice))
+		}
+		return notice
+	}	
+
+	@ProxyMethod
+	public def receive(notice) {
+		def old = em.read(notice)
+		if (old.state == STATE_DELIVERED){
+			throw new Exception('Notice has already been delivered.')
+		}
+
+		util.required('Date Delivered', notice.dtdelivered)
+
+		notice.dtdelivered = dtSvc.parse('yyyy-MM-dd', notice.dtdelivered)
+		if (dtSvc.add(notice.dtdelivered, '1d') < notice.txndate){
+			throw new Exception('Date Delivered must be greater than or equal to ' + dtSvc.format('yyyy-MM-dd', notice.txndate) + '.')
+		}
+
+		notice.state = STATE_DELIVERED
+		em.update(notice)
+		return notice
+	}	
+
+	@ProxyMethod
+	public def getApprovedFaasList(taxpayerid){
+		return  em.getApprovedFaasList([taxpayerid:taxpayerid])
+	}	
+
+	@ProxyMethod
+	public def getNoticesByRef(ref) {
+		return em.getNoticesByRef(ref)
+	}
+
+	@ProxyMethod
+	public def getFaasesForNoaByRef(ref) {
+		return em.getFaasesForNoaByRef(ref)
+	}
+
+	def getOrgId() {
+		def orgid = env.ORGID
+		if (!orgid) {
+			def org = em_org.find([root: 1]).first()
+			orgid = org.objid
+		}
+		return orgid
+	}
+
+	def getNextSeries(notice){
+		def cy = dtSvc.serverYear 
+		return getOrgId().replaceAll('-', '') + '-' + cy +  seqSvc.getNextFormattedSeries('ASSESSMENT_NOTICE-' + cy)
+	}	
+
+
+	def getItems(entity){
+		def items = em.getItems(entity)
+		items.each{faas ->
+			if (faas.info) faas.info = em_item.serializer.read(faas.info)
+			buildFaasAdditionalInfo(faas)
+		}
+		return items
+	}
+
+	void updateNoticeInfo(entity){
+		if (entity.items.size() == 1){
+			entity.administrator = entity.items[0].administrator
+		}
+
+		entity.dtassessed = dtSvc.getServerYear()+""
+		if( entity.items && entity.items[0].dtsigned ){
+			entity.dtassessed = dtSvc.format('yyyy', entity.items[0].dtsigned)
+		}
+
+		entity.deliverytype = getDeliveryTypes().find{it.objid == entity.deliverytype?.objid}
+		buildSignatories(entity)
+	}
+
+	void buildFaasAdditionalInfo(faas){
+		faas.street = (faas.street ? faas.street : faas.barangay)
+		faas.description = faas.cadastrallotno
+		if (faas.rputype == 'bldg')
+			faas.description = em.getBldgTypes(faas).bldgkind.join('/')
+	}	
+
+	void buildSignatories(entity){
+		if (!entity.items) return
+
+		def td = [objid:entity.items[0].faasid ]
+		faasSvc.loadSignatories(td)
+
+		if (isRecommenderAuthorized(td)){
+			td.authorized = true
+		}		
+
+		td.signatories = [:]
+		def retval = sigSvc.decodeSignatories(em.getSignatories(td))
+		td.signatories = retval.signatories 
+		td.signaturetampered = retval.tampered
+		td.tamperedsigmsg = retval.tamperedsigmsg
+
+		entity.esigned = false
+		td.signatories.each{k,v->
+			if (v.state == 'approver' && v.signature?.image){
+				entity.esigned = true 
+			}
+		}
+		def objid = entity.objid 
+		entity.putAll(td)
+		entity.objid = objid 
+	}	
+
+	def isRecommenderAuthorized(td){
+		if (td.recommender && td.recommender.name && 
+			   td.recommender.name.equalsIgnoreCase(td.approver?.name)){
+			td.recommender = [name:null, dtsigned:null]
+			return true 
+		}
+		return false 
+	}
+
+    def findNoticeItem(faas) {
+        def item = em_item.find([faasid:faas.objid]).first()
+        if (!item) return null 
+
+        def notice = em.find([objid: item.assessmentnoticeid]).first()
+        if ('OPEN' != notice.state) return null
+
+        def items = getItems(notice)
+        if (items.size() > 1) return null
+
+        return item
+    }
+
+
+		def generateAndUpdateNatbInfo(entity) {
+			entity.items.each {
+				if (!it.info) {
+					try {
+						def bill = billingSvc.generateBillByTdNo([
+							tdno: it.tdno, 
+							billtoyear: entity.assessmentyear,
+							billtoqtr: 4
+						])
+
+						def ledger = bill.ledgers[0]
+						def items = ledger.items.findAll{ it.year == entity.assessmentyear}
+						if (!it.info) it.info = [:]
+						it.info.basictax = items.basic.sum();
+						it.info.seftax = items.sef.sum();
+						em_item.find([objid: it.objid]).update([info: it.info]);
+					} catch(ignore) {
+						//fullpayment
+					}
+				} 
+			}
+			return entity;
+		}
+
+}

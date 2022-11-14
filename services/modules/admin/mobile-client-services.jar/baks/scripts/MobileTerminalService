@@ -1,0 +1,53 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+
+class MobileTerminalService 
+{
+	@ActiveDB(value='mobile_terminal', em='system')
+    def em; 		
+
+    @Service('DateService')
+    def dateSvc; 
+
+	@ProxyMethod 
+	public Map findTerminal( params ) { 
+		return em.findTerminal(params); 
+	} 
+
+	@ProxyMethod 
+	public Map findMacAddress( params ) { 
+		return em.findMacAddress(params); 
+	} 	
+
+    @ProxyMethod	
+	public Map register( params ) {
+		if (!params.terminalid) throw new Exception('Please specify terminalid');
+		if (!params.macaddress) throw new Exception('Please specify macaddress');
+		if (!params.registeredby) throw new Exception('Please specify registeredby');
+
+		def entity = findTerminal([terminalid: params.terminalid]); 
+		if (!entity) throw new Exception("Terminal ID does not exist.");
+		if (entity && entity.macaddress) throw new Exception("Terminal ID is already assigned");
+		
+		entity = findMacAddress([macaddress: params.macaddress]);
+		if (entity) throw new Exception("Terminal ID already exist. Please choose the recover option instead.");
+		
+		entity = [
+			dtregistered: dateSvc.serverDate, 
+			terminalid 	: params.terminalid,  
+			macaddress 	: params.macaddress, 
+			registeredby: params.registeredby 
+		]; 
+		return em.update(entity); 
+	} 
+
+    @ProxyMethod	
+	public Map recover( params ) {
+		if (!params.macaddress) throw new Exception('Please specify macaddress'); 
+
+		def entity = findMacAddress([macaddress: params.macaddress]);
+		if (!entity) throw new Exception('Terminal is not registered');
+
+		return entity; 
+	}	
+}

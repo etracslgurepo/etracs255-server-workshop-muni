@@ -1,0 +1,14 @@
+import com.rameses.annotations.*; 
+
+class QueueAnnouncementPersistenceInterceptor {
+	
+	@Service('DateService') 
+	def dateSvc; 
+
+	@Before( pattern="PersistenceService.create", eval="#{args[0]._schemaname=='queue_announcement'}" )
+	public void beforeCreate( evt ) {
+		def params = evt.args[0]; 
+		params.dtfiled = dateSvc.getServerDate(); 
+		if ( !params.state ) params.state = 'APPROVED'; 
+	} 
+}

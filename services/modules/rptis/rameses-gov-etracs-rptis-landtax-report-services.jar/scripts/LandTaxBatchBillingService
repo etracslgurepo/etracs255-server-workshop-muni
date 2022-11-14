@@ -1,0 +1,26 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class LandTaxBatchBillingService
+{
+    @ActiveDB('landtaxreport_batchbilling')
+    def em 
+
+    @Service('DateService')
+    def dtSvc
+
+
+    @ProxyMethod
+    public def getLedgerIds( params ) {
+        if (!params.barangay) throw new Exception('Barangay is required.')
+        params.barangayid = params.barangay.objid 
+        params.billtoyear = dtSvc.serverYear
+        params.billtoqtr = 4 
+        if(params.section){
+            return em.getLedgerIdsBySection(params)
+        }
+        return em.getLedgerIdsByBrgy(params)
+    }
+
+}

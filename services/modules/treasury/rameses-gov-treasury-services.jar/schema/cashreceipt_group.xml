@@ -1,0 +1,11 @@
+<schema>
+	<element tablename="cashreceipt_group" >
+		<field name="objid" primary="true" prefix="RCTGRP"/>
+		<field name="txndate" required="true"  type="timestamp"/>
+		<field name="controlid" required="true" />
+		<field name="amount" required="true" type="decimal" caption="Amount"/>
+		<field name="totalcash" required="true" type="decimal" caption="Total Cash"/>
+		<field name="totalnoncash" required="true" type="decimal" caption="Total Noncash"/>
+		<field name="cashchange" required="true" />
+	</element>	
+</schema>

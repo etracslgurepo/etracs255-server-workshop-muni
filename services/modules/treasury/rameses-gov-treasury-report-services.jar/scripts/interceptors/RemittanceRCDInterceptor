@@ -1,0 +1,303 @@
+import com.rameses.annotations.*;
+
+class RemittanceRCDInterceptor {
+
+	@Service("NumberService")
+	def numSvc;
+
+	@Service('RemittanceRCDReportService') 
+	def reportSvc; 
+
+	@Service( dynamic=true )
+	def dynaSvc; 
+
+	@After(pattern="RemittanceService.getReportData")
+	void getReportData( evt ) { 
+		def result = evt.result; 
+		def data = reportSvc.getReport( result ); 
+		if ( data ) {
+			result.putAll( data ); 
+	        result.totalnoncash = result.totalcheck + result.totalcr;
+	        result.remittancedate = result.controldate;
+	        result.txnno = result.controlno; 
+			if( result.amount < 1 ) { 
+				def amount = Long.parseLong( result.amount.toString().split("\\.")[1] )
+				result.amountinwords = numSvc.doubleToWords( amount ).toUpperCase() + " CENTAVOS";
+			} 
+			else {
+				result.amountinwords = numSvc.doubleToWords( result.amount ).toUpperCase() + " PESOS ONLY";
+			}
+		}
+
+		def arg0 = evt.args[0];
+		boolean compressAFSerial = arg0?.options?.compressAFSerial.toString().matches('true|1');
+		boolean compressAFNonSerial = arg0?.options?.compressAFNonSerial.toString().matches('true|1');
+		if ( compressAFSerial || compressAFNonSerial ) {
+			def list = arg0.collectiontype; 
+			def serials = compress_serial_for_A( list, compressAFSerial ); 
+			def nonserials = compress_nonserial_for_A( list, compressAFNonSerial );
+
+			list.clear(); 
+			list.addAll( serials );
+			list.addAll( nonserials ); 
+			arg0.collectiontype = list;  
+
+
+			list = arg0.remittedforms;
+			arg0.remittedforms = compress_serial_for_C( list, compressAFSerial ); 
+			
+			list = arg0.nonserialremittances; 
+			arg0.nonserialremittances = compress_nonserial_for_C( list, compressAFNonSerial ); 
+		}
+	} 
+
+
+	def compress_serial_for_A( list, compressed ) {
+		def serials = list.findAll{( it.formtype == 'serial' )} 
+		if ( !compressed ) return serials; 
+
+		serials.each{  
+			def afc = findStub( it.controlid ); 
+			if ( afc ) {
+				it.afcontrol = afc;
+				it.prefix = afc.prefix;
+				it.suffix = afc.suffix; 
+			} 
+		}
+
+		serials.each{
+			it.nextseries = it.maxseries + 1; 
+			it.sortseries = ( it.afcontrol?.startseries ? it.afcontrol.startseries : it.minseries );
+		}
+
+		def groupindex = 1000; 
+		serials.groupBy{[ formno: it.formno, prefix: it.prefix, suffix: it.suffix ]}.each{ k,v-> 
+			v.sort{ it.sortseries } 
+
+			def nextseries = 0; 
+			v.each{ vo-> 
+				if ( vo.minseries == nextseries ) {
+					vo.groupindex = groupindex;  
+				} else {
+					vo.groupindex = groupindex + 1; 
+				} 
+				groupindex = vo.groupindex; 
+				nextseries = vo.nextseries; 
+			} 
+		} 
+
+		def result_a = [];
+		serials.groupBy{ it.groupindex }.each{ k,v-> 
+			def vo = v.first(); 
+			def mm = [ formno: vo.formno, formtype: vo.formtype ];
+			mm.formtypeindexno = vo.formtypeindexno; 
+			mm.amount = v.sum{( it.amount ? it.amount : 0.0 )} 
+			mm.amount = ( mm.amount ? mm.amount : 0.0 ); 
+			mm.minseries = v.min{ it.minseries }.minseries; 
+			mm.fromseries = v.min{ it.minseries }.fromseries; 
+			mm.maxseries = v.max{ it.maxseries }.maxseries; 
+			mm.toseries = v.max{ it.maxseries }.toseries; 
+			result_a << mm; 
+		} 
+		
+		def result_b = []; 
+		result_a.collect{ it.formno }.sort{ it }.unique().each{ formno-> 
+			result_b.addAll( result_a.findAll{( it.formno == formno )}.sort{ it.minseries } );
+		}
+		serials.clear();
+		result_a.clear();
+		return result_b; 
+	}
+
+	def compress_nonserial_for_A( list, compressed ) {
+		def nonserials = list.findAll{( it.formtype != 'serial' )} 
+		if ( !compressed ) return nonserials; 
+
+		nonserials.each{  
+			def afc = findStub( it.controlid ); 
+			if ( afc ) {
+				it.afcontrol = afc;
+				it.formno = afc.afid;
+			} 
+		}
+
+		def result_a = [];
+		nonserials.groupBy{ it.formno }.each{ k,v-> 
+			def vo = v.first(); 
+			def mm = [ formno: vo.formno, formtype: vo.formtype ];
+			mm.formtypeindexno = vo.formtypeindexno; 
+			mm.amount = v.sum{( it.amount ? it.amount : 0.0 )} 
+			mm.amount = ( mm.amount ? mm.amount : 0.0 ); 
+			result_a << mm; 
+		}
+
+		def result_b = []; 
+		result_a.collect{ it.formno }.sort{ it }.unique().each{ formno-> 
+			result_b.addAll( result_a.findAll{( it.formno == formno )} ); 
+		}
+		nonserials.clear();
+		result_a.clear();
+		return result_b; 
+	} 
+
+	def findStub( controlid ) {
+		if ( !controlid ) return null; 
+
+		def svc = dynaSvc.lookup('PersistenceService'); 
+		def param = [ _schemaname: 'af_control' ]; 
+		param.select = 'objid,afid,stubno,startseries,endseries,prefix,suffix,af.*,afunit.*'; 
+		param.objid = controlid; 
+		return svc.read( param ); 
+	}
+
+	def compress_serial_for_C( list, compressed ) {
+		def serials = list.findAll{( it.formtype == 'serial' )} 
+		if ( !compressed ) return serials; 
+
+		serials.each{
+			it.nextseries = it.endseries + 1; 
+			it.sortseries = it.startseries; 
+		}
+
+		def issuedlist = serials.findAll{( it.qtyissued > 0 )}
+
+		def groupindex = 1000; 
+		issuedlist.groupBy{[ formno: it.formno, prefix: it.prefix, suffix: it.suffix ]}.each{ k,v-> 
+			v.sort{ it.sortseries } 
+
+			def nextseries = 0; def issuednextseries = 0;
+			v.each{ vo-> 
+				if ( vo.startseries == nextseries ) {
+					vo.groupindex = groupindex;
+					if ( vo.issuedstartseries != issuednextseries ) {
+						vo.groupindex += 1; 
+					}  
+				} 
+				else {
+					vo.groupindex = groupindex + 100; 
+				} 
+				groupindex = vo.groupindex; 
+				nextseries = vo.nextseries; 
+				issuednextseries = vo.issuedendseries + 1;
+			} 
+		} 
+
+		def result_a = []; 
+		result_a.addAll( serials.findAll{( it.qtyissued == null || it.qtyissued == 0 )} ); 
+
+		issuedlist.groupBy{ it.groupindex }.each{ k,v-> 
+			v.sort{ it.sortseries }
+
+			def mm = [:];
+			mm.putAll( v.first() ); 
+			mm.startseries = v.min{ it.startseries }.startseries; 
+			mm.endseries = v.max{ it.endseries }.endseries; 
+			mm.beginstartseries = mm.beginendseries = null; mm.qtybegin = 0;
+			mm.receivedstartseries = mm.receivedendseries = null; mm.qtyreceived = 0;
+			mm.endingstartseries = mm.endingendseries = null; mm.qtyending = 0;
+			mm.qtycancelled = 0; 
+
+			def items = v.findAll{( it.qtyissued > 0 )}
+			mm.qtyissued = items.sum{ it.qtyissued }
+			mm.issuedstartseries = items.min{ it.issuedstartseries }.issuedstartseries;
+			mm.issuedendseries = items.max{ it.issuedendseries }.issuedendseries; 
+			mm.issuedstartseriesstr = mm.issuedstartseries.toString().padLeft( mm.serieslength, '0' );
+			mm.issuedendseriesstr = mm.issuedendseries.toString().padLeft( mm.serieslength, '0' );
+
+			items = v.findAll{( it.qtybegin > 0 )}
+			if ( items ) {
+				mm.qtybegin = items.sum{ it.qtybegin }
+				mm.beginstartseries = items.min{ it.beginstartseries }.beginstartseries;
+				mm.beginendseries = items.max{ it.beginendseries }.beginendseries; 
+				mm.beginstartseriesstr = mm.beginstartseries.toString().padLeft( mm.serieslength, '0' );
+				mm.beginendseriesstr = mm.beginendseries.toString().padLeft( mm.serieslength, '0' );
+			}
+
+			items = v.findAll{( it.qtyreceived > 0 )}
+			if ( items ) {
+				mm.qtyreceived = items.sum{ it.qtyreceived }
+				mm.receivedstartseries = items.min{ it.receivedstartseries }.receivedstartseries;
+				mm.receivedendseries = items.max{ it.receivedendseries }.receivedendseries; 
+				mm.receivedstartseriesstr = mm.receivedstartseries.toString().padLeft( mm.serieslength, '0' );
+				mm.receivedendseriesstr = mm.receivedendseries.toString().padLeft( mm.serieslength, '0' );
+			}
+
+			if ( mm.issuedendseries >= mm.endseries ) {
+				mm.endingstartseries = mm.endingendseries = null; 
+				mm.qtyending = 0; 
+			} 
+			else {
+				mm.endingstartseries = mm.issuedendseries+1; 
+				mm.endingendseries = mm.endseries; 
+				mm.qtyending = (mm.endingendseries - mm.endingstartseries) + 1; 
+				mm.endingstartseriesstr = mm.endingstartseries.toString().padLeft( mm.serieslength, '0' );
+				mm.endingendseriesstr = mm.endingendseries.toString().padLeft( mm.serieslength, '0' );
+			}
+
+			if ( mm.qtybegin == 0 ) mm.qtybegin = null; 
+			if ( mm.qtyreceived == 0 ) mm.qtyreceived = null; 
+			if ( mm.qtyissued == 0 ) mm.qtyissued = null; 
+			if ( mm.qtyending == 0 ) mm.qtyending = null; 
+
+			result_a << mm; 
+		}
+
+		def result_b = []; 
+		result_a.collect{ it.formno }.sort{ it }.unique().each{ formno-> 
+			result_b.addAll( result_a.findAll{( it.formno == formno )}.sort{ it.startseries } );
+		}
+		issuedlist.clear();
+		serials.clear();
+		result_a.clear();
+		return result_b; 
+	} 
+
+	def compress_nonserial_for_C( list, compressed ) {
+		if ( !compressed ) return list; 
+
+		def result_a = []; 
+		list.groupBy{ it.formno }.each{ k,v-> 
+			def mm = [:];
+			mm.putAll( v.first() );
+			mm.qtybegin = mm.qtyreceived = mm.qtyissued = mm.qtyending = null; 
+			mm.beginamt = mm.receivedamt = mm.issuedamt = mm.endingamt = null; 
+
+			def items = v.findAll{( it.qtybegin > 0 )} 
+			if ( items ) {
+				mm.qtybegin = items.sum{ it.qtybegin }
+				mm.beginamt = items.sum{ it.beginamt }
+			} 
+
+			items = v.findAll{( it.qtyreceived > 0 )} 
+			if ( items ) {
+				mm.qtyreceived = items.sum{ it.qtyreceived }
+				mm.receivedamt = items.sum{ it.receivedamt }
+			} 
+
+			items = v.findAll{( it.qtyissued > 0 )} 
+			if ( items ) {
+				mm.qtyissued = items.sum{ it.qtyissued }
+				mm.issuedamt = items.sum{ it.issuedamt }
+			} 
+
+			def total_qty = (mm.qtybegin ? mm.qtybegin : 0) + (mm.qtyreceived ? mm.qtyreceived : 0);
+			def total_amt = (mm.beginamt ? mm.beginamt : 0) + (mm.receivedamt ? mm.receivedamt : 0); 
+			
+			total_qty -= (mm.qtyissued ? mm.qtyissued : 0); 
+			total_amt -= (mm.issuedamt ? mm.issuedamt : 0);
+			if ( total_qty > 0 ) {
+				mm.qtyending = total_qty; 
+				mm.endingamt = total_amt; 
+			}
+
+			result_a << mm; 
+		}
+
+		def result_b = []; 
+		result_a.collect{ it.formno }.sort{ it }.unique().each{ formno-> 
+			result_b.addAll( result_a.findAll{( it.formno == formno )} );
+		}
+		result_a.clear();
+		return result_b; 
+	}
+} 

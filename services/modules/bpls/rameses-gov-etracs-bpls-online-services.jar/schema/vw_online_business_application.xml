@@ -1,0 +1,28 @@
+<schema adapter="main">
+	<element tablename="vw_online_business_application">
+		<field name="objid" primary="true"/>
+		<field name="state" />
+		<field name="dtcreated" />
+		<field name="createdby_objid" />
+		<field name="createdby_name" />
+		<field name="controlno" indexed="true" searchable="true"/>
+		<field name="apptype" />
+		<field name="appyear" indexed="true"/>
+		<field name="appdate" indexed="true"/>
+		<field name="prevapplicationid" />
+		<field name="business_objid" />
+		<field name="bin" indexed="true" searchable="true"/>
+		<field name="tradename" indexed="true" searchable="true"/>
+		<field name="businessname" />
+		<field name="address_text" />
+		<field name="address_objid" />
+		<field name="owner_name" indexed="true" searchable="true"/>
+		<field name="owner_address_text" />
+		<field name="owner_address_objid" />
+		<field name="yearstarted" />
+		<field name="orgtype"  indexed="true"/>
+		<field name="permittype" />
+		<field name="officetype" />
+		<field name="step" />
+	</element> 
+</schema> 

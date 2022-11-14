@@ -1,0 +1,49 @@
+<schema>
+	<element tablename="vw_af_control_detail">
+		<field name="objid" primary="true"/> 
+		<field name="state" /> 
+		<field name="controlid" /> 
+		<field name="indexno" type="integer"/> 
+		<field name="aftxnid" /> 
+		<field name="aftxnitemid" /> 
+		<field name="refid" /> 
+		<field name="refno" /> 
+		<field name="reftype" /> 
+		<field name="refdate" type="timestamp"/> 
+		<field name="txndate" type="timestamp"/> 
+		<field name="txntype" /> 
+		<field name="receivedstartseries" type="integer" caption="Received Start"/> 
+		<field name="receivedendseries" type="integer" caption="Received End"/> 
+		<field name="beginstartseries" type="integer" caption="Begin Start"/> 
+		<field name="beginendseries" type="integer" caption="Begin End"/> 
+		<field name="issuedstartseries" type="integer" caption="Issued Start"/> 
+		<field name="issuedendseries" type="integer" caption="Issued End"/> 
+		<field name="endingstartseries" type="integer" caption="Ending Start"/> 
+		<field name="endingendseries" type="integer" caption="Ending End"/> 
+		<field name="qtyreceived" type="integer" caption="Received Qty"/> 
+		<field name="qtybegin" type="integer" caption="Begin Qty"/> 
+		<field name="qtyissued" type="integer" caption="Issued Qty"/> 
+		<field name="qtyending" type="integer" caption="Ending Qty"/> 
+		<field name="qtycancelled" type="integer" caption="Qty Cancelled"/> 
+		<field name="remarks" caption="Remarks"/> 
+		<field name="issuedto_objid" /> 
+		<field name="issuedto_name" caption="Issued To"/> 
+		<field name="afid" /> 
+		<field name="unit" type="integer"/> 
+		<field name="formtype" /> 
+		<field name="denomination" type="decimal"/> 
+		<field name="serieslength" type="integer"/> 
+		<field name="qty" type="integer"/> 
+		<field name="saleprice" type="decimal"/> 
+		<field name="startseries" type="integer"/> 
+		<field name="endseries" type="integer"/> 
+		<field name="currentseries" type="integer"/> 
+		<field name="stubno" type="integer"/> 
+		<field name="prefix" /> 
+		<field name="suffix" /> 
+		<field name="cost" type="decimal"/> 
+		<field name="batchno" /> 
+		<field name="controlstate" /> 
+		<field name="qtybalance" type="integer"/>
+	</element>
+</schema>

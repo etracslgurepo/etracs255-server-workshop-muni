@@ -1,0 +1,198 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.services.extended.*;
+
+class BusinessChangeService  {
+
+	
+	@ActiveDB("business_change_log")
+	def em;
+
+	@Service("DateService")
+	def dateSvc;
+
+	@Service("SequenceService")
+	def seqSvc;
+
+	@Service("BusinessInfoService")
+	def bizInfoSvc;
+
+	@Service("BusinessLobService")
+	def lobSvc;
+
+	@Service("BusinessMasterService")
+	def bizSvc;
+
+	@Service("BusinessAddressService")
+	def bizAddress;
+
+	@Service("BusinessApplicationService")
+	def appSvc;
+
+	@Env
+	def env;
+
+	@ProxyMethod
+	public def getColumns(def m) {
+		return [
+			[name:"changetype", caption:"Change Type", width:150, maxWidth:250],
+			[name:"dtfiled", caption:"Date Filed", width:120, maxWidth:140],
+			[name:"filedby.name", caption:"Filed By", width:120, maxWidth:200],
+			[name:"particulars", caption:"Particulars"],
+			[name:"reason", caption:"Reason"]
+		];
+	}
+
+	@ProxyMethod
+	public def getList(def o) {
+		if(o.businessid) {
+			return em.getListByBusiness(o);
+		}
+		else {
+			return em.getList(o);
+		}
+	}
+
+	private void checkRequired( def o, def list ) {
+		def sb = new StringBuilder();
+		list.split(',').each {
+			if( !o.containsKey(it.trim()) ) sb.append( it + "\n");
+		}
+		if(sb.length()>0) {
+			def s = "The ff. fields are required \n" +sb.toString();
+			throw new Exception(s);
+		}
+	}
+
+	private void checkOne( def o, def list ) {
+		boolean hasOne = false;
+		list.split(',').each {
+			if( o[it] ) hasOne = true;
+		}
+		if(!hasOne) {
+			throw new Exception('Please check at least one of ' + list);
+		}
+	}
+
+	private void log(def o ) {
+		def m = [:];
+		m.objid = "BPLOG"+new UID();
+		m.entryno = "BPLOG-"+seqSvc.getNextFormattedSeries("BP_AMEND_LOG");
+		m.dtfiled = dateSvc.getServerDate();
+		m.filedby = [objid: env.USERID, name: env.FULLNAME];
+		m.changetype = o.changetype;
+		m.particulars = o.particulars;
+		m.reason = o.reason;
+		m.businessid = o.businessid;
+		m.applicationid = o.applicationid;
+		em.create(m);
+	}
+
+	@ProxyMethod
+	public void updateBusinessName(def o ) {
+		o.businessname = o.newvalue;
+		checkRequired( o, "businessid,applicationid,businessname");
+		em.updateBusinessname(o);
+		o.particulars = o.oldvalue + "->"  + o.newvalue;
+		log( o );
+	}
+
+	@ProxyMethod
+	public void updateTradename(def o ) {
+		o.tradename = o.newvalue;
+		checkRequired( o, "businessid,applicationid,tradename" );
+		em.updateApplicationTradename(o);
+		em.updateBusinessTradename(o);
+		em.updateChildApplicationTradename(o);
+		o.particulars = o.oldvalue + "->"  + o.newvalue;
+		log( o );
+	}
+
+	@ProxyMethod
+	public def updateBusinessAddress(def o ) {
+		checkRequired( o, "businessid,applicationid,oldvalue,newvalue" );
+		def b = bizSvc.open([objid:o.businessid]);
+		boolean updated = false;
+		def addr = null;
+		if(b.address?.objid) {
+			try {
+				addr = bizAddress.open( [objid: b.address.objid ] );
+				//we do this so the objid cannot be overridden
+				def objid = addr.objid;
+				addr.putAll( o.address );
+				addr.objid = objid;
+				bizAddress.update( addr );
+				updated = true;
+			}
+			catch(ign) {;}
+		}
+		if( !updated ) {
+			addr = bizAddress.create( o.address );
+		}	
+		def a = [businessid: o.businessid, addressid:addr.objid,  addresstext: addr.text, applicationid: o.applicationid];
+		em.updateBusinessBusinessAddress(a); 
+		em.updateApplicationBusinessAddress(a);
+		em.updateChildApplicationBusinessAddress(a);
+		o.particulars = o.oldvalue + "->"  + o.newvalue;	
+		log( o );
+		return addr;
+	}
+
+	@ProxyMethod
+	public def transferBusinessAddress(def o ) {
+		checkRequired( o, "businessid,applicationid,oldvalue,newvalue" );
+		def b = bizSvc.open([objid:o.businessid]);
+		if(b.address?.objid) {
+			try {
+				def addr = bizAddress.open( [objid: b.address.objid ] );
+				addr.businessid = o.businessid;
+				bizAddress.update( addr );
+			}
+			catch(ign) {;}
+		}
+		def	addr = bizAddress.create( o.address );
+		def a = [businessid: o.businessid, addressid:addr.objid,  addresstext: addr.text, applicationid: o.applicationid];
+		em.updateBusinessBusinessAddress(a); 
+		em.updateApplicationBusinessAddress(a);
+		em.updateChildApplicationBusinessAddress(a);
+		o.particulars = o.oldvalue + "->"  + o.newvalue;	
+		log( o );
+		return addr;	
+	}
+
+	@ProxyMethod
+	public void updateContact(def o ) {
+		checkRequired( o, "businessid" );
+		checkOne( o, 'businessid,mobileno,phoneno,email' );
+		em.updateBusinessContact(o);
+	}
+
+	@ProxyMethod
+	public void changeOwner(def o ) {
+		checkRequired( o, "businessid,applicationid,ownername,ownerid,owneraddress,owneraddressid,orgtype" );
+		em.changeBusinessOwnerName(o);
+		em.changeApplicationOwnerName(o);
+		em.changeChildApplicationOwnerName(o);
+		o.particulars = o.oldvalue + "->"  + o.newvalue;
+		log( o );
+	}
+
+	@ProxyMethod
+	public void updateOwner(def o ) {
+		checkRequired( o, "businessid,applicationid,owneraddress,owneraddressid" );
+		em.updateBusinessOwnerAddress(o);
+		em.updateApplicationOwnerAddress(o);
+		em.updateApplicationOwnerAddress(o);
+		o.particulars = o.oldvalue + "->"  + o.newvalue;
+		log( o );
+	}
+
+	
+	@ProxyMethod
+	public void updateAppInfos( def o) {
+		checkRequired( o, "businessid,applicationid,changetype,reason" );
+		appSvc.updateInfos(o);
+		log(o);
+	}
+}

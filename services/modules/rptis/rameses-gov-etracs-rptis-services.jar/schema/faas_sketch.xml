@@ -1,0 +1,7 @@
+<schema>
+	<element tablename="faas_sketch">
+		<field name="objid" primary="true" />
+		<complex name="drawing" serializer="default"/>
+	</element>
+
+</schema>

@@ -1,0 +1,7 @@
+<schema>
+	
+	<element tablename="business_active_lob_history_forprocess">
+		<field name="businessid" primary="true"/> 
+	</element>
+
+</schema>

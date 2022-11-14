@@ -1,0 +1,124 @@
+import com.rameses.annotations.* 
+import com.rameses.services.extended.*
+
+class OnlineLandTaxBillingService 
+{
+	@Env
+	def env 
+
+	@Service('RPTBillingService')
+    def billSvc
+
+	@Service('RPTReceiptService')
+    def receiptSvc
+
+    @Service('RPTLedgerPostPaymentService')
+    def postPaymentSvc
+
+    @Service('RPTReceiptShareService')
+    def shareSvc;
+
+    def BARCODE_PREFIX = '56001:'
+
+	@ProxyMethod
+	public def verifyPayment( eor ) {
+        def data = eor.info.data
+        def billparam = [:]
+        billparam._txntype = "FILIPIZEN"
+        billparam.refno = data.billno
+        billparam.billdate = eor.tracedate
+        billparam.billtoyear = data.billtoyear
+        billparam.billtoqtr = data.billtoqtr
+        def bill = generateBill(billparam)
+
+        if (eor.amount != bill.rptledger.total) {
+            //apply as partial payment
+            bill.partial = [amount: eor.amount];
+            bill.rptledger = receiptSvc.applyPartialPayment(bill);
+        }
+        
+        return [
+            sharing: true,
+            amount: eor.amount,
+            rptledger: bill.rptledger,
+            items: bill.rptledger.billitems
+        ];
+	}
+
+	@ProxyMethod
+	public void postPayment( eor, bill ) {
+        def receipt = [:]
+        receipt.putAll(eor)
+        receipt.ledgers = bill.ledgers
+        receipt.rptledger = bill.rptledger
+        postPaymentSvc.postPayment(receipt) 
+        println 'Online realty tax payment successfully posted.'
+	}
+    
+    @ProxyMethod
+	public def getEmailAttachments( eor ) {
+        return []
+    }
+
+
+    @ProxyMethod
+    public def generateShares( param ) { 
+        return shareSvc.generateShares( param ); 
+    } 
+
+
+    def generateBill(params){
+        def bill = [:]
+        if (!env.ORGID) env.ORGID = params.orgcode 
+
+        if (params.refno.startsWith(BARCODE_PREFIX)){
+            params.barcodeid = params.refno 
+            bill = billSvc.getBillByBarcode(params)
+            if (params.billdate) bill.billdate = params.billdate
+            if (params.billtoyear) bill.billtoyear = toInt(params.billtoyear)
+            if (params.billtoqtr) bill.billtoqtr = toInt(params.billtoqtr)
+            bill._forpayment = true
+            bill = billSvc.generateBill(bill)
+        }
+        else{
+            params.tdno = params.refno 
+            if (params.billtoyear) params.billtoyear = toInt(params.billtoyear)
+            if (params.billtoqtr) params.billtoqtr = toInt(params.billtoqtr)
+            bill = billSvc.generateBillByTdNo(params)
+        }
+        bill.rptledger = bill.remove('ledgers')[0]
+        return bill 
+    }
+
+
+    def buildPeriod(rptledger){
+        def period = ''
+        if (rptledger.fromyear == rptledger.toyear && rptledger.fromqtr == 1 && rptledger.toqtr == 4){
+            period = '' + rptledger.fromyear 
+        } 
+        else if (rptledger.fromyear == rptledger.toyear && rptledger.fromqtr == rptledger.toqtr){
+            period = rptledger.fromqtr + 'Q, ' + rptledger.fromyear 
+        }
+        else if (rptledger.fromyear == rptledger.toyear){
+            period = rptledger.fromqtr + '' + rptledger.toqtr +  'Q, ' + rptledger.fromyear 
+        }
+        else if (rptledger.fromqtr == 1 && rptledger.toqtr == 4){
+            period = 'FULL ' + rptledger.fromyear + ' - ' + rptledger.toyear
+        }
+        else {
+            period = rptledger.fromqtr + 'Q, ' + rptledger.fromyear + ' - ' + rptledger.toqtr + 'Q, ' + rptledger.toyear
+        }
+
+        return period
+    }
+
+    int toInt(val){
+        if (val instanceof Integer) return val 
+        try{
+            return new BigDecimal(val+'').intValue()
+        }
+        catch(e){
+            return 0 
+        }
+    }
+}

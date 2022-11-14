@@ -1,0 +1,37 @@
+<!--
+DROP VIEW IF EXISTS vw_deposit_fund_transfer;
+CREATE VIEW vw_deposit_fund_transfer AS
+
+SELECT 
+   dft.objid,
+   dft.amount,
+   dft.todepositvoucherfundid,
+   tof.objid AS todepositvoucherfund_fund_objid,
+   tof.code AS todepositvoucherfund_fund_code,
+   tof.title AS todepositvoucherfund_fund_title,
+   dft.fromdepositvoucherfundid,
+   fromf.objid AS fromdepositvoucherfund_fund_objid,
+   fromf.code AS fromdepositvoucherfund_fund_code,
+   fromf.title AS fromdepositvoucherfund_fund_title
+FROM deposit_fund_transfer dft
+INNER JOIN depositvoucher_fund todv ON dft.todepositvoucherfundid = todv.objid
+INNER JOIN fund tof ON todv.fundid = tof.objid
+INNER JOIN depositvoucher_fund fromdv ON dft.fromdepositvoucherfundid = fromdv.objid
+INNER JOIN fund fromf ON fromdv.fundid = fromf.objid
+
+-->	
+<schema>
+	<element tablename="vw_deposit_fund_transfer">
+		<field name="objid" primary="true"/> 
+		<field name="amount" type="decimal"/>
+		<field name="todepositvoucherfundid" />
+		<field name="todepositvoucherfund_fund_objid" />
+		<field name="todepositvoucherfund_fund_code" />
+		<field name="todepositvoucherfund_fund_title" />
+
+		<field name="fromdepositvoucherfundid" />
+		<field name="fromdepositvoucherfund_fund_objid" />
+		<field name="fromdepositvoucherfund_fund_code" />
+		<field name="fromdepositvoucherfund_fund_title" />
+	</element>
+</schema>

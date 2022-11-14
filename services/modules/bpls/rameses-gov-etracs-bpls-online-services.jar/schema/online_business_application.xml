@@ -1,0 +1,32 @@
+<schema adapter="main">
+	<element tablename="online_business_application">
+		<field name="objid" primary="true" prefix="ONBPAPP"/> 
+		<field name="state" required="true"/> 
+		<field name="dtcreated" required="true"/> 
+		<field name="createdby_objid" required="true"/> 
+		<field name="createdby_name" required="true"/> 
+		<field name="controlno" required="true"/> 
+		<field name="prevapplicationid" required="true"/> 
+		<field name="business_objid" required="true"/> 
+		<field name="appyear" required="true"/> 
+		<field name="apptype" required="true"/> 
+		<field name="appdate" required="true"/> 
+		<field name="step" required="true" type="integer"/>
+		<complex name="lobs" required="true" serializer="default" type="list"/> 
+		<complex name="infos" required="true" serializer="default" type="list"/> 
+		<complex name="requirements" required="true" serializer="default" type="list"/> 
+
+		<!-- this is populated during approval --> 
+		<field name="dtapproved" /> 
+		<field name="approvedby_objid" /> 
+		<field name="approvedby_name" /> 
+		<field name="approvedappno" /> 
+
+		<field name="contact_name" required="true"/> 
+		<field name="contact_address" required="true"/> 
+		<field name="contact_email" required="true"/> 
+		<field name="contact_mobileno" /> 
+
+		<field name="partnername" required="true"/> 
+	</element> 
+</schema> 

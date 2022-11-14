@@ -1,0 +1,16 @@
+<schema>
+	<element tablename="cashbook_revolving_fund">
+		<field name="objid" primary="true" prefix="CRF"/>
+		<field name="state" required="true" caption="State"/>
+		<field name="dtfiled" required="true" caption="DateFiled" indexed="true"/>
+		<field name="filedby_objid" required="true" />
+		<field name="filedby_name" required="true" caption="FiledBy" indexed="true"/>
+		<field name="issueto_objid" required="true" />
+		<field name="issueto_name" required="true" caption="IssueTo" indexed="true" searchable="true"/>
+		<field name="controldate" required="true" caption="ControlDate" />
+		<field name="amount" required="true" caption="Amount" />
+		<field name="remarks" required="true" caption="Remarks" />
+		<field name="fund_objid" required="true" />
+		<field name="fund_title" required="true" caption="Fund"/>
+	</element>
+</schema>

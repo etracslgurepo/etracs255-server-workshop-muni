@@ -1,0 +1,17 @@
+<schema adapter="system">
+
+	<element tablename="sys_wf_transition" orderBy="idx">
+		<field name="parentid" primary="true"/>
+		<field name="processname" primary="true"/>
+		<field name="to" primary="true"/>
+		<field name="action"/>
+		<field name="idx" />
+		<field name="eval" />
+		<complex name="properties" serializer="default" type="object" required="false"/>
+		<field name="permission" />
+		<field name="caption"/>
+		<complex name="ui" serializer="default" required="false"/>
+	</element>	
+
+</schema>	
+

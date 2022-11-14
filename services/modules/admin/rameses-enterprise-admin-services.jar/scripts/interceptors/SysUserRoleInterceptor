@@ -1,0 +1,16 @@
+import com.rameses.annotations.*;
+
+class SysUserRoleInterceptor {
+
+	@After(pattern="QueryService.getList", eval="#{ args[0]._schemaname == 'sys_user_role' }")
+	public void afterGetList( evt ) {
+		evt.result.each{ o-> 
+			def buff = new StringBuilder(); 
+			if ( o.firstname ) buff.append(' ').append( o.firstname ); 
+			if ( o.middlename ) buff.append(' ').append( o.middlename ); 
+			if ( o.lastname ) buff.append(' ').append( o.lastname ); 
+			
+			o.fullname = buff.toString().trim(); 
+		}
+	} 
+}

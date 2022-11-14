@@ -1,0 +1,22 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+
+class PersonnelLookupService
+{
+	@PersistenceContext('main')
+	def em
+	
+	@ProxyMethod
+	public List getList( params ) {
+		params.searchText = ( params.searchText ? params.searchText + '%' : '%' )
+		def qry = em.sqlContext.createNamedQuery( 'personnel2:getList' )
+		
+		if( params ) {
+			qry.setParameter( 'searchtext', params.searchText )
+			if( params._start ) qry.setFirstResult( params._start )
+			if( params._limit ) qry.setMaxResults( params._limit )
+		}
+		
+		return qry.resultList
+	}
+}

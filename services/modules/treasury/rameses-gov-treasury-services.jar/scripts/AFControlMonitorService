@@ -1,0 +1,58 @@
+import com.rameses.annotations.*;
+
+class AFControlMonitorService {
+	
+	@Service('UserRoleService') 
+	def userRoleSvc; 
+
+	@ActiveDB('af_control_monitor') 
+	def monitor_db; 
+
+	@ProxyMethod 
+	public def getColumns( params ) {
+		return [
+			[name:'afid', caption:'FormNo', width:100, maxWidth:100],
+			[name:'startseries', caption:'StartSeries', type:'integer', width:90, maxWidth:90],
+			[name:'endseries', caption:'EndSeries', type:'integer', width:90, maxWidth:90],
+			[name:'currentseries', caption:'CurrentSeries', type:'integer', width:90, maxWidth:90],
+			[name:'qtyissued', caption:'QtyIssued', type:'integer', width:90, maxWidth:90],
+			[name:'qtybalance', caption:'QtyBalance', type:'integer', width:90, maxWidth:90],
+			[name:'stubno', caption:'StubNo', type:'integer', width:70, maxWidth:70],
+			[name:'txnmode', caption:'TxnMode', width:100, maxWidth:100],
+			[name:'active', caption:'Active?', type:'boolean', width:60, maxWidth:60],
+			[name:'org.name', caption:'OrgName', width:100], 
+			[name:'dummy-column', caption:' '] 
+		]; 
+	} 
+
+	@ProxyMethod 
+	public def getList( params ) { 
+		def collectorid = params.collectorid; 
+		if ( !collectorid ) { 
+			collectorid = params.collector?.objid; 
+		} 
+
+		params.collectorid = collectorid; 
+		def list = monitor_db.getList( params ); 
+		list.each{ o-> 
+			if ( o.currentseries > o.endseries ) { 
+				o.currentseries = o.endseries+1;
+			}
+			o.qtyissued = o.currentseries - o.startseries; 
+			o.qtybalance = (o.endseries - o.currentseries)+1;  			
+			if ( o.formtype.toString().toLowerCase() != 'serial' ) { 
+				o.startseries = o.endseries = o.currentseries = null; 
+			} 
+		} 
+		return list; 
+	} 
+
+	@ProxyMethod 
+	public def getCollectors() {
+		def list = userRoleSvc.getUsers([ domain:'TREASURY', roles:'COLLECTOR' ]); 
+		if ( !list ) return list; 
+
+		return list.collect{[ objid: it.objid, name: it.name ]}.unique().sort{ it.name } 
+	} 
+
+}

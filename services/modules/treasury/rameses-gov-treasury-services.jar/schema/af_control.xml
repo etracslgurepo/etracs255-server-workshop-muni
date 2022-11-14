@@ -1,0 +1,58 @@
+<schema>
+
+	<element  tablename="af_control">
+		<field name="objid" primary="true" prefix="AFCTRL"/> 
+		<field name="state" required="true" /> 
+		<field name="afid" required="true" caption="AF No" searchable="true" indexed="true"/> 
+		<field name="txnmode" caption="Txn Mode" indexed="true"/> 
+		<field name="assignee_objid"  /> 
+		<field name="assignee_name"  caption="Assignee" searchable="true" indexed="true"/> 
+		<field name="startseries" required="true" caption="StartSeries" type="integer" searchable="true" indexed="true"/> 
+		<field name="currentseries" required="true" caption="CurrentSeries" type="integer" searchable="true"/> 
+		<field name="endseries" required="true" caption="EndSeries" type="integer"/> 
+		<field name="active" required="true" caption="Active" type="integer" indexed="true" datatype="checkbox" checkValue="1" uncheckValue="0" /> 
+		<field name="ukey" />
+		<field name="fund_objid"  /> 
+		<field name="fund_title"  caption="Fund Title" /> 
+		<field name="stubno" required="true" caption="StubNo" /> 
+		<field name="unit" caption="Unit" required="true" /> 
+		<field name="owner_objid" /> 
+		<field name="owner_name" caption="Issued To" searchable="true" indexed="true"/> 
+		<field name="prefix" caption="Prefix" indexed="true"/> 
+		<field name="suffix" caption="Suffix" indexed="true"/> 
+		<field name="dtfiled" required="true" type="date" caption="Date Filed" /> 
+		<field name="currentindexno" required="true" type="integer"/>
+
+		<field name="batchref" />
+		<field name="batchno" indexed="true" caption="BatchNo"/> 
+
+		<field name="qtybalance" expr="endseries-currentseries+1" caption="QtyBalance" type="integer"/>
+		<field name="qtyissued" expr="currentseries-startseries" caption="QtyIssued" type="integer"/>
+
+		<field name="lockid" /> 
+		
+		<field name="respcenter_objid" /> 
+		<field name="respcenter_name" indexed="true" caption="RespCenter"/> 
+		<field name="cost" /> 
+		<field name="salecost" /> 
+
+		<complex name="af" ref="af" jointype="many-to-one" includefields="objid,title,formtype,serieslength" required="false">
+			<key field="afid" target="objid" />
+		</complex>	
+
+		<complex name="currentdetail" ref="af_control_detail" jointype="many-to-one" includefields="objid,aftxnid,aftxnitemid,refid,refno,refdate,reftype,txntype,txndate,statetype.*,endingstartseries,endingendseries,issuedto.*,respcenter.*" required="false">
+			<key field="currentdetailid" target="objid" />
+		</complex>
+
+		<complex name="afunit" ref="vw_afunit" jointype="many-to-one" required="false" includefields="serieslength,denomination,formtype,saleprice,qty,interval,cashreceiptprintout,cashreceiptdetailprintout">
+			<key field="afid" target="itemid" />
+			<key field="unit" target="unit" />
+		</complex>
+
+		<complex name="allocation" ref="af_allocation" jointype="many-to-one" required="false" includefields="objid,name">
+			<key field="allocid" target="objid"/>
+		</complex>	
+	</element> 
+
+
+</schema>

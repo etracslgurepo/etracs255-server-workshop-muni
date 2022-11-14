@@ -1,0 +1,49 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.util.*
+import com.rameses.services.extended.*
+
+
+class RPTRevisionSettingSyncDataSupport
+{
+    @Service('LandRYSettingService')
+    def landSvc 
+
+    @Service('BldgRYSettingService')
+    def bldgSvc 
+
+    @Service('MachRYSettingService')
+    def machSvc 
+
+    @Service('PlantTreeRYSettingService')
+    def planttreeSvc 
+
+    @Service('MiscRYSettingService')
+    def miscSvc 
+
+
+    @ProxyMethod
+    public def sync(schemaname, settings) {
+        def status = [_count: 1, _errors: []]
+        
+        try {
+            if ('rysetting_land' == schemaname) {
+                landSvc.sync(settings)
+            } else if ('rysetting_bldg' == schemaname) {
+                bldgSvc.sync(settings)
+            } else if ('rysetting_mach' == schemaname) {
+                machSvc.sync(settings)
+            } else if ('rysetting_planttree' == schemaname) {
+                planttreeSvc.sync(settings)
+            } else if ('rysetting_misc' == schemaname) {
+                miscSvc.sync(settings)
+            }
+        } catch(e) {
+            status._errors << e.message 
+        }
+
+        return status 
+    }
+}
+
+

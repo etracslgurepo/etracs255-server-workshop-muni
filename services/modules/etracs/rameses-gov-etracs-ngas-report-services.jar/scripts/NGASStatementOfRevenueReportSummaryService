@@ -1,0 +1,289 @@
+import com.rameses.annotations.*;
+
+class NGASStatementOfRevenueReportService {
+
+	@ActiveDB('ngas_statementofrevenue_summary')
+	def em;
+
+	@DataContext('fund') 
+	def fund_db;
+
+	@DataContext('account_maingroup') 
+	def acctgroup_db;
+
+	@Service("NumberService")
+	def numSvc;
+
+	@Service("DateService")
+	def dateSvc;	
+
+	@Env 
+	def env;
+
+	@ProxyMethod 
+	public def initReport( param ) {
+		return [
+			funds: em.getFunds(), 
+			months: dateSvc.getMonths(), 
+			accttypes: em.getAcctTypes(),  
+			acctgroups: em.getAcctGroups() 
+		]; 
+	}	
+
+	@ProxyMethod 
+	public def getReport( param ) { 
+		buildParams( param ); 
+		param.acctgroupid = param.acctgroup?.objid; 
+		param.maingroupid = param.acctgroupid; 		
+
+		def filters = [' 1=1 '];
+		if ( param.fundgroupid ) {
+			def fundstr = em.getFundsByGroup([ groupid: param.fundgroupid ]).collect{ it.objid }.join("','"); 
+			filters << ''' fundgroupid = $P{fundgroupid} ''';
+		} 
+		else if ( param.fundid ) { 
+			filters << ''' fundid = $P{fundid} '''; 
+		} 
+
+		if ( param.accttype?.objid ) {
+			param.accttypeid = param.accttype.objid; 
+			filters << ''' itemtype = $P{accttypeid} '''; 
+		}
+
+		param.filters = ' AND '+ filters.join(' AND '); 
+
+		def items = null; 
+		def postingtypeid = param.postingtype?.objid.toString().toUpperCase(); 
+		if ( postingtypeid == 'BY_LIQUIDATION_DATE' ) {
+			items = em.getIncomeSummaryByLiquidationDate( param ); 
+		} else {
+			items = em.getIncomeSummaryByRemittanceDate( param ); 
+		} 
+
+		def unmappeditems = items.findAll{( it.acctid == null )}
+		items.removeAll( unmappeditems ); 
+		unmappeditems.each{
+			it.level = 2;
+			it.acctcode = it.itemcode; 
+			it.accttitle = it.itemtitle; 
+			it.itemamount = it.amount; 
+			it.objid = 'unmapped'; 
+			it.type = 'detail';
+			it.unmapped = 1;
+			buildItemTitle( it ); 
+		}
+
+		def accounts = em.getAccounts([ maingroupid: param.maingroupid ]);
+
+		items.groupBy{ it.acctid }.each{ k,v-> 
+			def a = accounts.find{ it.objid == k }
+			if ( a ) { 
+				a.amount = v.sum{( it.amount ? it.amount : 0.0 )} 
+				if ( a.amount == null ) a.amount = 0.0; 
+
+				a.itemamount = a.amount; 
+				a.unmapped = 0;
+
+				a.items = v; 
+				a.items.each{
+					it.level = a.level + 1; 
+					it.acctcode = it.itemcode; 
+					it.accttitle = it.itemtitle; 
+					buildItemTitle( it ); 
+				}
+			} 
+		}
+
+		def amtlist = accounts.findAll{( it.amount > 0 )} 
+		def mlevel = amtlist.max{( it.level ? it.level : 0 )}?.level; 
+		if ( !mlevel ) mlevel = 0; 
+
+		while (mlevel > 0) {
+			accounts.findAll{( it.level == mlevel )}.each{ n-> 
+				def amount = accounts.findAll{( it.groupid == n.objid )}.sum{( it.amount ? it.amount : 0.0 )} 
+				n.amount = (n.amount ? n.amount : 0.0) + (amount ? amount : 0.0);
+			}
+			mlevel--;
+		} 
+
+		accounts.removeAll( accounts.findAll{( it.amount == 0.0 )} ); 
+
+		if ( param.type == 'itemaccount' ) { 
+			def itemaccounts = []; 
+			accounts.each{ aa-> 
+				aa.items.each{ bb-> 
+					if ( !bb.amount ) return;
+
+					bb.groupid = aa.objid; 
+					bb.type = 'itemaccount';
+					itemaccounts << bb; 
+				}
+			}
+			accounts.addAll( itemaccounts );
+			itemaccounts.clear();  
+		}
+		else if ( param.type == 'extended' ) {
+			/* do not remove the account detail types */
+		}
+		else {
+			accounts.removeAll( accounts.findAll{( it.type == 'detail' )} ); 
+		}
+
+		accounts.each{
+			buildItemTitle( it ) 
+		}
+
+		def finallist = []; 
+		accounts.findAll{( it.type == 'root' )}.each{
+			buildTree( it, accounts, finallist ); 
+		}
+
+		items.clear(); 
+		if ( unmappeditems ) {
+			def m = [objid: 'unmapped', title: 'UNMAPPED ACCOUNTS*']; 
+			m.amount = unmappeditems.sum{( it.amount ? it.amount : 0.0 )}
+			m.type = 'root';
+			items << m;
+		}
+		items.addAll( unmappeditems ); 
+		items.addAll( finallist ); 
+
+		def acctgroup = acctgroup_db.find([ objid: param.maingroupid ]).first();
+		def reporttype = (acctgroup?.reporttype ? acctgroup.reporttype : 'NGAS').toUpperCase(); 
+
+		def header = [:];  
+		header.USERNAME = env.FULLNAME;
+		header.USERTITLE = env.JOBTITLE;
+		header.TITLE = ''+ reporttype + ' STATEMENT OF REVENUE';
+		header.PERIOD = (param.strperiod ? param.strperiod.toUpperCase() : null);  
+		header.RUNDATE = param.rundate; 
+		if ( param.fund?.objid ) { 
+			header.FUNDTITLE = param.fund.title; 
+		} 
+		else { 
+			header.FUNDTITLE = '( ALL FUNDS )';	
+		} 
+		return [ header: header, reportdata: items ]; 
+	} 
+
+
+	private void buildItemTitle( o ) {
+		o.prefix = ''; 
+		if ( o.level > 1 ) {
+			o.prefix = ('    ' * o.level-1); 
+		} 
+
+		if ( o.type == 'root') {
+			o.title = ''+ o.accttitle +'*'; 
+		} 
+		else if ( o.type == 'group') {
+			o.title = ''+ o.prefix + o.accttitle; 
+		}
+		else {
+			o.title = ''+ o.prefix + (o.type=='itemaccount' ? '* ': '') + (o.acctcode ? o.acctcode : '-') +'  '+ o.accttitle; 
+		}
+	}
+
+	private void buildTree( node, sourcelist, targetlist ) {
+		targetlist << node; 
+		sourcelist.findAll{( it.groupid == node.objid.toString() )}.each{
+			buildTree( it, sourcelist, targetlist ); 
+		}
+	}
+
+	private void buildParams( params ) {
+		params.filter = '';
+
+		def period = new StringBuffer();
+		def rundate = dateSvc.getServerDate(); 
+		params.rundate = rundate; 
+
+		if ( params.period == 'quarterly' ) {
+			if ( !params.year ) throw new Exception('year is required');
+			if ( !params.qtr ) throw new Exception('qtr is required');
+
+			def months = dateSvc.getMonthsByQtr( params.qtr );
+			def monthindex = months[0].index;
+			def strmonth = (monthindex > 9? monthindex: '0'+monthindex); 
+			params.startdate = params.year +'-'+ strmonth +'-01'; 
+			params.enddate = dateSvc.getQtrEndDate( params.qtr, params.year ); 
+			period.append( months[0].caption +' - '+ months[-1].caption +' '+ params.year ); 
+
+		} else if ( params.period == 'asofqtr' ) {
+			if ( !params.year ) throw new Exception('year is required');
+			if ( !params.qtr ) throw new Exception('qtr is required');
+
+			def months = dateSvc.getMonths(); 
+			period.append( months[0].caption );
+			params.startdate = params.year +'-01-01'; 
+			params.enddate = dateSvc.getQtrEndDate( params.qtr, params.year ); 
+
+			months = dateSvc.getMonthsByQtr( params.qtr );
+			period.append(' - '+ months[-1].caption +' '+ params.year ); 
+
+		} else if ( params.period == 'monthly' ) {
+			if ( !params.year ) throw new Exception('year is required');
+			if ( !params.month ) throw new Exception('month is required');
+
+			def monthindex = params.month.index; 
+			def strmonth = (monthindex > 9? monthindex: '0'+monthindex); 
+			def dtstart = java.sql.Date.valueOf(''+ params.year +'-'+ strmonth +'-01'); 
+			def dtend = dateSvc.getMonthEndDate( dtstart ); 
+			def months = dateSvc.getMonths(); 
+			params.startdate = dtstart;
+			params.enddate = dtend;
+			period.append( months[monthindex-1].caption +' '+ params.year ); 
+		
+		} else if ( params.period == 'asofmonth' ) {
+			if ( !params.year ) throw new Exception('year is required');
+			if ( !params.month ) throw new Exception('month is required');
+
+			def monthindex = params.month.index; 
+			def strmonth = (monthindex > 9? monthindex: '0'+monthindex); 
+			def dtstart = java.sql.Date.valueOf(''+ params.year +'-01-01'); 
+			def dtend = java.sql.Date.valueOf(''+ params.year +'-'+ strmonth +'-01');
+			dtend = dateSvc.getMonthEndDate( dtend ); 
+
+			def months = dateSvc.getMonths(); 
+			params.startdate = dtstart;
+			params.enddate = dtend;
+			if ( months[0].index != months[monthindex-1].index ) { 
+				period.append( months[0].caption ).append(' - '); 
+			} 
+			period.append( months[monthindex-1].caption ).append(' '+ params.year); 
+		
+		} else {
+			if ( !params.date ) throw new Exception('date is required');
+
+			def syear = params.date.toString().split('-')[0]; 
+			if ( params.period == 'asofday' ) {
+				period.append("As of "); 	
+				params.startdate = syear +'-01-01'; 
+			} else {
+				params.startdate = params.date;
+			}
+
+			params.enddate = params.date; 
+			params.year = syear; 
+
+			def formatter = new java.text.SimpleDateFormat('MMMMM dd, yyyy');
+			if ( params.date instanceof java.util.Date ) {
+				period.append(formatter.format( params.date ));
+			} else {
+				period.append(formatter.format( java.sql.Date.valueOf( params.date ) )); 
+			} 
+		}
+		params.strperiod = period.toString(); 
+		params.fundid = params.fund?.objid; 
+		if ( params.fund?.category == 'group' ) {
+			params.fundgroupid = params.fundid; 
+			params.fundid = null; 
+		} 
+		params.compress = false; 
+
+		if (!(params.enddate instanceof Date)) {
+			params.enddate = java.sql.Date.valueOf( params.enddate ); 
+		} 
+		params.enddate = dateSvc.add( params.enddate, '1d' );
+	} 
+}

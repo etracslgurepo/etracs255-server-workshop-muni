@@ -1,0 +1,49 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+import java.rmi.server.UID
+
+class RPTReportPDAPRPTA100Service
+{
+    @ActiveDB('rptreport_pdaprpta100')
+    def em
+
+    @Service('DateService')
+    def dtSvc 
+
+    @Service('RPTUtil')
+    def util
+
+
+    @Async
+	@ProxyMethod
+	public def generatePdapRpta100(params){
+		params.filter = ''
+
+		if (params.lgu){
+			params.lguid = params.lgu.objid 
+			params.filter = ' AND f.lguid =  $P{lguid} ' 
+		}
+
+		def year = dtSvc.serverYear
+
+		util.buildReportFormalTitlePeriod('ASSESSMENT AND COLLECTION STATISTICAL SUMMARY', params)
+		util.buildStartEndDateFilter(params)
+		
+		def reportdata   = em.getRDAPRPTA100(params)
+								.each{
+									it.tdcount = util.toInteger(it.tdcount)
+								} 
+		def p = [
+			PERIOD 		: params.period,
+			PERIODTYPE 	: params.periodtype,
+			TITLE 		: params.title,
+			FORLGUNAME  : params.lgu.lgutype.toUpperCase() + ' OF ' + params.lgu.name,
+		]
+		return [
+			parameters  : p, 
+			reportdata  : reportdata,
+		]		
+	}
+
+}

@@ -1,0 +1,69 @@
+import com.rameses.annotations.*
+import com.rameses.eserver.*;
+import com.rameses.common.*;
+
+class PlantTreeRpuInterceptor
+{
+	@Service('PlantTreeRPUService')
+	def svc 
+
+	@Service('PlantTreeRPUGRService')
+	def grSvc 
+
+
+	@After(pattern="RPUService.initRpu", eval="#{result.rputype == 'planttree'}") 
+	public void initPlantTreeRpu( evt ) {
+		svc.initPlantTreeRpu(evt.result)
+	}
+
+
+	@After(pattern="RPUService.generateNewIds", eval="#{result.rputype == 'planttree'}") 
+	public void generateNewIds( evt ) {
+		svc.generateNewIds(evt.result)
+	}
+
+	@After(pattern="RPUService.calculateAssessment", eval="#{result.rputype == 'planttree'}") 
+	public void calculateAssessment( evt ) {
+		svc.calculateAssessment(evt.result)
+	}	
+	
+	@After(pattern="RPUService.openRpu", eval="#{result.rputype == 'planttree'}") 
+	public void openPlantTreeRpu( evt ) {
+		def rpu = evt.result
+		rpu.putAll( svc.openPlantTreeRpu(rpu.objid) )	
+	}
+	
+
+	@After(pattern="RPUService.createRpu", eval="#{result.rputype == 'planttree'}") 
+	public void createPlantTreeRpu( evt ) {
+		svc.createPlantTreeRpu(evt.result)
+	}
+
+
+	@After(pattern="RPUService.updateRpu", eval="#{result.rputype == 'planttree'}") 
+	public void updatePlantTreeRpu( evt ) {
+		svc.updatePlantTreeRpu(evt.result)
+	}
+
+	@Before(pattern="RPUService.deleteRpu", eval="#{args[0].rputype == 'planttree'}") 
+	public void deletePlantTreeRpu( evt ) {
+		svc.deletePlantTreeRpu(evt.args[0])
+	}
+
+	@Before(pattern="RPUService.deleteItems", eval="#{args[0].rputype == 'planttree'}") 
+	public void deleteRpuItems( evt ) {
+		def rpu = evt.args[0]
+		svc.deleteItems(rpu)
+	}	
+
+	@After(pattern="RPUService.reviseRpu", eval="#{result.rputype == 'planttree'}") 
+	public void reviseRpu( evt ) {
+		try {
+			grSvc.revisePlantTreeRpu(evt.result)
+		}
+		catch( e) {
+			throw e			
+		}
+	}
+}
+

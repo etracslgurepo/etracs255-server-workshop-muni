@@ -1,0 +1,31 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.util.*
+import com.rameses.services.extended.*
+
+
+class RPTMasterSyncDataSupport
+{
+    @Service('PersistenceService')
+    def persistence 
+
+
+    @ProxyMethod
+    public def sync(schemaname, items) {
+        def status = [_count: 0, _errors: []]
+
+        items.each {
+            try {
+                it._schemaname = schemaname
+                persistence.save(it)
+                status._count += 1
+            } catch(e) {
+                status._errors << e.message 
+            }
+        }
+
+        return status 
+    }
+}
+
+

@@ -1,0 +1,156 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+import java.rmi.server.UID
+
+class RPTReportMasterListService
+{
+	@Env 
+	def env 
+
+    @ActiveDB('rptreport_masterlist')
+    def em
+    
+    @DataContext('propertyclassification')
+    def propertyclassification
+
+    @DataContext('faas_previous')
+    def em_faas_previous 
+
+
+    @Service('DateService')
+    def dtSvc 
+
+    @Async
+    @ProxyMethod
+    public def getMasterListing( params ) {
+		buildFilters(params)
+		buildTitle(params)
+
+		def list = []
+		if (!params.state) 
+			list = em.getListing(params)
+		else if ('CURRENT'.equalsIgnoreCase(params.state)) 
+			list = em.getCurrentListing(params)
+		else 
+			list = em.getCancelledListing(params)
+
+		if( ! list ) throw new Exception('Record not found.')
+		list.each{
+			def prevlist = em_faas_previous.find([faasid:it.objid]).list()
+            if (prevlist){
+                it.prevowner = prevlist.prevowner.join(' / ')
+                it.prevadministrator = prevlist.prevadministrator.join(' / ')
+                it.prevmv = prevlist.prevmv.join(' / ')
+                it.prevav = prevlist.prevmv.join(' / ')
+            }
+
+			if (it.administrator && it.administrator.name){
+				it.owner.name = it.owner.name + '\nAdmin: ' + it.administrator.name 
+			}
+			
+			if (!it.prevowner)
+				it.prevowner = ''
+				
+			if (it.prevadministrator){
+				it.prevowner += '\nAdmin: ' + it.prevadministrator 
+			}
+		}
+
+		def forlguname = env.ORGCLASS + ' OF ' + env.ORGNAME 
+		if (params.lgu) {
+			forlguname = params.lgu.lgutype.toUpperCase() + ' OF ' + params.lgu.name 
+		}
+
+		def p = [
+			CLASSIFICATION : (params.classification ? params.classification.name  :  'ALL'),
+            FORLGUNAME : forlguname,
+            TITLE    : params.title,
+        ]
+
+		return [
+			parameters  : p,
+			reportdata 	: list
+		]
+    }
+
+    @ProxyMethod
+    public def getClassifications(){
+    	return propertyclassification.find([state:'APPROVED']).orderBy('orderno').list()
+    }
+
+
+	void buildTitle(params) {
+		def titles = []
+		
+        if ('GR'.equalsIgnoreCase(params.reporttype)){
+            titles << 'General Revision Master List of'
+        } else if ('MAINTENANCE'.equalsIgnoreCase(params.reporttype)){
+            titles << 'Maintenance Master List of' 
+        } else {
+			titles << 'Master List of' 
+		}
+
+		if (params.taxability) {
+			titles << params.taxability[0] + params.taxability.substring(1).toLowerCase()
+		}
+		if (params.classification) {
+			titles << params.classification.name[0] + params.classification.name.substring(1).toLowerCase()
+		}
+		titles << 'Real Properties'
+
+		if (params.state && 'CANCELLED'.equalsIgnoreCase(params.state))  {
+			titles << '( Cancelled )'
+		}
+		params.title = titles.join(' ')
+	}
+
+	void buildFilters(params) {
+		params.currentyear = dtSvc.serverYear
+
+		def filters = []
+		if (params.lgu) {
+			params.lguid = params.lgu.objid 
+			filters << ' f.lguid = $P{lguid} '
+		}
+		if (params.barangay) {
+			params.barangayid = params.barangay.objid
+			filters << ' rp.barangayid = $P{barangayid} '
+		}
+		if (params.classification) {
+			params.classid = params.classification.objid
+			filters << ' r.classification_objid = $P{classid} '
+		}
+		if (params.rputype) {
+			filters << ' r.rputype = $P{rputype} '
+		}
+		if (params.taxability) {
+			params.taxable = 1
+			if ('EXEMPT'.equalsIgnoreCase(params.taxability)) params.taxable = 0
+			filters << ' r.taxable = $P{taxable} '
+		}
+		if (params.section) { 
+			filters << ' rp.section = $P{section} '
+		}
+
+		params.txntypeid = 'GR'
+		if ('GR'.equalsIgnoreCase(params.reporttype)){
+            filters << ' f.txntype_objid = $P{txntypeid} '
+        }
+        else if ('MAINTENANCE'.equalsIgnoreCase(params.reporttype)){
+            filters << ' f.txntype_objid <> $P{txntypeid} '  
+        }
+
+        params.filters = ''
+        if (filters) {
+			params.filters = ' AND ' + filters.join(' AND ')
+        }
+
+		params.orderbyclause = ''
+		if( params.orderby ) { 
+			params.orderbyclause = 'ORDER BY ' + params.orderby.fieldname
+		}
+	}
+
+
+}

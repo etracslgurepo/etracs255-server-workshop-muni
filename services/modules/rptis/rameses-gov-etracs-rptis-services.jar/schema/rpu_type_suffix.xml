@@ -1,0 +1,8 @@
+<schema adapter="main">
+    <element tablename="rpu_type_suffix">
+        <field name="objid" primary="true" />
+        <field name="rputype" required="true" />
+        <field name="from" required="true" type="integer" />
+        <field name="to" required="true" type="integer" />
+    </element>
+</schema>

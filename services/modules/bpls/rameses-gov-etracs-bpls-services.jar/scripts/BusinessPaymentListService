@@ -1,0 +1,11 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.services.extended.*;
+
+public class BusinessPaymentService extends ActiveCrudListService {
+
+	@ActiveDB("business_payment")
+	def em;
+
+}

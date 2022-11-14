@@ -1,0 +1,66 @@
+import com.rameses.annotations.*;
+
+class MultiCashReceiptService {
+	
+	@DataContext('var')
+	def var_em; 
+
+	@DataContext('checkpayment')
+	def checkpayment_db; 
+
+	@DataContext('cashreceipt_group')
+	def cashreceipt_group_db; 
+
+	@DataContext('cashreceipt_groupitem')
+	def cashreceipt_groupitem_db; 
+
+	@Service('CashReceiptService')
+	def cashReceiptSvc; 
+	
+	@Service('DateService')
+	def dateSvc; 
+	
+	@Service("Var")
+	def var;	
+
+
+	@ProxyMethod 
+	public def post( entity, receipts ) {
+
+		if ( !receipts ) {
+			throw new Exception('Please provide the receipts'); 
+		}
+
+		def varopts = [:]; 
+		varopts.canShowPrinterDialog = (var.cashreceipt_show_printer_dialog.toString().matches('false|0') ? false: true);
+		
+		def rundate = dateSvc.getServerDate(); 
+
+		entity.checks.each {
+			def o = checkpayment_db.find([ objid: it.objid ]).select('objid').first(); 
+			if ( !o ) {
+				checkpayment_db.create( it );  
+			} 
+		}
+
+		def groupid = entity.objid; 
+		cashreceipt_group_db.create([
+			objid: groupid, 
+			txndate: rundate, 
+			controlid: entity.controlid, 
+			amount: entity.amount, 
+			totalcash: entity.totalcash, 
+			totalnoncash: entity.totalnoncash, 
+			cashchange: entity.cashchange
+		]); 
+
+		receipts.each { 
+			def c = cashReceiptSvc.post( it ); 
+			if ( c ) it.putAll( c ); 
+			 
+			cashreceipt_groupitem_db.create([ objid: it.objid, parentid: groupid ]);  
+			it._options = varopts; 
+		} 
+		return receipts;
+	}
+}

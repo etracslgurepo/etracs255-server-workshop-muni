@@ -1,0 +1,32 @@
+<schema>
+	<element name="miscrpu" tablename="miscrpu">
+		<field name="objid" primary="true" />
+		<field name="landrpuid" required="true"/>
+		<field name="actualuse_objid" />
+	</element>
+
+	<element name="item" tablename="miscrpuitem">
+		<field name="objid" primary="true"  />
+		<field name="miscrpuid" required="true" />
+		<field name="miv_objid" required="true"  />
+		<field name="miscitem_objid" required="true" />
+		<field name="expr" required="true" />
+		<field name="appraisalstartdate" type="date" />
+		<field name="depreciation" required="true" type="decimal" />
+		<field name="depreciatedvalue" required="true" type="decimal" />
+		<field name="basemarketvalue" required="true" type="decimal" />
+		<field name="marketvalue" required="true" type="decimal" />
+		<field name="taxable" required="true" type="boolean" />
+		<field name="assesslevel" required="true" type="decimal" />
+		<field name="assessedvalue" required="true" type="decimal" />
+	</element>
+	
+	<element name="param" tablename="miscrpuitem_rptparameter">
+		<field name="miscrpuitemid" primary="true" />
+		<field name="param_objid" primary="true" />
+		<field name="miscrpuid" required="true" />
+		<field name="intvalue" />
+		<field name="decimalvalue" />
+	</element>
+	
+</schema>

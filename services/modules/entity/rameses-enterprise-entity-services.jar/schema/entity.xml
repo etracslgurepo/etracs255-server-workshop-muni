@@ -1,0 +1,23 @@
+<schema adapter="main">
+
+	<element tablename="entity">
+		<field name="objid" primary="true"/>
+		<field name="entityno" required="true" caption="EntityNo" indexed="true" searchable="true"/>
+		<field name="name" required="true" caption="Name" />
+		<field name="entityname" caption="EntityName" indexed="true" searchable="true"/>
+		<field name="address_objid" required="true" visible="false"/>
+		<field name="address_text" required="true" caption="Address"/>
+		<complex name="address" ref="entity_address" required="false" jointype="many-to-one"
+			includefields="type,barangay_objid,barangay_name,city,municipality,province,bldgno,bldgname,unitno,street,subdivision,pin">
+			<key field="address_objid" target="objid"/>
+		</complex>	
+		<field name="type" required="true" caption="Type"/>
+		<field name="remarks" />
+		<field name="mobileno" />
+		<field name="phoneno" />
+		<field name="email" />
+		<field name="state" required="true" defaultValue="ACTIVE" />
+
+	</element>
+
+</schema>

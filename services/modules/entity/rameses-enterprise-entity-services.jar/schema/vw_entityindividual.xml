@@ -1,0 +1,31 @@
+<!--
+ 
+create view vw_entityindividual 
+as 
+select ei.*, 
+	e.entityno, e.type, e.name, e.entityname, e.mobileno, e.phoneno, 
+	e.address_objid, e.address_text
+from entityindividual ei 
+	inner join entity e on e.objid=ei.objid 
+
+--> 
+<schema>
+	
+	<element tablename="vw_entityindividual">
+		<field name="objid" primary="true"/>
+		<field name="entityno" caption="EntityNo"/>
+		<field name="name" caption="Name" hidden="true" visible="false"/>
+		<field name="entityname" hidden="true" visible="false" selectable="false" searchable="true"/>
+		<field name="lastname" caption="LastName" indexed="true"/>
+		<field name="firstname" caption="FirstName" indexed="true"/>
+		<field name="middlename" caption="MiddleName" /> 
+		<field name="address_objid" hidden="true" visible="false" selectable="false"/>
+		<field name="address_text" caption="Address" selectable="false"/>
+		<field name="type" caption="Type" hidden="true" visible="false" selectable="false"/>
+		<field name="birthdate" caption="BirthDate" hidden="true" visible="false" selectable="false" />
+		<field name="gender" caption="Gender" hidden="true" visible="false" selectable="false" />
+		<field name="mobileno" caption="MobileNo" hidden="true" visible="false" selectable="false" />
+		<field name="phoneno" caption="PhoneNo" hidden="true" visible="false" selectable="false" />
+	</element>	
+	
+</schema>

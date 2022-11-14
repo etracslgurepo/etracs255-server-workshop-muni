@@ -1,0 +1,61 @@
+import com.rameses.annotations.*;
+
+class PaymentOrderTypeInterceptor {
+
+	@Service( dynamic=true )
+	def dynaSvc; 
+
+	@Before(pattern="PersistenceService.create", eval="#{args[0]._schemaname == 'paymentorder_type'}")
+	public void beforeCreate( evt ) { 
+		def param = evt.args[0];
+		param.system = ( param.system.toString().matches('0|1') ? param.system : 0); 
+	} 
+
+	@After(pattern="PersistenceService.read", eval="#{args[0]._schemaname == 'paymentorder_type'}")
+	public void afterRead( evt ) { 
+		def res = evt.result;
+		def ct = res?.collectiontype; 
+		if ( ct?.objid ) {
+			def querySvc = dynaSvc.lookup('QueryService','treasury'); 
+
+			def m = [ _schemaname: 'collectiontype' ]; 
+			m.findBy = [ objid: ct.objid ];
+			m.select = "objid,name,title,fund.*";
+
+			def ctrec = querySvc.findFirst( m ); 
+			if ( !ctrec ) throw new Exception("'"+ ct.objid +"' CollectionType record not found");
+
+			ct.putAll( ctrec ); 
+
+	        m = [ _schemaname: "collectiontype_account" ];
+	        m.findBy = [ collectiontypeid: ct.objid ];
+	        m.select = "itemcount:{COUNT(*)}";
+	        
+	        def cta = querySvc.findFirst( m ); 
+	        ct.hasitems = (cta.itemcount > 0);
+		}
+	} 
+
+	@After(pattern="PersistenceService.update", eval="#{args[0]._schemaname == 'paymentorder_type'}")
+	public void afterUpdate( evt ) { 
+		def param = evt.args[0];
+		logAction( param, evt.result ); 
+	} 
+
+	void logAction( param, result ) {
+		if ( !param._action ) return;
+
+		if ( !param.objid ) throw new Exception('objid  parameter is required in logging actions');
+
+		def logSvc = dynaSvc.lookup('LogService'); 
+		def _schemaname = ( param._schemaname ? param._schemaname : 'paymentorder_type' ); 
+		def _refid = param.objid; 
+
+		if ( param._action == 'activate' ) {
+			logSvc.logA( param._action, _schemaname, _refid, 'Activate');
+		}
+		else if ( param._action == 'deactivate' ) {
+			logSvc.logA( param._action, _schemaname, _refid, 'Deactivate');		
+		} 
+	}
+}

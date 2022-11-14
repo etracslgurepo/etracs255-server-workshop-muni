@@ -1,0 +1,192 @@
+import com.rameses.annotations.*;
+import com.rameses.util.DateBean;
+
+class CollectionVoucherSummaryReportService {
+	
+	@DataContext('sys_org')
+	def em_org; 
+
+	@ActiveDB('monitoring/collectionvoucher_summary')
+	def em_report; 
+
+	@Env
+	def env; 
+
+	@Service('DateService')
+	def dateSvc; 
+
+	@Service('Var')
+	def var; 	
+
+	@Service( dynamic=true )
+	def dynaSvc; 
+
+	@ProxyMethod 
+	public def initReport( param ) { 
+		def resp = [:];
+		resp.year = dateSvc.getServerYear(); 
+		resp.domains = [];
+
+		def orgs = var.treasury_remote_orgs;
+		if ( orgs ) {
+			orgs.split(",").each{
+				def o = em_org.find([ objid: it.trim() ]).first();
+				if ( o ) resp.domains << o; 
+			} 
+			resp.domains.sort{ it.name } 
+		}
+		return resp; 
+	} 
+
+	@ProxyMethod 
+	public def getReport( params ) { 
+		if ( !params.template?.objid ) throw new Exception("params.template.objid  parameter is required");  
+		if ( !params.period?.type ) throw new Exception("params.period.type  parameter is required");  
+
+		def result = [:]; 
+		if ( params.domain?.objid ) { 
+			def remoteSvc = dynaSvc.lookup('RemoteCoordinatorService', 'coordinator-script-service'); 
+
+			def mm = [:];
+			mm.reftype = 'treasury-monitoring';
+			mm.reportConnection = 'treasury';
+			mm.reportService = 'monitoring/CollectionVoucherSummaryReportService';
+			mm.reportMethod = 'getReport';
+
+			def mmm = [:]; 
+			mmm.putAll( params ); 
+			mmm.remove('domain'); 
+			mm.reportParam = mmm; 
+
+			def remoteConfig = [
+				orgcode   : params.domain.objid,
+				connection: mm.reportConnection,
+				module    : "etracs25"
+			];  
+
+			mm = remoteSvc.onMessage( mm, remoteConfig ); 
+			result.reportdata = mm.reportdata; 
+			result.header = mm.header; 
+			result.header.DOMAIN_TITLE = params.domain?.name; 
+
+		} 
+		else {
+			buildParams( params ); 
+			result.reportdata = [ templateid: params.template?.objid ]; 
+
+			boolean allow_summaries = true; 
+
+			if ( params.template?.objid == 'collectiontype' ) {
+				result.reportdata.items = em_report.getReportByCollectionType( params.filter ); 
+			}
+			else if ( params.template?.objid == 'liqofficer' ) {
+				result.reportdata.items = em_report.getReportByLiqOfficer( params.filter ); 
+			}
+			else if ( params.template?.objid == 'fund' ) {
+				result.reportdata.items = em_report.getReportByFund( params.filter ); 
+			}
+			else if ( params.template?.objid == 'templateB' ) {
+				result.reportdata.items = em_report.getReportB( params.filter ); 
+				allow_summaries = false; 
+			}
+			else {
+				result.reportdata.items = em_report.getReportA( params.filter ); 
+				allow_summaries = false; 
+			}
+
+			if ( allow_summaries ) {
+				def groups = result.reportdata.items.groupBy{ it.particulars }
+
+				result.reportdata.summaries = [];
+				result.reportdata.items.collect{[ particulars: it.particulars ]}.unique().each{ k-> 
+					def v = groups.get( k.particulars ); 
+					if ( v instanceof java.util.Collection ) {
+						k.amount = v.sum{( it.amount ? it.amount : 0.0 )} 
+						result.reportdata.summaries << k; 
+					}
+				}
+			}
+			
+			result.header = params.header; 
+		}
+
+		if ( !result.reportdata ) 
+			throw new Exception("No available record(s) that matches your criteria");  
+
+		return result; 
+	}
+
+	void buildParams( params ) { 
+
+		if ( !params.startdate ) throw new Exception('params.startdate parameter is required'); 
+		if ( !params.enddate ) throw new Exception('params.enddate parameter is required'); 
+
+		def startdate = resolveDate( params.startdate );
+		def enddate = resolveDate( params.enddate );
+		def originalEndDate = enddate; 
+
+		enddate = new DateBean( enddate ).add('1d'); 
+		enddate = resolveDate( enddate );
+
+		def header = [:]; 
+		def filter = [:]; 
+		filter.startdate = startdate; 
+		filter.enddate = enddate; 
+
+		def YMD = new java.text.SimpleDateFormat('yyyy-MM-dd'); 
+
+		header.PERIOD_TYPE = params.period.type.toString().toLowerCase(); 
+		switch ( header.PERIOD_TYPE ) {
+			case 'daily': 
+				header.PERIOD_TITLE = new java.text.SimpleDateFormat('MMMMM dd, yyyy').format( startdate ).toUpperCase(); 
+				break; 
+
+			case 'monthly': 
+				header.PERIOD_TITLE = 'FOR THE MONTH OF '+ new java.text.SimpleDateFormat('MMMMM yyyy').format( startdate ).toUpperCase(); 
+				break; 
+
+			default: 
+				throw new Exception(''+ params.PERIOD_TYPE +' period option not supported'); 
+				break; 
+		} 
+
+		header.REPORT_TITLE = 'COLLECTION VOUCHER SUMMARY'; 
+
+		def templateid = params.template?.objid.toString();
+		if ( templateid == 'collectiontype' ) {
+			header.REPORT_TITLE = 'COLLECTION VOUCHER SUMMARY BY COLLECTION TYPE'; 
+		}
+		else if ( templateid == 'liqofficer' ) {
+			header.REPORT_TITLE = 'COLLECTION VOUCHER SUMMARY BY LIQUIDATING OFFICER'; 
+		}
+		else if ( templateid == 'fund' ) {
+			header.REPORT_TITLE = 'COLLECTION VOUCHER SUMMARY BY FUND'; 
+		}
+
+		def filters = [ '1=1' ];
+		filter.filter = filters.join(' AND '); 
+
+		params.filter = filter; 
+		params.header = header; 
+	}
+
+	def resolveDate( value ) {
+		if ( !value ) return null; 
+		if ( value instanceof java.sql.Date ) return value; 
+
+		if ( value instanceof java.util.Date ) {
+			return new java.sql.Date( value.time ); 
+		}
+
+		try {
+			return java.sql.Date.valueOf( value.toString()); 
+		} catch(Throwable t) {;}
+
+		try {
+			def o = java.sql.Timestamp.valueOf( value.toString()); 
+			return new java.sql.Date( o.time ); 
+		} catch(Throwable t) {;}
+
+		return null; 
+	} 
+}

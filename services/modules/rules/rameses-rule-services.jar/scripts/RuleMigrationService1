@@ -1,0 +1,58 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.common.*
+import com.rameses.services.extended.*;
+
+
+class RuleMigrationService  {
+
+	@ActiveDB("rulemigration")
+	def em;
+	
+	@ActiveDB("rule")
+	def target;
+
+	@ProxyMethod
+	public def downloadDef( def o ) {
+		def ruleset = o.ruleset;
+		if(!ruleset) 
+			throw new Exception("Please provide a ruleset");
+
+		def m = [:];
+		m.ruleset = em.findRuleset(o);
+		m.rulegroups = em.getRulegroups(o);
+		m.facts = em.getRuleFacts(o);
+		m.actiondefs = em.getRuleActionDefs(o);
+		m.facts.each {
+			it.rulesets = em.getFactRulesets(it);
+			it.fields = em.getRuleFactFields(it);
+		}		
+		m.actiondefs.each {
+			it.rulesets = em.getActionDefRulesets(it);
+			it.params = em.getRuleActionDefParams(it);
+		}		
+		return m;
+	}
+	
+	@ProxyMethod
+	public void uploadDef( def o ) {
+		target.save( o.ruleset, "ruleset" );
+		for ( x in o.rulegroups ) {
+			target.save( x, "rulegroup" );
+		}
+		for( x in o.facts ) {
+			target.save( x, "fact" );
+			for( f in x.fields )  {
+				target.save( f, "fact_field" );
+			}
+		}
+		for(y in o.actiondefs ) {
+			target.save( y, "actiondef" );
+			for( x in y.params ){
+				target.save( x, "actiondef_param" );
+			}
+		}
+	}
+
+}

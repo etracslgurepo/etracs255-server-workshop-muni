@@ -1,0 +1,146 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+
+class OnlineBusinessBillingService {
+
+	@Service( dynamic=true )
+	def dynaSvc; 
+
+	@Service("BusinessCashReceiptService")
+	def svc;
+
+	@Service("DateService")
+	def dateSvc;
+
+	@DataContext("business_application")
+	def appEm;
+
+	@Service("PersistenceService")
+	def persistenceSvc;	
+
+	@Service('BusinessPostPaymentService')
+	def postPaymentSvc;
+
+	@Service("NumberService")
+	def numSvc;
+
+	@Service('')
+	def sharingSvc; 
+
+	@ActiveDB('online_bpls') 
+	def online_bpls;
+
+	private def generateBilling( def o ) { 
+		o.refno = (o.refno ? o.refno : o.appno); 
+
+		def app = appEm.find([ appno: o.refno ]).first();
+		if ( !app ) {
+			def findparam = [ bin: o.refno ]; 
+
+			app = online_bpls.findBIN( findparam ); 
+			if ( !app ) {
+				throw new Exception("Cannot find business application " + o.refno);
+			}
+
+			app = online_bpls.findUnpaidAppByBIN( findparam ); 
+			if ( !app ) {
+				throw new Exception("No unpaid items found");
+			}
+
+			app = appEm.find([ objid: app.objid.toString() ]).first();
+		}
+
+		if ( !app.state.toString().toUpperCase().matches('PAYMENT|RELEASE|COMPLETED')) {
+			throw new Exception("Application is not in payment state");
+		}
+
+		def r = [:];
+    	r.app = [apptype:app.apptype, appyear:app.appyear, dtfiled:app.dtfiled, appno:app.appno]; 
+    	r.billdate = (o.billdate ? o.billdate : dateSvc.getBasicServerDate()); 
+    	r.applicationid = app.objid;
+        if ( o.qtr ) {
+        	r.payment = [option:'FULLQTR', qtr: o.qtr.toInteger() ]		
+        }	
+        else {
+        	r.payment = [option: 'FULLYEAR' ];
+        }
+		def z = svc.getBillingForPayment( r ); 
+		z.app = app;
+		z.payment = r.payment;
+        z.amount = numSvc.round( z.totals.total );
+		return z;
+	}
+
+	@ProxyMethod
+	public def getBilling( def o ) {
+		def z = generateBilling( o );
+
+		def p = [:];
+		p.info = [
+			ownername: z.app.ownername, 
+			tradename: z.app.tradename, 
+			address: z.app.businessaddress, 
+			appno: z.app.appno, 
+			bin: z.app.business.bin, 
+			appdate:z.app.dtfiled, 
+			apptype: z.app.apptype,
+			expirydate:z.expirydate, 
+			email: z.app.business.email,
+			mobileno: z.app.business.mobileno,
+			amount: z.amount,
+		];
+		if( o.showdetails ) {
+			p.info.items = z.taxfees.collect{[ 
+					lobname: it.lob.name, 
+					account:it.account?.title, 
+					amount: numSvc.round(it.amtdue), 
+					discount:numSvc.round(it.discount), 
+					surcharge:numSvc.round(it.surcharge),
+					interest:numSvc.round(it.interest),
+					total: numSvc.round(it.total) 
+			]};
+		}
+		p.amount = z.amount;
+		return p;
+	}
+
+	@ProxyMethod
+	public def verifyPayment(  def o ) {
+		def r = [:]
+		r.appno = o.refno;
+		r.billdate = o.billdate; 
+		if ( o.info?.qtr ) r.qtr = o.info.qtr; 
+
+		def z = generateBilling( r );
+		if ( o.amount != z.amount ) 
+			throw new Exception('Bill amount has changed from '+ o.amount +' to '+ z.amount); 
+
+		o.businessid = z.app.business.objid;
+		o.applicationid = z.app.objid;
+		o.appyear = z.app.appyear; 
+		o.taxfees = z.taxfees;
+		o.expirydate = z.expirydate; 
+		o.items = z.items; 
+		o.sharing = true; 
+		return o; 
+	}
+
+	@ProxyMethod
+	public void postPayment(  def eor, def bill ) {
+		bill.reftype = 'eor';
+		bill.receiptno = eor.receiptno;
+		bill.receiptdate = eor.receiptdate;
+		postPaymentSvc.postPayment( bill ); 
+	}
+
+    @ProxyMethod
+	public def getEmailAttachments( eor ) {
+        return [];
+    }
+
+    @ProxyMethod
+    public def generateShares( param ) { 
+    	def shareSvc = dynaSvc.lookup('RevenueSharingService', 'treasury'); 
+        return shareSvc.execute( param ); 
+    } 
+}

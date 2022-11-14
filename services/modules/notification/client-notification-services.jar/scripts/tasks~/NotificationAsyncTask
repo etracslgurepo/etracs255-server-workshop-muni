@@ -1,0 +1,72 @@
+
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+import com.rameses.util.*;
+import java.io.ObjectInputStream;
+import java.io.FileOutputStream;
+
+class NotificationAsyncTask {
+
+    @ActiveDB(value='notification', em='notification')
+    def em;
+
+	@Service('AsyncRequestExecutor')
+	def asyncReqExecutor;    
+
+    @Service('CloudSettings') 
+    def settings;  		
+
+	@Context
+    def appCtx;     
+
+	@Schedule(interval=2)
+	public void execute( task ) { 
+        if ( !settings.isEnabled() ) { 
+            //facility is disabled, exit immediately 
+            return;  
+        } 
+        		
+		def info = em.findAsyncPendingMessage();  
+		if ( !info ) return; 
+
+		def msgid = info.objid; 
+		def encstr = Encoder.MD5.encode( msgid ); 
+		def file = new File( getDataDir(), encstr ); 
+		if ( file.exists() ) { 
+			info.asyncdata = readObject( file ); 
+			asyncReqExecutor.process( info );  
+			
+			info.asyncdata = null; 
+			em.delete([objid: msgid], 'async_pending'); 
+		} else { 
+			em.delete([objid: msgid], 'async_pending'); 
+			em.delete([objid: msgid], 'async'); 
+			em.create([objid: msgid], 'forprocess'); 
+		} 
+	} 
+
+	def readObject( file ) {
+		def fis = null; 
+		def ois = null; 
+		try {
+			fis = new FileInputStream( file ); 
+			ois = new ObjectInputStream( fis ); 
+			return ois.readObject();   
+		} finally { 
+			try { ois.close(); }catch(Throwable t){;} 
+			try { fis.close(); }catch(Throwable t){;} 
+		} 
+	}
+
+    def getDataDir() { 
+    	def datadir = appCtx.conf['notification.datadir']; 
+    	if ( !datadir ) datadir = System.getProperty("java.io.tmpdir");
+
+        def tmpdir = new File( datadir );
+        def basedir = new File( tmpdir, "rameses/notification-data" );
+        if ( !basedir.exists() ) { 
+            basedir.mkdirs(); 
+        } 
+        return basedir; 
+    } 
+} 

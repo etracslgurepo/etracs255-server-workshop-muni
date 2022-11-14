@@ -1,0 +1,10 @@
+<schema adapter="queue">
+	<element tablename="queue_group">
+		<field name="objid" primary="true" title="Group Name" visible="true"/>
+		<field name="title" caption="Title" title="Group Title" required="true"/>
+
+		<complex name="sections" ref="queue_section" jointype="one-to-many">
+			<key field="objid" target="groupid"/> 
+		</complex> 
+	</element> 
+</schema>

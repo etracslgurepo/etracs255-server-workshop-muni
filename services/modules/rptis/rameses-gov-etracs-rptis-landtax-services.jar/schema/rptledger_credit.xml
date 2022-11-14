@@ -1,0 +1,30 @@
+<schema>
+    <element tablename="rptledger_credit">
+        <field name="objid" primary="true" prefix="RLC" />
+        <field name="rptledgerid" required="true" />
+        <field name="type" required="true" />
+        <field name="refno" required="true" />
+        <field name="refdate" required="true" />
+        <field name="payorid" />
+        <field name="paidby_name" required="true" />
+        <field name="paidby_address" required="true" />
+        <field name="collector" required="true" />
+        <field name="postedby" required="true" />
+        <field name="postedbytitle" required="true" />
+        <field name="dtposted" required="true" />
+        <field name="fromyear" type="integer" required="true" />
+        <field name="fromqtr" type="integer" required="true" />
+        <field name="toyear" type="integer" required="true" />
+        <field name="toqtr" type="integer" required="true" />
+        <field name="basic" required="true" type="decimal" />
+        <field name="basicint" required="true" type="decimal" />
+        <field name="basicdisc" required="true" type="decimal" />
+        <field name="basicidle" required="true" type="decimal" />
+        <field name="sef" required="true" type="decimal" />
+        <field name="sefint" required="true" type="decimal" />
+        <field name="sefdisc" required="true" type="decimal" />
+        <field name="firecode" required="true" type="decimal" />
+        <field name="amount" required="true" type="decimal" />
+        <field name="collectingagency" />
+    </element>
+</schema>

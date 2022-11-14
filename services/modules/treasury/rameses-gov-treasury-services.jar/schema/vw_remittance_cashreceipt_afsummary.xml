@@ -1,0 +1,27 @@
+<schema>
+	<element tablename="vw_remittance_cashreceipt_afsummary">
+		<field name="objid" primary="true"/>
+		<field name="remittanceid" />
+		<field name="collector_objid" />
+		<field name="controlid" />
+		<field name="fromreceiptno" />
+		<field name="toreceiptno" />
+		<field name="fromseries" />
+		<field name="toseries" />
+		<field name="qty" />
+		<field name="amount" />
+		<field name="qtyvoided" />
+		<field name="voidamt" />
+		<field name="qtycancelled" />
+		<field name="cancelledamt" />
+		<field name="formtype" />
+		<field name="serieslength" />
+		<field name="denomination" />
+		<field name="formno" />
+		<field name="stubno" />
+		<field name="startseries" />
+		<field name="endseries" />
+		<field name="prefix" />
+		<field name="suffix" />
+	</element>
+</schema>

@@ -1,0 +1,64 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+import com.rameses.util.*;
+
+class QueueGroupService { 
+
+	@DataContext(value='queue_group', adapter='queue') 
+	def qg; 
+
+	@DataContext(value='queue_section', adapter='queue') 
+	def qs; 
+
+	@ProxyMethod 
+	public def open( objid ) {
+		return qg.find([ objid: objid]).first(); 
+	} 	
+
+	@ProxyMethod 
+	public def getGroups() {
+		return qg.list(); 
+	} 
+
+	@ProxyMethod 
+	public def getGroupsWithSections() {
+		def list = qg.list(); 
+		list.each {
+			it.sections = getSections( it.objid );
+		}
+	} 
+
+	@ProxyMethod 
+	public def getSections( groupid ) {
+		if ( !groupid ) throw new Exception('groupid parameter is required'); 
+
+		return qs.find([ groupid: groupid ]).list(); 
+	} 
+
+	@ProxyMethod 
+	public def getSectionCounters( sectionid ) {
+		if ( !sectionid ) throw new Exception('sectionid parameter is required'); 
+
+		def list = qg.getSectionCounters([ sectionid: sectionid ]); 
+		list.each{ it.strsortorder = it.code.toString().padLeft(5,'0'); }
+		list.sort{ it.strsortorder }
+		return list; 
+	} 
+
+	@ProxyMethod 
+	public void resetSeries( params ) {
+		if ( params.groupid ) { 
+			resetSeriesByGroup( params.groupid ); 
+		} 
+		else {
+			qg.list().each{
+				resetSeriesByGroup( it.objid ); 
+			}
+		}
+	}
+
+	private void resetSeriesByGroup( groupid ) { 
+		qg.resetTickets([ groupid: groupid ]); 
+		qs.find([ groupid: groupid ]).update([ currentseries: 0 ]); 
+	} 
+} 

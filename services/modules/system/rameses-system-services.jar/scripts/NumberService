@@ -1,0 +1,204 @@
+
+import com.rameses.annotations.*
+import java.math.BigDecimal
+import java.math.RoundingMode
+import java.text.DecimalFormat
+import java.math.MathContext;
+import java.text.DecimalFormat;
+import java.util.StringTokenizer;
+
+
+class NumberService {
+
+    int DEFAULT_SCALE = 2
+    
+    DecimalFormat _formatter = new DecimalFormat("0.00");
+    
+    @ProxyMethod(local=true)
+	public def format( pattern, value ) {
+        if( ! value ) value = 0
+		def df = new DecimalFormat( pattern )
+		return df.format( value )
+	}
+    
+    @ProxyMethod(local=true)
+    public def round( amount ) {
+		if( ! amount ) amount = 0 
+		if( amount.toString().length() == 0 ) amount = 0 
+        return roundA(amount, DEFAULT_SCALE)
+    }
+    
+    @ProxyMethod(local=true)
+    public def roundA( amount, int scale ) {
+		if( amount instanceof Number ) amount = format('0.00000000',amount)
+        def bd = new BigDecimal( amount )
+        return bd.setScale(scale, RoundingMode.HALF_UP)
+    }
+    
+    @ProxyMethod(local=true)
+    public def roundToTen( value ) {
+		BigDecimal bd = new BigDecimal( value +'' )
+        if( bd < 5 ) {
+            return 0.0
+        }
+        else if( bd  < 10 )
+            return 10.0
+        else {
+			String snum = format( '#0.00000000', bd)
+			int i = snum.indexOf('.')
+            i = (i == 1 ? 2 : i)
+            MathContext mc = new MathContext(i-1, RoundingMode.HALF_UP)
+            return bd.round(mc)
+        }
+    }
+    
+    def majorNames = [
+        "",
+        " thousand",
+        " million",
+        " billion",
+        " trillion",
+        " quadrillion",
+        " quintillion"
+    ];
+    
+    def tensNames = [
+        "",
+        " ten",
+        " twenty",
+        " thirty",
+        " forty",
+        " fifty",
+        " sixty",
+        " seventy",
+        " eighty",
+        " ninety"
+    ];
+    
+    def numNames = [
+        "",
+        " one",
+        " two",
+        " three",
+        " four",
+        " five",
+        " six",
+        " seven",
+        " eight",
+        " nine",
+        " ten",
+        " eleven",
+        " twelve",
+        " thirteen",
+        " fourteen",
+        " fifteen",
+        " sixteen",
+        " seventeen",
+        " eighteen",
+        " nineteen"
+    ];
+    
+    
+    private String convertLessThanOneThousand(int number) {
+        String soFar;
+        
+        if (number % 100 < 20){
+            soFar = numNames[number % 100];
+            number /= 100;
+        } else {
+            soFar = numNames[number % 10];
+            number /= 10;
+            
+            soFar = tensNames[number % 10] + soFar;
+            number /= 10;
+        }
+        if (number == 0) return soFar;
+        return numNames[number] + " hundred" + soFar;
+    }
+	
+	@ProxyMethod(local=true)
+	public String doubleToWords(double number) {
+		return convertDouble(number)
+	}
+    
+    @ProxyMethod(local=true)
+    public String convertLong(long number) {
+        /* special case */
+        if (number == 0) { return "zero"; }
+        
+        String prefix = "";
+        
+        if (number < 0) {
+            number = -number;
+            prefix = "negative";
+        }
+        
+        String soFar = "";
+        int place = 0;
+        
+        while (number > 0) {
+            long n = number % 1000;
+            if (n != 0) {
+                String s = convertLessThanOneThousand((int)n);
+                soFar = s + majorNames[place] + soFar;
+            }
+            place++;
+            number /= 1000;
+        }
+        
+        return (prefix + soFar).trim();
+        
+    }
+    
+    @ProxyMethod(local=true)
+    public String convertInt(int number) {
+        return convertLong((long)number);
+    }
+    
+    @ProxyMethod(local=true)
+    public String convertDouble(double number) { 
+        String str = format('#0.00000000', number ); 
+        String strDec = "";
+        long longnum = (long) number; 
+        String wn = convertLong( longnum );
+        if (number > 0 && str.indexOf(".") >= 0) {
+            strDec = str.substring( str.indexOf('.')+1 ); 
+            if ( strDec && Long.parseLong(strDec) > 0)  {  
+                strDec = " AND " + getCents(strDec) + "/100"; 
+            } else {  
+                strDec = ""; 
+            } 
+        }
+        return wn + strDec;
+    }
+    
+    @ProxyMethod(local=true)
+    public String convertString(String snum) {
+        String str 	= snum;
+        String strDec	= "";
+        String[] vals = snum.split("\\.");
+        String wn = convertLong(Long.parseLong( vals[0]) );
+        if ( vals.length == 2 ) {
+            if ( Long.parseLong(vals[1]) > 0)
+                strDec = " AND " + getCents(vals[1]) + "/100";
+            else
+                strDec = "";
+        }
+        
+        return wn + strDec;
+    }
+    
+    @ProxyMethod(local=true)
+    public String getCents(String cents) {
+        cents = _formatter.format(Double.valueOf("." + cents));
+        return cents.substring(cents.indexOf(".")+1);
+    }
+
+    @ProxyMethod(local=true)
+    public def generateControlNo(){
+        java.security.SecureRandom sr = new java.security.SecureRandom();
+        sr.setSeed(System.currentTimeMillis() + System.identityHashCode(sr));
+        def padl = (sr.nextInt(9)+1).toString();
+        return (sr.nextInt(99999999) + 1).toString().padLeft(8,padl)
+    }
+}

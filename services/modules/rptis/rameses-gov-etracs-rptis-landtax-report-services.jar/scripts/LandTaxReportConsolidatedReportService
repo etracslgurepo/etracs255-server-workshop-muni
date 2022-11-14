@@ -1,0 +1,52 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class LandTaxReportConsolidatedReportService
+{
+	@Env 
+	def env
+
+	@ActiveDB('landtaxreport_consolidated')
+	def em
+
+	@ProxyMethod
+	public def getClassifications(  ) {
+		return em.getClassifications()
+	}
+
+	@Async
+    @ProxyMethod
+	public def buildReport(params){
+		params.classid = params.classification ? params.classification.objid : '%'
+		params.type = params.rputype ? params.rputype.type : '%'
+
+		def list = em.getList(params)
+		if (!list) throw new Exception('Results not found.')
+
+		def p = [TITLE:buildTitle(params) ]
+		return [reportdata:list, parameters:p]
+	}
+
+	def buildTitle(params){
+		def title = 'Consolidated Report on Real Property Tax CY ' + params.year 
+		def subtitle = ''
+		if (params.classification && params.rputype){
+			subtitle = params.classification.name + ' '
+		}
+
+		if (params.rputype){
+			subtitle += params.rputype.name + ' '
+			if (!params.classification){
+				subtitle += 'PROPERTY'	
+			}
+		}
+
+		if (subtitle) 
+			title += '\n' + subtitle
+		return title.trim()
+	}
+
+}
+
+

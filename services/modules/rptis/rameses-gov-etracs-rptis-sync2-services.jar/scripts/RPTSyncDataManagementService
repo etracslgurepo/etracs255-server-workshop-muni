@@ -1,0 +1,124 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import com.rameses.services.extended.*
+import java.io.File
+import com.rameses.fileupload.*
+
+
+class RPTSyncDataManagementService
+{   
+	@XConnection('fileupload')
+    def fu
+
+	@DataContext('rpt_syncdata_error')
+	def em_sync_error
+
+	@DataContext('rpt_syncdata_fordownload')
+	def em_sync_fordownload
+
+	@DataContext('rpt_syncdata_downloaded')
+	def em_sync_downloaded
+
+	@Service("Var")
+	def var
+
+	@DataContext("rpt_syncdata_var")
+	def em_var
+	
+
+	def UPLOAD_FLAG = "fileserver_upload_task_active"
+	def DOWNLOAD_FLAG = "fileserver_download_task_active"
+
+
+
+	@ProxyMethod
+	public def getInfo() {
+		def service = [
+			uploader: getStatus(UPLOAD_FLAG),
+			downloader: getStatus(DOWNLOAD_FLAG),
+		]
+		def info = [
+			service: service,
+			files: getFilesForUpload(),
+		]
+		return info
+	}
+
+	@ProxyMethod
+	public def updateUploaderStatus(newstatus) {
+		def newValue = "on".equalsIgnoreCase(newstatus) ? 1 : 0;
+		em_var.find([name: UPLOAD_FLAG]).update([value: newValue])
+		return newstatus;
+	}
+
+	@ProxyMethod
+	public def updateDownloaderStatus(newstatus) {
+		def newValue = "on".equalsIgnoreCase(newstatus) ? 1 : 0;
+		em_var.find([name: DOWNLOAD_FLAG]).update([value: newValue])
+		return newstatus;
+	}
+
+
+
+
+
+	@ProxyMethod
+	public void rescheduleErrors() {
+		em_sync_error.where('1=1').delete()
+		em_sync_downloaded.where('error = 1').update([error: 0])
+	}
+
+	@ProxyMethod
+	public void deleteError(error) {
+		fu.delete(error.filekey)
+		em_sync_error.find([objid: error.objid]).delete()
+		em_sync_downloaded.find([objid: error.filekey]).delete();
+	}
+
+	@ProxyMethod
+	public void deleteErrors() {
+		def haserror = false
+		em_sync_error.where('1=1').list().each{
+			try {
+				deleteError(it)
+			} catch (e) {
+				haserror = true
+			}
+		}
+		if (haserror) {
+			throw new Exception('Some data were not deleted. Please try again.')
+		}
+	}
+
+	@ProxyMethod
+	public def getFilesForUpload() {
+		File folder = new File(fu.conf.uploadDir)
+		def files = []
+        return geFiles(files, folder)
+	}
+
+	def geFiles(files, folder) {
+        for (File fileEntry : folder.listFiles()) {
+            if (fileEntry.isDirectory()) {
+                getFiles(files, fileEntry)
+            } else {
+                if (!fileEntry.name.startsWith(ObjectWriter.TEMP_FILE_PREFIX)) {
+                    String key = extractKey(fileEntry.getPath())
+					files << [lgu: [:], key: key ]
+                }
+            }
+        }
+		return files
+    }
+
+    String extractKey(String filePath) {
+        int keyStartIdx = filePath.indexOf("uploads") + "uploads".length() + 1
+        return filePath.substring(keyStartIdx).replace("\\", "/")
+    }
+
+	def getStatus(name) {
+		def status = var.getProperty(name, 0).toString()
+		return status.matches("1|y|yes|t|true") ? "on" : "off"
+	}
+
+}

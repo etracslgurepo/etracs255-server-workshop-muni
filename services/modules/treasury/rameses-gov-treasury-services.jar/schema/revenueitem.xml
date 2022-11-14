@@ -1,0 +1,25 @@
+<schema>
+
+	<element name="revenueitem" tablename="itemaccount">
+		<field name="objid" primary="true"/>	
+		<field name="state" />
+		<field name="code" required="true"/>
+		<field name="title" required="true"/>
+		<field name="description" />
+		<field name="type" />
+		<field name="fund_objid" required="true"/>
+		<field name="fund_code" required="true"/>
+		<field name="fund_title" required="true"/>
+		<field name="defaultvalue" />
+		<field name="valuetype"  />
+		<field name="org_objid"  />
+		<field name="org_name"  />
+		<field name="parentid"  />
+	</element>
+
+	<element name="tag" tablename="itemaccount_tag">
+		<field name="acctid" primary="true"/>	
+		<field name="tag" primary="true"/>	
+	</element>
+
+</schema>

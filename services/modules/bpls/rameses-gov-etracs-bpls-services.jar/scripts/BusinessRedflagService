@@ -1,0 +1,71 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.services.extended.*
+
+public class BusinessRedflagService extends ActiveCrudListService {
+
+	@ActiveDB("business_redflag")
+	def em;
+	
+	@Service("DateService")
+	def dateSvc;
+
+	@Service("SequenceService")
+	def seqSvc;
+
+	@Service('NotificationService')
+	def notificationService
+
+	@Env
+	def env;
+
+	public void beforeCreate(o) {
+		o.dtfiled = dateSvc.getServerDate();
+		o.filedby = [objid:env.USERID, name: env.FULLNAME];
+		o.caseno = "RF-"+seqSvc.getNextFormattedSeries("BUSINESS_REDFLAG");
+		o.resolved = 0;
+	}
+
+	@ProxyMethod
+	public void resolve(o) {
+		if(!o.remarks) throw new Exception('Please provide remarks')
+		o.dtresolved = dateSvc.getServerDate();
+		o.resolvedby = [objid:env.USERID, name: env.FULLNAME];
+		o.resolved = 1;
+		em.update( o );
+		notificationService.removeMessage([objid: o.objid]); 
+	} 
+
+	@ProxyMethod
+	public def getOpenIssues(def o) {
+		if(!o.businessid) throw new Exception("businessid is required for BusinessRedFlag.getOpenIssues");
+		if(!o.blockaction) throw new Exception("blockaction is required for BusinessRedFlag.getOpenIssues");
+		return em.getOpenIssues(o);
+	}
+
+	public void afterOpen( o ) {
+		def b = em.findBusinessInfo( o );
+		o.bin = b.bin;
+		o.businessname = b.businessname;
+		o.ownername = b.owner.name; 
+	}
+
+
+	@ProxyMethod
+	public void notifyMessage(def o) {
+		o.each {
+	  		def m = [
+	            objid     		: it.objid, 
+	            senderid  		: env.USERID,
+	            sender    		: env.FULLNAME,
+	            recipientid   	: it.filedby.objid,
+	            recipienttype 	: 'user',
+	            message   		: 'Needs resolving ' + it.caseno + ':' + it.message,
+	            filetype  		: 'business_redflag_resolve',
+	            data 	  		: [:],
+	        ];
+	        notificationService.addMessage( m );	
+		}
+	}
+}

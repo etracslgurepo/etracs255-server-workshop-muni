@@ -1,0 +1,12 @@
+<schema>
+    <element name="propertypayer" tablename="propertypayer">
+        <field name="objid" primary="true" /> 
+        <field name="taxpayer_objid" required="true" />
+    </element>
+
+    <element name="item" tablename="propertypayer_item">
+        <field name="objid" primary="true" />
+        <field name="parentid" required="true" />
+        <field name="rptledger_objid" required="true" />
+    </element>
+</schema>

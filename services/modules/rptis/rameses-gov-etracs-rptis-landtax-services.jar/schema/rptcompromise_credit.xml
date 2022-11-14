@@ -1,0 +1,20 @@
+<schema>
+	<element tablename="rptcompromise_credit">
+		<field name="objid" primary="true" prefix="RCC"/>
+		<!-- references rptcompromise -->
+		<field name="parentid" required="true"/>
+		<field name="receiptid" />
+		<field name="installmentid" />
+		<field name="collector_name" required="true" caption="Collector"/>
+		<field name="collector_title" required="true" caption="Title"/>
+		<field name="orno" required="true" caption="Receipt No."/>
+		<field name="ordate" required="true" caption="Receipt Date"/>
+		<field name="oramount" type="decimal" required="true" caption="Amount"/>
+		<field name="amount" type="" required="true" caption="Amount"/>
+		<field name="mode" required="true" caption="Mode"/>
+		<field name="paidby" required="true" caption="Paid By" />
+		<field name="paidbyaddress" required="true" caption="Address" />
+		<field name="partial" type="boolean" caption="Partial"/>
+		<field name="remarks" />
+	</element>
+</schema>

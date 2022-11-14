@@ -1,0 +1,65 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import com.rameses.util.*
+import com.rameses.services.extended.*
+
+
+class FAASRestrictionService
+{
+	@Env
+	def env 
+
+	@Service('LogService')
+	def logSvc 
+
+	@DataContext('faas_restriction')
+	def em_restriction
+
+	@DataContext('rptledger')
+	def em_ledger
+
+	@DataContext('rpu')
+	def em_rpu 
+
+
+	@ProxyMethod
+	public def approve( entity ) {
+		def old = em_restriction.read(entity)
+		if (!old) 
+			throw new Exception('Record does not exist or has already been deleted.')
+		if (old.state == 'UNRESTRICTED')
+			throw new Exception('Record has already been unrestricted.')
+		entity.state = 'ACTIVE'
+		entity.ledger = em_ledger.find([faasid:entity.parent.objid]).first() 
+		entity.rpumaster = em_rpu.find([objid:entity.parent.rpuid]).first()
+		return em_restriction.update(entity)
+	}
+
+	@ProxyMethod
+	public void removeRestriction( entity ) {
+		def old = em_restriction.read(entity)
+		if (!old) 
+			return 
+		if (old.state == 'UNRESTRICTED')
+			throw new Exception('Delete is not allowed. Record has already been unrestricted.')
+		em_restriction.delete(entity)	
+	}
+
+	@ProxyMethod
+	public def cancel( restriction, receipt ) {
+		restriction.state = 'UNRESTRICTED'
+		restriction.receipt = receipt
+		em_restriction.update(restriction)
+		return restriction
+	}
+
+	@ProxyMethod
+	public def reactivate(restriction) {
+		restriction.state = 'ACTIVE'
+		restriction.receipt = null 
+		em_restriction.update(restriction)
+		return restriction
+	}
+
+}
+

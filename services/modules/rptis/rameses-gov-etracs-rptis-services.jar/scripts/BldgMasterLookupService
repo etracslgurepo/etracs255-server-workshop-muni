@@ -1,0 +1,27 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class BldgMasterLookupService
+{
+	@ActiveDB('bldgrpu')
+	def em 
+
+	
+	@Service('RPTUtil')
+	def util
+	
+
+	@ProxyMethod
+	public def lookupBldgMaster( params ) {
+		params.state 		= (params.state ? params.state : '') + '%'
+		params.ry 			= (params.ry ? params.ry : '') + '%'
+		params.pin 			= (params.pin ? params.pin : '') + '%'
+		params.searchtext 	= (params.searchtext ? params.searchtext : '') + '%';
+		return em.getBldgMasterList(params)
+	}
+
+
+
+}
+

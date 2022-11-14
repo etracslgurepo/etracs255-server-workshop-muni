@@ -1,0 +1,79 @@
+import com.rameses.annotations.*
+import com.rameses.eserver.*;
+import com.rameses.common.*;
+
+class LandRpuInterceptor
+{
+	@Service('LandRPUService')
+	def svc 
+
+	@Service('LandRPUGRService')
+	def grSvc 
+
+	@Service('RPTUtil')
+	def util 
+
+
+	@After(pattern="RPUService.initRpu", eval="#{result.rputype == 'land'}") 
+	public void initLandRpu( evt ) {
+		svc.initLandRpu(evt.result)
+	}
+
+
+	@After(pattern="RPUService.generateNewIds", eval="#{result.rputype == 'land'}") 
+	public void generateNewIds( evt ) {
+		svc.generateNewIds(evt.result)
+	}
+
+
+	@After(pattern="RPUService.calculateAssessment", eval="#{result.rputype == 'land'}") 
+	public void calculateAssessment( evt ) {
+		svc.calculateAssessment(evt.result)
+	}
+
+	
+	@After(pattern="RPUService.openRpu", eval="#{result.rputype == 'land'}") 
+	public void openLandRpu( evt ) {
+		def rpu = evt.result
+		rpu.putAll( svc.openLandRpu(rpu.objid) )	
+	}
+	
+
+	@After(pattern="RPUService.createRpu", eval="#{result.rputype == 'land'}") 
+	public void createLandRpu( evt ) {
+		def rpu = evt.result
+		svc.createLandRpu(rpu)
+	}
+
+
+	@After(pattern="RPUService.updateRpu", eval="#{result.rputype == 'land'}") 
+	public void updateLandRpu( evt ) {
+		def rpu = evt.result
+		svc.updateLandRpu(rpu)
+	}
+
+
+	@Before(pattern="RPUService.deleteRpu", eval="#{args[0].rputype == 'land'}") 
+	public void deleteLandRpu( evt ) {
+		def rpu = evt.args[0]
+		svc.deleteLandRpu(rpu)
+	}
+
+	@Before(pattern="RPUService.deleteItems", eval="#{args[0].rputype == 'land'}") 
+	public void deleteLandRpuItems( evt ) {
+		def rpu = evt.args[0]
+		svc.deleteItems(rpu)
+	}
+
+	@After(pattern="RPUService.reviseRpu", eval="#{result.rputype == 'land'}") 
+	public void reviseRpu( evt ) {
+		try{
+			grSvc.reviseLandRpu(evt.result)
+		}
+		catch(e){
+			throw e
+		}
+	}	
+
+}
+

@@ -1,0 +1,23 @@
+package bpassessment;
+
+import java.util.*;
+import com.rameses.rules.common.*;
+import bpls.facts.*;
+
+global RuleAction action;
+
+rule "assert-variables"
+	salience -100
+	no-loop
+	when
+	then
+		action.execute( "assert_sysvars", null, drools);
+end
+
+rule "assert-taxfees"
+	salience -100
+	no-loop
+	when
+	then
+		action.execute( "assert_taxfee", null, drools);
+end

@@ -1,0 +1,170 @@
+import com.rameses.annotations.*;
+
+class PaymentPostingService {
+	
+	@DataContext(dynamic=true)
+	def em;
+
+	@PersistenceContext
+	def db;
+
+	@Service("WorkflowTaskService")
+	def taskSvc;
+
+	@Service("PaymentPostingHandler")
+	def handler;
+
+
+	@Service("SequenceService")
+	def seqSvc;
+
+	@ProxyMethod 
+	public void post( def pmt ) { 
+		if ( !pmt.discount ) pmt.discount = 0.0; 
+		pmt.items.each{
+			it.discount = (it.discount ? Math.abs(it.discount) : 0.0); 
+		}
+
+		//save first the xxx_payment. 
+		def emMap = [:];
+		def emLookup = { name ->
+			if( !emMap.containsKey(name)) {
+				emMap.put( name, em.lookup( name));
+			}
+			return emMap.get(name);
+		}
+		
+		def postitems = [];
+		postitems.addAll( pmt.items ); 
+
+		// this is for overpayment 
+		if ( pmt.credits ) postitems.addAll( pmt.credits ); 
+		if ( pmt.creditpayments ) postitems.addAll( pmt.creditpayments ); 
+
+		// save or update the reference first 
+		postitems.each { 
+			it.discount = (it.discount ? Math.abs(it.discount) : 0.0); 
+			if( it.txntype== "credit" ) {
+				def reftype = it.reftype;
+				if ( !reftype ) reftype = pmt.creditschemaname; 
+				if ( !reftype ) throw new Exception('reftype is required in PaymentPostingService.post for credit item'); 
+
+				//if there is overpayment or credit items, create a new xxx_credit item
+				def p = [:];
+				p.putAll( it );
+				p.parentid = pmt.objid;
+				p.refid = pmt.objid;
+				p.refno = pmt.refno;
+				p.refdate = pmt.refdate;
+				p.reftype = (pmt.reftype == null ? "cashreceipt" : pmt.reftype); 
+
+				def crEm = emLookup( reftype );
+				crEm.create( p );
+			}
+			else if( it.txntype == "creditpayment") {
+				if( !pmt.creditschemaname ) throw new Exception('please specify a creditschemaname'); 
+
+				//this is to close out deduction of previous payment
+				def reftype = it.reftype;
+				if(!reftype) reftype = pmt.creditschemaname; 
+				def crEm = emLookup( reftype );
+				crEm.find( [objid: it.refid ] ).update([amtpaid: "{amount}"]);
+			}
+			else if(it.reftype) {
+				def gb = emLookup( it.reftype  );
+				//if there is a _new marker, then create this before saving
+				if( !it.refid || it.refid.matches("new|create") ) {
+					it.remove("refid");
+					gb.create( it );	
+				}
+				else {
+					//find first if it exists then save
+					def disc = Math.abs(it.discount);
+					gb.find( [objid: it.refid] ).update( [amtpaid: "{amtpaid + :amt}", discount: "{discount + :disc}" ], [amt: it.amount - disc, disc: Math.abs(it.discount) ] );
+				}			
+			}
+		}
+
+		def txntype = pmt.txntype; 
+		def taskInfo = pmt._workflow;
+
+		pmt.voided = 0;
+		def pmtEm = emLookup( pmt._schemaname );
+
+		pmtEm.create( pmt );
+		pmt.txntype = txntype; 
+		if( taskInfo ) {
+			if( !taskInfo.processname ) 
+				throw new Exception("PaymentPostingService.invokeWorkflow: processname is required");
+			if( !taskInfo.refid )
+				throw new Exception("PaymentPostingService.invokeWorkflow: refid is required");
+			taskInfo.autostart = true;	
+			taskSvc.signal( taskInfo );		
+		}
+	}
+  
+	@ProxyMethod 
+	public def reversePayment( def pmt ) {
+		if(!pmt._schemaname ) 
+			throw new Exception("PaymentPostingService.reversePayment error. _schemaname is required");
+		if( !pmt.objid)
+			throw new Exception("PaymentPostingService.reversePayment. Payment objid is required");
+
+		def emMap = [:];
+		def emLookup = { name ->
+			if( !emMap.containsKey(name)) {
+				emMap.put( name, em.lookup( name));
+			}
+			return emMap.get(name);
+		}
+
+		def postitems = [];
+		postitems.addAll( pmt.items ); 
+		if ( pmt.creditpayments ) postitems.addAll( pmt.creditpayments ); 
+
+		//save or update the reference first
+		postitems.each {
+			if( it.txntype== "credit" ) {
+				def reftype = it.reftype; 
+				if ( !reftype ) reftype = pmt.creditschemaname; 
+				if ( !reftype ) throw new Exception('reftype is required in PaymentPostingService.reversePayment for credit item'); 
+
+				def crEm = emLookup( reftype );
+				if ( crEm.find([ objid: it.objid ]).select('amtpaid').first()?.amtpaid > 0 ) 
+					throw new Exception('Credit amount has already been used'); 
+
+				crEm.find([ objid: it.objid ]).delete(); 
+			}
+			else if( it.txntype == "creditpayment") {
+				if( !it.reftype ) throw new Exception('reftype is required in post items'); 
+
+				def crEm = emLookup( it.reftype );
+				crEm.find([ objid: it.refid ]).update([ amtpaid: 0.0 ]); 
+			}
+			else if(it.reftype) { 
+				if( !it.reftype ) throw new Exception('reftype is required in post items'); 
+
+				def refEm = emLookup( it.reftype  ); 
+				if(!it.discount) it.discount = 0;
+				def disc = Math.abs(it.discount);
+				refEm.find([ objid: it.refid ]).update( [amtpaid: "{amtpaid - :amt}", discount: "{discount - :disc}"], [amt: it.amount - disc, disc: disc ] );
+			} 
+		} 
+
+		def pmtEm = emLookup( pmt._schemaname );
+		pmtEm.find( [ objid: pmt.objid ] ).update( [voided : 1 ] );
+
+		def taskInfo = handler.getVoidWorkflow( pmt );
+		if( taskInfo ) {
+			if( !taskInfo.processname ) 
+				throw new Exception("PaymentPostingService.getVoidWorkflow: processname is required");
+			if( !taskInfo.refid )
+				throw new Exception("PaymentPostingService.getVoidWorkflow: refid is required");
+			if ( !taskInfo.action ) taskInfo.action = 'revert'; 
+			taskInfo.autostart = true;	
+			taskSvc.signal( taskInfo );		
+		}
+		
+		return pmt;
+	}
+}

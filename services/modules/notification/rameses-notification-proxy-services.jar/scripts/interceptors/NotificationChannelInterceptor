@@ -1,0 +1,25 @@
+import com.rameses.annotations.*;
+
+class NotificationChannelInterceptor {
+	
+	@XConnection( dynamic=true )
+	def dynaConn;
+
+	@After( pattern="NotificationChannelService.register", index=-9999 )
+	public void register( evt ) {
+		def params = evt.args[0]; 
+		if ( params && params.channel ) {
+			def conn = dynaConn.lookup('ws_sender'); 
+			conn.send([ action : 'addchannel', channel: params.channel ]); 
+		} 
+	} 
+
+	@After( pattern="NotificationChannelService.send", index=-9999 )
+	public void send( evt ) {
+		def params = evt.args[0]; 
+		if ( params ) { 
+			def conn = dynaConn.lookup('ws_sender'); 
+			conn.send( params ); 
+		} 
+	} 
+} 

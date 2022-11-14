@@ -1,0 +1,28 @@
+import com.rameses.annotations.*;
+
+class LGUOrgInterceptor {
+
+	@DataContext( dynamic=true )
+	def dynaEm;
+
+	@After(pattern="OrgService.getRoot")
+	void afterGetRoot( evt ) { 
+		def res = evt.result;
+		if ( !res ) return; 
+		if ( !res.orgclass ) return; 
+
+		def em_lgu = null; 
+		
+		try {
+			em_lgu = dynaEm.lookup( res.orgclass.toString().toLowerCase()); 
+		} 
+		catch(Throwable t) { 
+			t.printStackTrace(); 
+			return; 
+		}
+
+		if ( em_lgu == null ) return; 
+
+		res.lgu = em_lgu.find([ objid: res.objid ]).first(); 
+	}
+} 

@@ -1,0 +1,60 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.util.*;
+import com.rameses.services.extended.*;
+
+
+class SignatureService
+{
+	
+	/*========================================================
+	** Returns a map with keys corresponding to each
+	** signatories
+	** 
+	=========================================================*/
+
+	@ProxyMethod
+	public def decodeSignatories( signaturelist ) {
+		def data = [tampered:false, signatories:[:]]
+		def tamperedlist = []
+
+		Base64Cipher cipher = new Base64Cipher()
+		signaturelist.findAll{it.signature != null}.each{
+			def map = cipher.decode(it.signature)
+			
+			data.signatories[it.state] = [
+				objid : it.objid, 
+				state : it.state,
+				actor : it.actor,
+				dtsigned : it.dtsigned
+			]
+
+			if (map.taskid == 'system' || it.objid.matches('.*' + map.taskid + '.*')){
+				data.signatories[it.state].signature = map.signature
+			}
+			else{
+				data.tampered = true
+				tamperedlist << it.state 
+			}
+		}
+		if (data.tampered){
+			data.tamperedsigmsg = buildTamperMessage(tamperedlist)
+		}
+		return data
+	}
+
+	def buildTamperMessage(tamperedlist){
+		if (tamperedlist.size() == 1)
+			return 'Signature of ' + tamperedlist[0] + ' is tampered.'
+		if (tamperedlist.size() == 2)
+			return 'Signatures of ' + tamperedlist[0] + ' and ' + tamperedlist[1] +' are tampered.'
+
+		def s = tamperedlist.join(', ')
+		def lastindex = s.lastIndexOf(',')
+		s = s.substring(0,lastindex) + ' and ' + s.substring(lastindex+1)
+
+		return 'Signatures of ' + s + ' are tampered.'
+	}
+
+}
+

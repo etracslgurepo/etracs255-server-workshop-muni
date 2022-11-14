@@ -1,0 +1,17 @@
+<schema>
+	<element  tablename="cashreceipt_marriage">
+		<field name="objid" primary="true"/>
+		<field name="groomname" required="true" />
+		<field name="groomaddress" required="true" />
+		<field name="groomageyear" required="true" />
+		<field name="groomagemonth" />
+		<field name="bridename" required="true" />
+		<field name="brideaddress" required="true" />
+		<field name="brideageyear" required="true" />
+		<field name="brideagemonth" />
+		<field name="registerno" required="true" />
+		<field name="attachments" required="true" />
+		<field name="lcrofficer" required="true" />
+		<field name="lcrofficertitle" required="true" />
+	</element>
+</schema>

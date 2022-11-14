@@ -1,0 +1,22 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+
+class RPTSalesDataInterceptor
+{
+	@Service('RPTSalesDataService')
+    def svc
+
+
+    @Before(pattern="FAASService.deleteFaas") 
+	public void deleteFaas( evt ) {
+		def faas = evt.args[0]
+		if (faas?.objid){
+			svc.removeEntity(faas)
+		}
+	}
+
+
+}
+

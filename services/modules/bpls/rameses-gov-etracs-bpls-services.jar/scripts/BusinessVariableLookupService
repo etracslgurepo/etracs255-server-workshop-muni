@@ -1,0 +1,27 @@
+import com.rameses.annotations.*;
+import com.rameses.services.extended.*;
+
+class BusinessVariableLookupService extends ActiveListService {
+
+	@ActiveDB("businessvariable")
+	def em;
+
+	String listMethod = "getLookup"
+
+	@ProxyMethod
+	public def getColumns( def p ) {
+		return [
+			[name:'caption', caption:'Caption'],
+			[name:'datatype', caption:'Data Type']
+		]	
+	}
+
+	public void beforeList( o ) {
+		o.searchtext = "%"+ o.searchtext + "%";
+		if(o._tag) {
+			o.datatype = o._tag;
+			o._listMethod = "getLookupByType";
+		}
+	}
+
+}

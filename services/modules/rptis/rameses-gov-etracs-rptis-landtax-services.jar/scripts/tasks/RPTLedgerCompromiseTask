@@ -1,0 +1,27 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import com.rameses.services.extended.*
+
+class RPTLedgerCompromiseTask 
+{
+	@ActiveDB('rptcompromise')
+	def em 
+
+	@Service('DateService')
+	def dtSvc 
+
+	@Service('RPTCompromiseService')
+	def svc 
+
+	@Schedule(interval=20)
+	public def closeDefaultedCompromise(task) {
+		def enddate = dtSvc.add(dtSvc.serverDate, '-1d');
+		def list = em.getDefaultedCompromises([enddate:enddate]);
+		list.each{
+			svc.closeDefaultedCompromise(it)
+			println 'Closing defaulted compromise...'
+		}
+	}	
+
+}
+

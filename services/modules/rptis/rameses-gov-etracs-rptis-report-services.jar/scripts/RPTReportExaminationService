@@ -1,0 +1,53 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class RPTReportExaminationService
+{
+	@Env 
+	def env 
+
+    @ActiveDB('rptreport_examination')
+    def em
+
+    @Service('RPTUtil')
+    def util 
+
+	@ProxyMethod
+	def getUsers(){
+		return em.getUsers();
+	}
+
+    @Async
+	@ProxyMethod
+	public def generateReport( params )  {
+		params.userid = (params.user ? params.user.objid : '%')
+		params.period = util.buildPeriod(params)
+		util.buildStartEndDateFilter(params)
+
+		params.lguid = (params.lgu ? params.lgu.objid : '%')
+		params.brgyfilter = ''
+		if (params.barangay) {
+			params.brgyid = params.barangay.objid
+			params.brgyfilter = ' AND rp.barangayid = $P{brgyid} '	
+		}
+		
+		def list = em.getExaminationFindings(params)
+		if (!list) throw new Exception('Records not found.')
+
+		list.each{
+			if (it.refnoprefix){
+				it.refno = it.refnoprefix + it.refno 
+			}
+		}
+
+		def parameters = [:] 
+		parameters.TITLE = 'PROPERTY EXAMINATION AND AUDIT REPORT'
+		parameters.PERIOD = params.period
+		parameters.ORGCLASS = env.ORGCLASS 
+		parameters.EXAMINER = params.user 
+		parameters.LGU = (params.lgu ? params.lgu.name : 'ALL')
+		return [reportdata:list, parameters:parameters]
+	}
+
+}

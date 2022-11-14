@@ -1,0 +1,43 @@
+import com.rameses.annotations.*;
+
+class BusinessInfoHistoryService {
+	
+	@ActiveDB("business_info_history")
+	def em;
+
+	@ProxyMethod
+	public def getColumns( def o ) {
+		def yrs = em.getYears(o);
+		def cols = [];
+		cols << [name:'lobname', caption:'Line of Business'];
+		cols << [name:'attrname', caption:'Attribute'];
+		yrs.each {
+			cols << [name:""+it.appyear, caption:""+it.appyear, alignment:'CENTER'];
+		}		
+		return cols;
+	}
+
+	@ProxyMethod
+	public def getList( def o ) {
+		if(!o.businessid)
+			throw new Exception("businessid is required");
+
+		def rows = em.getLobAttribute(o);
+		def valueMap = em.getValues(o).groupBy{ [it.lobname, it.attrname] };
+		
+		rows.each { row->
+			def k = [row.lobname, row.attrname];
+			valueMap.get( k ).each {
+				def v = null;
+				if( it.decimalvalue !=null ) v = it.decimalvalue;
+				else if( it.intvalue!=null) v = it.intvalue;
+				else if( it.stringvalue!=null) v = it.stringvalue;
+				else if( it.boolvalue!=null) v = it.boolvalue;
+				row.put( ""+it.appyear, v );
+			}			
+		}
+		return rows;
+	}
+
+
+}

@@ -1,0 +1,91 @@
+import com.rameses.annotations.*;
+
+class RemittanceModifyService {
+
+	@DataContext('remittance') 
+	def rem_db; 
+
+	@DataContext('remittance_fund') 
+	def rem_fund_db; 
+
+	@ActiveDB('remittance_modify')
+	def rem_mod_db;
+
+
+	@ProxyMethod 
+	public void rebuildFund( param ) {
+		if ( !param.remittanceid ) throw new Exception('remittanceid parameter is required'); 
+
+		def findby = [ objid: param.remittanceid ]; 
+		def rem = rem_db.find( findby ).select('objid').first(); 
+		if ( !rem ) throw new Exception('Remittance record cannot be found'); 
+
+		findby.clear(); 
+		findby.remittanceid = param.remittanceid; 
+		rem_fund_db.find( findby ).delete(); 
+
+		def uu = [:]; 
+		uu.amount = uu.totalcash = uu.totalcheck = uu.totalcr = 0.0; 
+
+		rem_mod_db.getBuildRemittanceFunds( findby ).each{ o-> 
+			o.objid = o.remittanceid +'|'+ o.fund.objid; 
+			o.controlno = o.remittanceno +'-'+ o.fund.code; 
+			o.remittance = [objid: o.remittanceid]; 
+			o.cashbreakdown = []; 
+			rem_fund_db.create( o ); 
+
+			uu.amount += o.amount; 
+			uu.totalcash += o.totalcash; 
+			uu.totalcheck += o.totalcheck; 
+			uu.totalcr += o.totalcr; 
+		} 
+
+		rem_db.find([ objid: param.remittanceid ]).update( uu ); 
+	}
+
+
+	@ProxyMethod
+	public void updateCashBreakdown( param ) {
+		if ( !param.objid ) throw new Exception('objid parameter is required');  
+		if ( !param.cashbreakdown ) throw new Exception('cashbreakdown parameter is required');  
+
+		def findby = [ objid: param.objid ]; 
+		def rem = rem_db.find( findby ).select('objid,totalcash').first(); 
+		if ( !rem ) throw new Exception('Remittance record cannot be found'); 
+
+		def cashbreakdown = param.cashbreakdown.findAll{( it.qty > 0 )}
+		def newtotalcash = cashbreakdown.sum{( it.amount ? it.amount : 0.0 )}
+		if ( newtotalcash == null ) newtotalcash = 0.0; 
+
+		if ( newtotalcash != rem.totalcash ) 
+			throw new Exception('Total Cash breakdown must be equal to '+ rem.totalcash ); 
+
+	    rem_db.find( findby ).update([ cashbreakdown: cashbreakdown ]); 
+	}
+
+	@ProxyMethod
+	public def changeLiqOfficer( param ) {
+		if (!param.objid) throw new Exception('objid parameter is required'); 
+		if (!param.liquidatingofficer?.objid) throw new Exception('liquidatingofficer.objid parameter is required'); 
+		if (!param.liquidatingofficer?.name) throw new Exception('liquidatingofficer.name parameter is required'); 
+		if (!param.liquidatingofficer?.title) throw new Exception('liquidatingofficer.title parameter is required'); 
+
+		def findby = [ objid: param.objid ]; 
+		def old = rem_db.find( findby ).select('objid').first(); 
+		if ( !old ) throw new Exception('Remittance record cannot be found'); 
+
+		// execute update to begin the record-locking
+		rem_db.find( findby ).update([ liquidatingofficer: [name: new java.rmi.server.UID().toString()]]); 
+
+		def strcols = 'objid,state,liquidatingofficer.*';
+		def remdata = rem_db.find( findby ).select( strcols ).first(); 		
+
+		if ( !remdata.state.toString().toUpperCase().matches('OPEN')) 
+			throw new Exception('Change Liq.Officer is allowed only when status is OPEN'); 
+
+		remdata.liquidatingofficer = param.liquidatingofficer; 
+		rem_db.find( findby ).update( remdata ); 
+		return remdata; 
+	}
+
+}

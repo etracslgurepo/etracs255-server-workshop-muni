@@ -1,0 +1,49 @@
+import com.rameses.annotations.*;
+
+class CollectionVoucherJevService  {
+
+	@DataContext("collectionvoucher")
+	def cvEm;
+
+	@DataContext("collectionvoucher_fund")
+	def cvFundEm;
+
+	@Service("JevService")
+	def jevSvc;	
+
+
+	@Async 
+	@ProxyMethod 
+	public void postAsync( o ) {
+		post( o ); 
+	}
+
+	@ProxyMethod 
+	public void post( o ) { 
+		def p = cvEm.find([ objid: o.objid ]).first();
+		if ( !p ) throw new Exception("Collection Voucher not found!"); 
+		
+		def ref = [refid:p.objid,refno:p.controlno,reftype:'collectionvoucher', refdate:p.controldate, txntype:'COLLECTION'];
+
+		def jevBatch = [:];
+		jevBatch.ref = ref;
+		jevBatch.funds = [];
+		jevBatch.items = [];
+
+		cvFundEm.find([ parentid: p.objid ]).select('objid,fund.*,amount').list().each{ 
+			jevBatch.funds << [ objid: it.objid, refno:p.controlno, fund: it.fund, amount: it.amount  ];	 
+		} 
+
+		def pm = [collectionvoucherid: p.objid ];
+		jevBatch.items.addAll( cvEm.getCashLedgerItems( pm ) );
+		jevBatch.items.addAll( cvEm.getBankAccountLedgerItems( pm ) );
+		jevBatch.items.addAll( cvEm.getIncomeLedgerItems( pm ) );
+		jevBatch.items.addAll( cvEm.getPayableLedgerItems( pm ) );
+		jevBatch.items.each{
+			it.acctid = it.itemacctid; 
+			it.acctcode = it.itemacctcode; 
+			it.acctname = it.itemacctname;
+		}
+		jevSvc.createBatch( jevBatch );
+	}
+}

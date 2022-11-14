@@ -1,0 +1,22 @@
+<schema>
+    <element tablename="vw_rptledger_avdifference">
+        <field name="objid" primary="true" />
+        <field name="state" />
+        <field name="rptledgerid" />
+        <field name="faasid" />
+        <field name="tdno" />
+        <field name="txntype_objid" />
+        <field name="classification_objid" />
+        <field name="actualuse_objid" />
+        <field name="taxable" type="boolean" />
+        <field name="backtax" type="boolean" />
+        <field name="fromyear" type="integer" />
+        <field name="fromqtr" type="integer" />
+        <field name="toyear" type="integer" />
+        <field name="toqtr" type="integer" />
+        <field name="assessedvalue" type="decimal"/>
+        <field name="systemcreated" type="boolean"/>
+        <field name="reclassed" type="boolean"/>
+        <field name="idleland" type="boolean"/>
+    </element>
+</schema>

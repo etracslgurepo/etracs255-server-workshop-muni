@@ -1,0 +1,25 @@
+<schema>
+    <element tablename="rptledger_redflag">
+        <field name="objid" primary="true" prefix="RLR" />
+        <field name="state" required="true" caption="State" />
+        <field name="caseno" caption="Case No." searchable="true" />
+        <field name="dtfiled" caption="Date Filed" />
+        <field name="type" required="true"  caption="Type" searchable="true" />
+        <field name="finding" required="true" />
+        <field name="remarks" />
+        <field name="blockaction" caption="Action" searchable="true" />
+        <field name="filedby_objid" />
+        <field name="filedby_name" required="true" />
+        <field name="filedby_title" required="true" />
+        <field name="resolvedby_objid" />
+        <field name="resolvedby_name" />
+        <field name="resolvedby_title" />
+        <field name="dtresolved" />
+
+        <complex name="rptledger" ref="rptledger" jointype="many-to-one"
+            includefields="tdno,fullpin,owner.name,totalmv,totalav"
+        >
+            <key field="parent_objid" target="objid" />
+        </complex>
+    </element>
+</schema>

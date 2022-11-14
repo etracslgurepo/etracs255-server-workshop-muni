@@ -1,0 +1,38 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+
+class ListUtilService
+{
+	@PersistenceContext('main')
+	def em
+	
+	@ProxyMethod
+	public List getList( namedsql, params ) {
+		if (! params) params = [:]
+		params.searchtext = (params.searchtext ? params.searchtext : '') + '%'
+
+		def qry = em.sqlContext.createNamedQuery(namedsql)
+		
+		if (params._start != null){
+			qry.setFirstResult( params._start )
+			qry.setMaxResults(params._limit)
+		}
+		
+		return qry.setParameters(params).resultList 
+	}
+
+	@ProxyMethod
+	public List getList( namedsql, params, pagingKeys ) {
+		if (! params) params = [:]
+		params.searchtext = (params.searchtext ? params.searchtext : '') + '%'
+
+		def qry = em.sqlContext.createNamedQuery(namedsql)
+		
+		if (params._start != null){
+			qry.setFirstResult( params._start )
+			qry.setMaxResults(params._limit)
+		}
+		qry.setPagingKeys(pagingKeys);
+		return qry.setParameters(params).resultList 
+	}
+}

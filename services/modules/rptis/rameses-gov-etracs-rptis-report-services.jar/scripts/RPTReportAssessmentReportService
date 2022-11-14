@@ -1,0 +1,139 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class RPTReportAssessmentReportService
+{
+	@Env 
+	def env
+
+	@ActiveDB('rptreport_assessment_report')
+	def em
+
+	@Service('NumberService')
+	def numSvc 
+
+	@DataContext('barangay')
+	def em_barangay
+
+	@Service('RPTUtil')
+	def util 
+
+
+	@Async
+    @ProxyMethod
+	public def buildReport(params){
+		params.monthid = params.month?.index
+		params.lguid = params.lgu.objid
+		params.filter = ''
+		
+		if (params.ry) {
+			params.filter += ' AND rp.ry = $P{ry} '
+		}
+
+		util.buildStartEndDateFilter(params)
+
+		if ('MV'.equalsIgnoreCase(params.valuetype)){
+			params.valuefield = 'r.totalmv'
+			params.valuecaption = 'MARKET VALUE'
+		}
+		else {
+			params.valuefield = 'r.totalav'
+			params.valuecaption = 'ASSESSED VALUE'
+		}
+
+		def brgys = []
+		if (params.reportformat.type == 'standard'){
+			brgys = buildStandardFormat(params)
+		}
+		else if (params.reportformat.type == 'lift'){
+			brgys = buildLiftFormat(params)	
+		}
+		else {
+			throw new Exception('Format ' + params.reportformat.caption + ' is not yet supported.')
+		}
+		
+		params.TITLE = 'MONTHLY ASSESSMENT REPORT'
+		params.PERIOD = 'MONTH OF ' + params.month.caption + ', ' + params.year 
+		params.FORLGUNAME = env.ORGCLASS +  ' OF ' + env.ORGNAME 
+		if (params.lgu){
+			params.FORLGUNAME = params.lgu.lgutype.toUpperCase() + ' OF ' + params.lgu.name
+		}
+
+		return [reportdata:brgys, parameters:params]
+	}
+
+
+	void updateBrgyInfo(brgys, list){
+		list.each{v ->
+			def brgy = brgys.find{it.objid == v.objid }
+			if (brgy){
+				brgy.putAll(v)
+			}
+		}
+	}
+
+
+	def buildStandardFormat(params){
+		def brgys = getBarangays(params).each{it.barangay = it.name}
+		updateBrgyInfo(brgys, em.getPreceedingList(params))
+		updateBrgyInfo(brgys, em.getCurrentList(params))
+		updateBrgyInfo(brgys, em.getCancelledList(params))
+		summarizeEnding(brgys)
+		setZeroValuesToNull(brgys)
+		return brgys 
+	}
+
+
+	void updateLiftBrgyInfo(result, list){
+		list.each{v ->
+			def res = result.find{it.objid == v.objid && it.rputypeidx == v.rputypeidx}
+			if (res){
+				res.putAll(v)
+			}
+		}
+	}	
+
+	def buildLiftFormat(params){
+		def result = []
+		getBarangays(params).each{
+			result << [objid:it.objid, barangay: it.name, rputypeidx:1, rputype:'land']
+			result << [objid:it.objid, barangay: it.name, rputypeidx:2, rputype:'bldg']
+			result << [objid:it.objid, barangay: it.name, rputypeidx:3, rputype:'mach']
+			result << [objid:it.objid, barangay: it.name, rputypeidx:4, rputype:'other']
+		}
+		
+		updateLiftBrgyInfo(result, em.getPreceedingLiftList(params))
+		updateLiftBrgyInfo(result, em.getCurrentLiftList(params))
+		updateLiftBrgyInfo(result, em.getCancelledLiftList(params))
+		summarizeEnding(result)
+		setZeroValuesToNull(result)
+		return result 
+	}
+
+	void summarizeEnding(list) {
+		list.each {
+			it.endtaxcnt = util.isNull(it.pretaxcnt,0) + util.isNull(it.currtaxcnt,0) - util.isNull(it.cancelledtaxcnt,0)
+			it.endtaxvalue = util.isNull(it.pretaxvalue,0) + util.isNull(it.currtaxvalue,0) - util.isNull(it.cancelledtaxvalue,0)
+			it.endexemptcnt = util.isNull(it.preexemptcnt,0) + util.isNull(it.currexemptcnt,0) - util.isNull(it.cancelledexemptcnt,0)
+			it.endexemptvalue = util.isNull(it.preexemptvalue,0) + util.isNull(it.currexemptvalue,0) - util.isNull(it.cancelledexemptvalue,0)
+		}
+	}
+
+	void setZeroValuesToNull(brgys){
+		brgys.each{brgy ->
+			brgy.each{k, v->
+				if (v == 0.0) brgy[k] = null 
+			}
+		}
+	}
+
+	def getBarangays(params){
+		if ('city'.equalsIgnoreCase(env.ORGCLASS)){
+			return em_barangay.select('objid,index,pin,name').where('1=1').orderBy('pin').list()
+		}
+		return em_barangay.select('objid,index,pin,name').find([parentid:params.lguid]).orderBy('pin').list()
+	}
+
+}
+

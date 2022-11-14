@@ -1,0 +1,305 @@
+import com.rameses.annotations.*;
+import com.rameses.util.DateBean;
+
+class CashbookLiquidationReportService {
+	
+	@Env
+	def env; 
+
+	@ActiveDB('cashbook_liquidation_report')
+	def em_report; 
+
+	@DataContext('sys_user_role')
+	def em_userrole; 
+
+	@DataContext('fundgroup')
+	def em_fundgroup; 
+
+	@DataContext('fund')
+	def em_fund; 
+
+	@Service('DateService')
+	def dateSvc; 
+
+	@Service('Var')
+	def var; 	
+
+	@ProxyMethod 
+	public def initReport( param ) { 
+		def resp = [:];
+		resp.year = dateSvc.getServerYear(); 
+
+		def allow_multiple_fund_selection = var.cashbook_report_allow_multiple_fund_selection; 
+		resp.allow_multiple_fund_selection = allow_multiple_fund_selection.toString().matches('true|1'); 
+
+		def em_user = em_userrole.select('objid,firstname,lastname,middlename,jobtitle'); 
+		resp.user = em_user.where('objid = :userid', [ userid: env.USERID.toString() ]).first(); 
+		formatUser( resp.user ); 
+
+		resp.fundgroups = em_fundgroup.where('1=1').orderBy('indexno').list();
+		return resp; 
+	} 
+
+	@ProxyMethod 
+	public def getReport( params ) { 
+		if ( !params.template?.objid ) throw new Exception("params.template.objid  parameter is required");  
+		if ( !params.period?.type ) throw new Exception("params.period.type  parameter is required");  
+		if ( !params.account?.objid ) throw new Exception("params.account.objid  parameter is required");  
+
+		buildParams( params ); 
+
+		def result = [:]; 
+		if ( params.template.objid == 'template-b' ) {
+			result.reportdata = buildTemplateB( params.filter ); 
+		} 
+		else {
+			result.reportdata = buildDefault( params.filter ); 	
+		}
+
+		if ( !result.reportdata ) 
+			throw new Exception("No available record(s) that matches your criteria");  
+
+		result.header = params.header; 
+		return result; 
+	}
+
+	void buildParams( params ) { 
+
+		if ( !params.startdate ) throw new Exception('params.startdate parameter is required'); 
+		if ( !params.enddate ) throw new Exception('params.enddate parameter is required'); 
+
+		def startdate = resolveDate( params.startdate );
+		def enddate = resolveDate( params.enddate );
+		def originalEndDate = enddate; 
+		enddate = new DateBean( enddate ).add('1d'); 
+
+		def header = [:]; 
+		def filter = [:]; 
+		filter.startdate = startdate; 
+		filter.enddate = enddate; 
+
+		def YMD = new java.text.SimpleDateFormat('yyyy-MM-dd'); 
+
+		header.PERIOD_TYPE = params.period.type.toString().toLowerCase(); 
+		switch ( header.PERIOD_TYPE ) {
+			case 'daily': 
+				header.PERIOD_TITLE = new java.text.SimpleDateFormat('MMMMM dd, yyyy').format( startdate ).toUpperCase(); 
+				header.CERT_PERIOD_TITLE = header.PERIOD_TITLE;
+				break; 
+
+			case 'monthly': 
+				header.PERIOD_TITLE = 'FOR THE MONTH OF '+ new java.text.SimpleDateFormat('MMMMM yyyy').format( startdate ).toUpperCase(); 
+
+				def cpt = new StringBuilder();				
+				cpt.append( new java.text.SimpleDateFormat('MMMMM d').format( startdate )).append("-"); 
+				cpt.append( new java.text.SimpleDateFormat('dd, yyyy').format( originalEndDate )); 
+				header.CERT_PERIOD_TITLE = cpt.toString(); 
+				break; 
+
+			default: 
+				throw new Exception(''+ params.PERIOD_TYPE +' period option not supported'); 
+				break; 
+		} 
+
+		def fundFilters = [];
+
+		if ( params.fundgroup ) {
+			filter.fundgroupid = params.fundgroup.objid.toString();
+			fundFilters << ''' fund.groupid = $P{fundgroupid} ''';
+
+			if ( !params.fundgroup.title ) {
+				def fg = em_fundgroup.find([ objid: filter.fundgroupid ]).first();
+				if ( fg ) params.fundgroup.title = fg.title; 				
+			}
+
+			header.FUND_TITLE = params.fundgroup.title.toString() +' GROUP'; 
+		}
+
+		if ( params.fund instanceof List ) {
+			params.fund.each{
+				if ( !it.title ) {
+					def ff = em_fund.find([ objid: it.objid.toString() ]).select('objid,title').first();
+					if ( ff ) it.putAll( ff ); 
+				}
+			}
+
+			def strfunds = params.fund.collect{( it.objid )}.findAll{ it }.join("', '"); 
+			fundFilters << ("ci.fund_objid IN ('"+ strfunds +"')"); 
+
+			header.FUND_TITLE = params.fund.collect{( it.title )}.findAll{ it }.join(", "); 
+		}
+		else if ( params.fund instanceof Map ) { 
+			filter.fundid = params.fund.objid.toString();
+			fundFilters << ''' ci.fund_objid = $P{fundid} ''';
+
+			if ( !params.fund.title ) {
+				def ff = em_fund.find([ objid: filter.fundid ]).select('objid,title').first();
+				if ( ff ) params.fund.putAll( ff ); 
+			}
+
+			header.FUND_TITLE = params.fund.title; 
+		}
+
+		if ( !fundFilters ) throw new Exception("Please specify a Fund"); 
+
+		filter.filter = fundFilters.join(" AND "); 
+
+		def acct = [:]; 		
+		
+		filter.accountid = params.account?.objid; 
+		if ( filter.accountid ) { 
+			acct = em_userrole.select('objid,firstname,lastname,middlename,jobtitle').find([ objid: filter.accountid ]).first(); 
+			if ( acct ) formatUser( acct ); 
+		}
+		else {
+			filter.accountid = '';
+		} 
+
+		header.ACCOUNT_NAME = acct?.fullname; 
+		header.ACCOUNT_TITLE = acct?.jobtitle;
+		
+		params.filter = filter; 
+		params.header = header; 
+	}
+
+	void formatUser( data ) {
+		if (!( data instanceof Map )) return;
+
+		def buff = new StringBuilder(); 
+		if ( data.firstname ) buff.append(' ').append( data.firstname ); 
+		if ( data.middlename ) buff.append(' ').append( data.middlename ); 
+		if ( data.lastname ) buff.append(' ').append( data.lastname ); 
+		
+		data.fullname = buff.toString().trim(); 
+
+		if ( data.name == null ) { 
+			data.name = data.fullname; 
+		}
+	}
+
+	def resolveDate( value ) {
+		if ( !value ) return null; 
+		if ( value instanceof java.sql.Date ) return value; 
+
+		if ( value instanceof java.util.Date ) {
+			return new java.sql.Date( value.time ); 
+		}
+
+		try {
+			return java.sql.Date.valueOf( value.toString()); 
+		} catch(Throwable t) {;}
+
+		try {
+			def o = java.sql.Timestamp.valueOf( value.toString()); 
+			return new java.sql.Date( o.time ); 
+		} catch(Throwable t) {;}
+
+		return null; 
+	}	
+
+
+	def buildTemplateB( filter ) {
+		def startdate = filter.startdate; 
+		def enddate   = filter.enddate; 
+		def items = em_report.getReportTemplateB( filter ); 
+
+		def groups = items.groupBy{ it.refdate }
+		def refdates = groups.keySet().findAll{ it }.sort{ it }
+
+		items.clear(); 
+
+		refdates.each{ k-> 
+			def v = groups.get( k ); 
+
+			def liqs = v.findAll{( it.reftype == 'liquidation' )} 
+			if ( !liqs ) {
+				// proceed to the next refdate
+				return; 
+			}
+
+			filter.enddate = null; 
+			filter.startdate = resolveDate( k );
+
+			def begbal = em_report.findBeginBalance( filter ); 
+
+			def list1 = v.findAll{( it.groupindexno == 1 )} 			
+			def list2 = v.findAll{( it.groupindexno > 1 )} 
+			
+			v.clear(); 
+
+			list1.removeAll( liqs ); 
+
+			if ( begbal?.balance ) {
+				v << [refid: 'beginbalance', refdate: k, refno: '', particulars: 'BEGINNING BALANCE', dr: begbal.balance]; 
+			}
+
+			if ( list1 ) {
+				v << [refid: 'label', refdate: k, refno: '', particulars: '<b>COLLECTIONS:</b>'];
+				v.addAll( list1 ); 
+				list1.clear(); 
+			} 
+
+			if ( list2 ) {
+				v << [refid: 'label', refdate: k, refno: '', particulars: '<b>COLLECTIONS AFTER CUT-OFF:</b>'];
+				v.addAll( list2 );
+				list2.clear(); 
+			}
+
+			liqs.each{ 
+				it.particulars = '<b>REMITTANCE</b>'; 
+			}
+			v.addAll( liqs ); 
+			liqs.clear(); 
+
+			v.each{
+				if ( it.dr == 0 ) it.dr = null;
+				if ( it.cr == 0 ) it.cr = null;
+			}
+
+			def totaldr = v.sum{( it.dr ? it.dr : 0.0 )}
+			def totalcr = v.sum{( it.cr ? it.cr : 0.0 )}
+
+			if ( totaldr == null ) totaldr = 0.0; 
+			if ( totalcr == null ) totalcr = 0.0; 
+
+			def itm = [refid: 'label', refdate: k, refno: '', particulars: 'TOTAL']; 
+			itm.balance = totaldr - totalcr; 
+			itm.dr = ( totaldr == 0 ? null : totaldr ); 
+			itm.cr = ( totalcr == 0 ? null : totalcr ); 
+			v << itm; 
+
+			items.addAll( v ); 
+			v.clear();
+		}
+
+		groups.clear();
+		refdates.clear();
+
+		if ( !items ) {
+			filter.startdate = enddate; 
+
+			def begbal = em_report.findBeginBalance( filter ); 
+			if ( begbal?.balance ) {
+				items << [refid: 'label', refno: '', particulars: 'BEGINNING BALANCE', dr: begbal.balance]; 
+				items << [refid: 'label', refno: '', particulars: 'TOTAL', dr: begbal.balance, balance: begbal.balance]; 
+			} 
+		}
+
+		return items; 
+	}
+
+	def buildDefault( filter ) {
+		def items = em_report.getReport( filter ); 
+
+		def runbal = 0.0;
+		items.each{
+			runbal += (it.dr ? it.dr : 0);
+			runbal -= (it.cr ? it.cr : 0); 
+			it.balance = (runbal == 0 ? null : runbal); 
+			it.dr = ( it.dr == 0 ? null : it.dr ); 
+			it.cr = ( it.cr == 0 ? null : it.cr ); 
+		}
+
+		return items; 
+	}
+}

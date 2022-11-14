@@ -1,0 +1,91 @@
+import com.rameses.annotations.*
+import com.rameses.util.*
+import com.rameses.services.extended.*
+
+
+class MachRPUGRService
+{
+    @PersistenceContext('main')
+    def em
+
+    @Service('MachRYSettingLookupService')
+    def lookupSvc
+
+    @Service('MachRPUService')
+    def machRpuSvc 
+    
+    @Service('DateService')
+    def dtSvc
+
+    @Service('Var')
+    def var
+
+    @Service('RPTUtil')
+    def util 
+
+    @DataContext('machdetail')
+    def em_machdetail
+
+
+    @ProxyMethod
+    public def reviseMachRpu(rpu){
+        rpu.dtappraised = dtSvc.serverDate 
+        def deletedItems = []
+        rpu.machuses.each { machuse ->
+            def actualuse = lookupSvc.lookupAssessLevelByPrevId(machuse.actualuse.objid)
+            if( actualuse ) {
+                machuse.actualuse   = actualuse 
+                machuse.assesslevel = actualuse.rate 
+                reviseMachDetails(machuse)
+            }
+            else {
+                deletedItems.add( machuse )
+            }
+        }
+        
+        rpu.machuses.removeAll( deletedItems )
+        machRpuSvc.calculateAssessment(rpu)
+        println 'rpu =>  ' + rpu 
+        return rpu
+    }
+
+    void reviseMachDetails( machuse ) {
+        machuse.machines.each { mach -> 
+            if( mach.forexid ) {
+                def forex = lookupSvc.lookupForexByPrevId(mach.forexid)
+                if( forex ) {
+                    mach.forexid = forex.objid
+                    mach.forex   = forex.forex 
+                }
+            }
+            if( mach.feracid ) {
+                def ferac = lookupSvc.lookupForexByPrevId(mach.feracid)
+                if( ferac ) {
+                    mach.feracid = ferac.objid
+                    mach.ferac   = ferac.forex 
+                }
+            }
+
+            if (mach.smvid) {
+                def prevmach = em_machdetail.find([objid: mach._prevobjid]).first();
+                mach.params = prevmach.params
+                mach.smv = lookupSvc.lookupMachineSmvsByPrevId(mach.smvid)
+                mach.smvid = mach.smv?.objid 
+                mach.originalcost = machRpuSvc.computeOriginalCost(mach)
+            }
+
+            if ((mach.estimatedlife == null || mach.estimatedlife == 0) && (mach.yearacquired != null && mach.yearacquired != 0)){
+                def rate = util.toInteger2(var.mach_rpu_standard_depreciation_rate, 5)
+                def age = dtSvc.serverYear - mach.yearacquired
+                if (age > 0) {
+                    mach.depreciation = age * rate
+                    if (mach.depreciation > 80){
+                        mach.depreciation = 80
+                    }
+                }
+            }
+        }
+    }
+
+}
+ 

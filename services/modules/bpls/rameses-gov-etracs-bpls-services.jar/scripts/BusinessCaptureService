@@ -1,0 +1,88 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.services.extended.*;
+
+public class BusinessCaptureService {
+
+	@Service("DateService")
+	def dateSvc;
+
+	@Service("EntityService")
+	def entitySvc;
+
+	@Service("BusinessMasterService")
+	def infoSvc;
+
+	@Service("BusinessLobService")
+	def lobSvc;
+
+	@Service("BusinessReceivableService")
+	def recSvc;
+
+	@Service("UserRoleService")
+	def roleSvc;
+
+	@ActiveDB(value='var', em='system')
+	def vardb; 
+
+	@ProxyMethod
+	public def getSources() {
+		return [];
+	}	
+
+	@ProxyMethod
+	public def search(o) {
+		return [];
+	}	
+
+	@ProxyMethod
+	public def getActiveYears() {
+		def list = [];
+		(dateSvc.serverYear..2000).each{ list << it }
+		return list;
+	}	
+
+	@ProxyMethod
+	public def getInfo(o) {
+		return [:];
+	}	
+
+	@ProxyMethod
+	public def checkOwner(o) {
+		if(!o) return null;
+		try {
+			return entitySvc.open( o );
+		}
+		catch(e) {
+			return null;
+		}
+	}	
+
+	@ProxyMethod
+	public def getReceivables(o) {
+		return [:];
+	}	
+
+	@ProxyMethod
+	public def getAssessorList() {
+		roleSvc.getUsers( [domain:'BPLS', roles:'ASSESSOR'] ).collect { 
+			[objid:it.objid, name:it.firstname+' '+it.lastname, title:it.title] 
+		}
+	}
+
+	@ProxyMethod
+	public def getApproverList() {
+		roleSvc.getUsers( [domain:'BPLS', roles:'APPROVER'] ).collect { 
+			[objid:it.objid, name:it.firstname+' '+it.lastname, title:it.title] 
+		}
+	}
+
+	@ProxyMethod
+	public void validateTxnType( params ) {
+		def info = vardb.read([name:'business_capture_datasource_only']);
+		if ( info?.value == '1' && params.txntype != 'datasource' ) {
+			throw new Exception('You are only allowed to use capture from datasource only.'); 
+		}
+	}
+}

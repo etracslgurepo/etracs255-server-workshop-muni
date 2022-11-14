@@ -1,0 +1,261 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.services.extended.*;
+
+public class BusinessApplicationWorkflowService extends ActiveWorkflowService {
+
+	@ActiveDB("business_application_task")
+	def taskDB;
+
+	@DataContext("business_application_task_lock")
+	def lockDB;
+
+	@ActiveDB("business_application")
+	def ba;
+
+	@Service("BusinessApplicationService")
+	def appSvc;
+
+	@Service("BusinessUserRoleService")
+	def roleSvc;
+
+	@Service("BusinessReceivableService")
+	def receivableSvc;
+
+	@Service("BusinessRedflagService")
+	def redflagSvc;
+
+	@Service('NotificationService')
+	def notificationService
+
+	@DataContext('sys_wf_transition') 
+	def sys_wf_transition; 
+
+	@Service 
+	def self; 
+
+	String processname = "business_application";
+
+	void afterOpenTask(def task) {
+		task.data = appSvc.open( [objid: task.refid ] );
+
+		/******************************************************************
+		* if current state is not assign assessor which is a group, do not  
+		* remove message. All else remove message when opening the document.
+		*******************************************************************/
+		if( task.state != 'assign-assessor' ) {
+			notificationService.removeMessage([objid: task.objid]);
+		}
+	}
+
+
+	void loadTransition(def transition, def task) {
+		if( task.state == 'assessment' ) {
+			transition.assignees = roleSvc.getApproverList();
+		}
+	}
+
+	void beforeSignal( r ) { 
+		def data = env.data;
+		def blockaction = r.state + (r.action? '-'+r.action: ''); 
+		def redflags = redflagSvc.getOpenIssues( [businessid: data.business?.objid, blockaction:blockaction]);
+		if( redflags ) {
+			StringBuilder sb = new StringBuilder();
+			sb.append("There are unresolved issues: \n")
+			redflags.each {
+				sb.append( it.caseno +':'+it.message + ". filed by " + it.filedby.name + "\n");
+			}
+			def w =  new Warning("redflag");
+			w.info.list = redflags;
+			throw w;
+		}
+
+		def wfparam = [ processname: processname, action: r.action, parentid: r.state ]; 
+		if ( r.to ) wfparam.to = r.to; 
+
+		def syswft = sys_wf_transition.find( wfparam ).first(); 
+		if ( syswft ) r.to = syswft.to; 
+
+		def lockinfo = [refid: r.refid, state: r.to];  
+		lockDB.create( lockinfo ); 
+		lockDB.where('refid = :refid and state <> :state', lockinfo).delete();  
+
+		env.TASK_MESSAGE = r.message;
+		if( r.state == 'assign-assessor') {
+			data.assessor = roleSvc.getCurrentUser();
+			ba.update([ objid: data.objid, assessor: data.assessor, state: 'ASSESSMENT' ]);
+			env.TASK_ASSIGNEE = data.assessor;	
+			self.notifyChangeAppState([ objid: data.objid, state: 'ASSESSMENT' ]); 
+		}
+		else if( r.state == 'assessment') { 
+			if ( !data.taxfees ) 
+				throw new Exception("Please calculate taxfees first. Go to assessment and run calculate");
+
+			if ( r.action == 'return-for-verification') {
+				ba.update([ objid: data.objid, state: 'INFO', assessor: null ]); 
+				env.TASK_ASSIGNEE = data.createdby;
+				self.notifyChangeAppState([ objid: data.objid, state: 'INFO' ]); 
+
+			} 
+			else {
+				if ( !r.assignee ) throw new Exception('Please specify an assignee '); 
+				//update the taxfees
+				data.approver = r.assignee;
+				ba.update([ objid: data.objid, approver: data.approver ]);
+				env.TASK_ASSIGNEE = data.approver;
+			}
+		}
+		else if( r.state == 'reassessment') { 
+			env.TASK_ASSIGNEE = data.approver; 
+
+			if ( r.action == 'return-for-verification' ) { 
+				ba.update([ objid: data.objid, state: 'INFO', assessor: null, approver: null ]); 
+				env.TASK_ASSIGNEE = data.createdby; 
+				self.notifyChangeAppState([ objid: data.objid, state: 'INFO' ]); 
+			} 
+		}
+		else if(r.state == 'approval' && r.action=='return-assessment') {
+			env.TASK_ASSIGNEE = data.assessor;
+		}
+		else if ( r.to == 'payment' ) { 
+			ba.update( [objid:data.objid, state:'PAYMENT'] );	
+			self.notifyChangeAppState([ objid: data.objid, state: 'PAYMENT' ]); 
+		} 		
+		else if(r.state=='payment' && r.action == 'reverse-approval') {
+			def test = receivableSvc.getHasPaidReceivable([applicationid:data.objid]);
+			if( test ) {
+				throw new Exception("Cannot reverse approval since payments have already been made" );
+			}
+			ba.update( [objid:data.objid, state:'ASSESSMENT'] );
+			env.TASK_ASSIGNEE = data.approver;
+			self.notifyChangeAppState([ objid: data.objid, state: 'ASSESSMENT' ]); 
+		}
+		else if(r.state=='payment') { 
+			ba.update( [objid:data.objid, state:'RELEASE'] );
+			self.notifyChangeAppState([ objid: data.objid, state: 'RELEASE' ]); 
+		}
+		else if(r.state=='assign-issuing-officer') {
+			env.TASK_ASSIGNEE = roleSvc.getCurrentUser(); 
+		}
+		else if(r.state=='release' && r.action == 'revert') { 
+			ba.update([ objid: data.objid, state: 'PAYMENT' ]); 
+			appSvc.revert([
+				objid: data.objid, apptype: data.apptype, txnmode: data.txnmode, 
+				action: r.action, fromstate: r.state, tostate: 'payment' 
+			]); 
+			env.TASK_ASSIGNEE = data.approver; 
+			self.notifyChangeAppState([ objid: data.objid, state: 'PAYMENT', action: 'revert' ]); 
+		}
+		else if( r.state=='release' && r.to=='end' ) {
+			appSvc.release( data );
+			data.state = 'COMPLETED';
+			self.notifyChangeAppState([ objid: data.objid, state: data.state ]); 
+		} 
+	}
+
+	//set the assignee computed based on the beforeSignal.
+	void beforeCreateTask( def o ) {
+		o.assignee = env.TASK_ASSIGNEE;
+		o.message = env.TASK_MESSAGE;
+	}
+
+	/*******************************************************************************************
+	* we have no choice but to use prevtask instead bec. the newtask is not being passed through
+	* if the submitter is not the owner. DO NOT USE result.task. This is not yet reliable. 
+	********************************************************************************************/
+	void afterSignal( def result ) {
+		def data = env.data;
+		def prevtask = env.prevtask;
+		if( prevtask.state == 'assign-assessor') {
+			result.assessor = data.assessor;
+		}
+		else if( prevtask.state == 'assessment') {
+			result.approver = data.approver;	
+		}
+	}
+
+	void onEndTask() {
+		def data = env.data;
+		//issue the permit here
+		def m = [applicationid: data.objid, businessid: data.business?.objid];
+	}
+
+
+	void afterLoadTask( def task ) {
+		/*
+		def b =	[objid:'edit-info', title:'Edit Info', action:'edit-info', assignees:[]];
+		b.assignees << [objid:'EMN00001', name:'NAZARENO, ELMO'];
+		tsk.workitemtypes = [];
+		tsk.workitemtypes << b;
+		*/
+	}
+
+	void loadWorkitem(def wi, def t) {
+		if( t.state == 'approval' ) {
+			wi.assignees = [t.data?.createdby];
+		}
+	}
+
+	void afterOpenWorkitem(def wi) {
+		if(wi.action == 'edit_lob') {
+			wi.data = appSvc.open( [objid: wi.refid ] );
+		}
+	}
+
+	@ProxyMethod
+	public def getTaskFromBarcode( def o ) {
+		return taskDB.findCurrentTaskByAppno( [appno:o.barcodeid] );
+	}
+
+	@ProxyMethod
+	public def getTaskFromAppid( def o ) {
+		if(!o.applicationid) throw new Exception("applicationid is required in getTaskFromAppid");
+		return taskDB.findCurrentTaskByAppid( o );
+	}
+
+	@ProxyMethod
+	public void deleteTasks(def o) {
+		if(!o.applicationid) throw new Exception("applicationid required in abortTasks"); 
+		taskDB.deleteTasks( o );
+	}
+
+	def buildMsg( def task, def app, def userid ) {
+        return [
+            objid     		: task.objid,
+            senderid  		: (env.prevtask?.actor) ? env.prevtask.actor.objid : env.USERID,
+            sender    		: (env.prevtask?.actor) ? env.prevtask.actor.name : env.FULLNAME,
+            recipientid   	: (userid==null) ? task.state : userid,
+            recipienttype 	: (userid==null) ? 'group' : 'user',
+            message   		: 'Application ' + app.appno + '    (' + task.state + ')',
+            filetype  		: 'business_application',
+            data 	  		: [taskid: task.objid],
+        ];
+	}
+
+	void notifyTask( def task ) {
+		def app = env.data; 
+		def u = roleSvc.getCurrentUser();
+		def prevtask = env.prevtask;
+
+		def map = null;
+
+		map = buildMsg( task, app,  env.TASK_ASSIGNEE?.objid );
+		map.message = map.message + (env.TASK_MESSAGE==null? '':env.TASK_MESSAGE); 
+
+	    //remove previous notifications if any to ensure it is clean
+	    if(prevtask?.objid) {
+	    	notificationService.removeMessage([objid: prevtask.objid]);
+	    }
+
+	    //notify-map
+	    if( map!=null) {
+	    	notificationService.addMessage( map );		
+	    }	
+	}
+
+	@ProxyMethod
+	public void notifyChangeAppState( param ) { 
+		// this will be intercepted 
+	}
+}	

@@ -1,0 +1,14 @@
+<schema>
+	<element tablename="sys_signature">
+		<field name="objid" primary="true" />
+		<field name="userid"  />		
+		<field name="user_name" />		
+		<field name="displayname" />
+		<field name="signature" />
+		<field name="position" />
+		<field name="tag" />	
+		<field name="system" />		
+		<!-- 0=pending 1=active 2=superseded -->
+		<field name="state" type="integer" defaultvalue="1"/>	
+	</element>
+</schema>	

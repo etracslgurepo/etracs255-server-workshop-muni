@@ -1,0 +1,30 @@
+import com.rameses.annotations.*;
+
+class WorkflowNotificationInterceptor {
+
+	@ActiveDB('wf')
+	def wf; 
+
+	@Before( pattern="NotificationService.getList", index=-9000 ) 
+	public void beforeGetList( evt ) {  
+		def params = evt.args[0]; 
+		if ( !params.roles ) return;
+
+		params.filetypes = []; 
+		params.roles.groupBy{ it.domain }.each{k,v-> 
+			def srole = v.collect{ it.role }.findAll{( it )}.join("','"); 
+			if ( srole ) srole= "'"+srole+"'"; 
+
+			def m = [domain: k, filter:'']; 
+			if ( srole ) m.filter = ' AND role in ('+ srole +') ';  
+
+			def list = wf.getNodesByDomain( m ).collect{[ filetype: it.processname, recipientid: it.name ]} 
+			if ( list ) { 
+				list.groupBy{ it.filetype }.each{ kk,vv-> 
+					params.filetypes << [ filetype: kk, recipientid: params.userid ]; 
+					params.filetypes.addAll( vv ); 
+				} 
+			} 
+		} 
+	} 
+}

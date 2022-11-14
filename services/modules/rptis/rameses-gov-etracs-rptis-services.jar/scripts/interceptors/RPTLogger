@@ -1,0 +1,19 @@
+import com.rameses.annotations.*
+import com.rameses.eserver.*;
+import com.rameses.common.*;
+
+class RPTLogger
+{
+    @Service('LogService')
+	def logSvc
+
+	@After(pattern="RPTAssessmentNoticeService.create", index=10000) 
+	public void logNotice( evt ) {
+		def notice = evt.result
+		notice.items.each {
+			logSvc.logA('issue noa', 'FAAS', it.faasid, 'NOA ' + notice.txnno)
+		}
+	}
+
+}
+

@@ -1,0 +1,33 @@
+import com.rameses.annotations.*;
+
+class UnremittedCollectionMonitorService {
+
+	@ActiveDB('unremittedcollection')
+	def em; 
+	
+	@ProxyMethod 
+	public def getColumns( params ) {
+		return [
+			[name:'formno', caption:'FormNo'],
+			[name:'receiptno', caption:'ReceiptNo'],
+			[name:'receiptdate', caption:'ReceiptDate', type:'date', outputFormat:'yyyy-MM-dd'],
+			[name:'paidby', caption:'PaidBy'],
+			[name:'collectiontype.name', caption:'CollectionType'],
+			[name:'collector.name', caption:'Collector'],
+			[name:'amount', caption:'Amount', type:'decimal'],
+			[name:'voided', caption:'Voided', type:'boolean'],
+			[name:'txnmode', caption:'TxnMode']
+		]; 
+	} 
+
+	@ProxyMethod
+	public def getList ( params ) {
+		params._pagingKeys = 'c.objid'; 
+		params.filter = '';
+		if ( params.searchtext ) {
+			params.filter = ''' AND (c.receiptno LIKE $P{searchtext} OR c.paidby LIKE $P{searchtext}) ''';
+			params.searchtext = params.searchtext + "%"; 
+		}
+		return em.getList( params ); 
+	}
+}

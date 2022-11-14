@@ -1,0 +1,44 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+
+class RPTISSyncDataService
+{   
+	@Service(value='CloudNotificationService', connection='notification_proxy')
+	def cloudNotificationSvc;
+
+	@XConnection('async_remote') 
+	def asyncConn;
+
+	@Env
+	def env 
+
+    @Context
+    def appContext 
+
+    @Service('RPTUtil')
+    def util 
+
+	@ProxyMethod
+	public def syncData(params) {
+		println 'RPTISSyncDataService.sync============'
+		util.required('servicename', params.servicename)
+		util.required('methodname', params.methodname)
+
+		params.orgid = env.ORGID 
+		def args = [params] as Object[];
+		def asyncreq = new AsyncRequest(params.servicename, params.methodname, args, env); 
+		asyncreq.contextName = 'etracs25';
+		asyncreq.connection = 'async_remote'; 
+
+		def msg = [
+            origin   : env.ORGID.replaceAll('-.*?', ''),
+            data     : asyncreq, 
+            channel  : (appContext.conf.cloud_channel ? appContext.conf.cloud_channel : 'etracs'), 
+            channelgroup: util.getParentCode(),
+		]
+		cloudNotificationSvc.addMessage(msg)
+		asyncConn.register(asyncreq.id)
+		return new AsyncToken(asyncreq.id, asyncreq.connection)
+	}
+
+}

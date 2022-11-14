@@ -1,0 +1,155 @@
+import com.rameses.annotations.*;
+
+class BPDelinquencyTask {
+	
+	@DataContext('report_bpdelinquency') 
+	def em_report;
+
+	@DataContext('report_bpdelinquency_app') 
+	def em_report_app;
+
+	@DataContext('report_bpdelinquency_item') 
+	def em_report_item;
+
+	@Service('BusinessBillingService') 
+	def billingSvc;
+
+	@Service('DateService') 
+	def dateSvc;
+
+	@Service('BPExpiryDateService')
+	def expiryDateSvc; 
+
+
+	@Schedule( interval=2 )
+	public void processDraft( task ) {
+
+		def o = em_report.find([ state: 'DRAFT' ]).orderBy('dtfiled desc').first(); 
+		if ( o ) em_report.find([ objid: o.objid ]).update([ state: 'FOR-PROCESS' ]); 
+	}
+
+	@Schedule( interval=2 )
+	public void execForProcess( task ) {
+
+		def o = em_report.find([ state: 'FOR-PROCESS' ]).orderBy('dtfiled desc').first(); 
+		if ( o == null ) return; 
+
+		def param = [ parentid: o.objid ];
+		em_report_app.find( param ).delete(); 
+		em_report_item.find( param ).delete(); 
+
+		em_report_app.build([ reportid: o.objid ]); 
+		em_report.updateHeader([ reportid: o.objid ]);
+		em_report.find([ objid: o.objid ]).update([ state: 'FOR-UPDATE']);
+	} 
+
+	private def numformatter = new java.text.DecimalFormat('0.00'); 
+
+
+	@Schedule( interval=1 )
+	public void execForUpdate( task ) {
+
+		def o = em_report.find([ state: 'FOR-UPDATE' ]).orderBy('dtfiled desc').first(); 
+		if ( o == null ) return; 
+
+		def lockid = new java.rmi.server.UID().toString(); 
+		def param = [ parentid: o.objid, lockid: lockid ]; 
+		em_report_app.lockForUpdate( param ); 
+
+		def apps = em_report_app.getLockedItems( param ); 
+
+		if ( !apps ) {
+			int cyear = dateSvc.getServerYear(); 
+			int cqtr  = dateSvc.getServerQtr();
+			def duedate = expiryDateSvc.findExpiryDate([ year: cyear, qtr: cqtr ]); 
+			if ( duedate ) {
+				em_report_item.removeUndueItems([ parentid: o.objid, duedate: duedate ]); 
+			}
+
+			em_report.find([ objid: o.objid ]).update([ state:'COMPLETED' ]); 
+			return; 
+		}
+
+		def billdate = null;
+		def expirydate = null; 
+
+		apps.each{ 
+			def ledger = em_report_app.findLedger( it );
+			def bill = getBilling( ledger ); 
+			if ( bill ) {
+				billdate = ( bill.billdate ? bill.billdate : billdate ); 
+				expirydate = ( bill.expirydate ? bill.expirydate : expirydate );
+
+				em_report_item.find([ applicationid: ledger.applicationid ]).delete(); 
+				
+				bill.items.each{ bi-> 
+					bi.parentid = o.objid; 
+					bi.objid = new java.rmi.server.UID().toString(); 
+
+					em_report_item.create( bi ); 
+				}  
+			} 
+		} 
+
+		em_report.updateHeader([ reportid: o.objid ]); 
+
+		def m = [ objid: o.objid ]; 
+		if ( billdate ) m.billdate = billdate; 
+		if ( expirydate ) m.expirydate = expirydate; 
+
+		em_report.find([ objid: o.objid ]).update( m ); 			
+	} 
+
+	def getBilling( o ) {
+
+		def roundHandler = { num-> 
+			return new java.math.BigDecimal( numformatter.format( num )); 
+		}
+
+		try {
+			def b = billingSvc.getBilling([ applicationid: o.applicationid ]); 
+			
+			b.items.each{ 
+				if ( it.qtr == null ) it.qtr = 1;
+
+				it.tax = it.regfee = it.othercharge = 0.0; 
+				it.taxfeetype = it.taxfeetype.toString().toUpperCase();
+
+				if ( it.taxfeetype == 'TAX' ) it.tax = it.amount; 
+				else if ( it.taxfeetype == 'REGFEE' ) it.regfee = it.amount; 
+				else if ( it.taxfeetype == 'OTHERCHARGE' ) it.othercharge = it.amount; 
+			}
+
+			def resp = [expirydate : b.expirydate, billdate : b.billdate, items:[]]; 
+
+			b.items.groupBy{[ year: it.year, qtr: it.qtr ]}.each{ k,v-> 
+				def m = [ year: k.year, qtr: k.qtr ]; 
+				m.tax = m.regfee = m.othercharge = 0.0; 
+				m.surcharge = m.interest = 0.0; 
+
+				m.applicationid = o.applicationid; 
+				m.duedate = v.find{( it.duedate )}?.duedate; 
+
+				v.each{
+					m.tax += ( it.tax ? it.tax : 0.0 );
+					m.regfee += ( it.regfee ? it.regfee : 0.0 );
+					m.othercharge += ( it.othercharge ? it.othercharge : 0.0 );
+					m.surcharge += ( it.surcharge ? it.surcharge : 0.0 );
+					m.interest += ( it.interest ? it.interest : 0.0 );
+				}
+
+				m.tax = roundHandler( m.tax ); 
+				m.regfee = roundHandler( m.regfee ); 
+				m.othercharge = roundHandler( m.othercharge ); 
+				m.surcharge = roundHandler( m.surcharge ); 
+				m.interest = roundHandler( m.interest ); 
+				m.total = ( m.tax + m.regfee + m.othercharge + m.surcharge + m.interest ); 
+				resp.items << m; 
+			}
+			return resp; 
+		} 
+		catch(Throwable t) {
+			return null; 
+		}
+	}
+}

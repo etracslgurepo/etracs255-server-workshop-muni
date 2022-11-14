@@ -1,0 +1,52 @@
+import com.rameses.annotations.*
+import com.rameses.eserver.*;
+import com.rameses.common.*;
+
+class RPTCertificationOwnershipService 
+{
+    @PersistenceContext('main')
+    def em;
+
+    @Service('RPTCertificationService')
+    def certSvc 
+
+    @Service('NumberService')
+    def numSvc 
+
+	
+	@ProxyMethod
+	public def createCertification( cert ) {
+		certSvc.validateFaas(cert)
+		certSvc.createCertification(cert)
+		return openCertification(cert.objid)
+	}
+
+	@ProxyMethod
+	public def openCertification(objid) {
+		def cert = certSvc.openCertification(objid)
+		if (! cert ) 
+			throw new Exception('Certification does not exist or has already been deleted.')
+		def certid = cert.objid
+		cert.putAll(certSvc.getFaasInfo(cert.faasid))
+		updateAreaInfo(cert)
+		certSvc.makeHtmlSafe(cert)
+		cert.objid = certid
+		return cert 
+	}
+
+
+	void updateAreaInfo(cert){
+		//build area in words by areatype 
+		if( cert.classcode == 'AGR' || cert.classcode == 'A') {
+			cert.areainwords = numSvc.convertLong( cert.totalareaha.longValue() ).toUpperCase()
+			cert.areainwords += ' (' + numSvc.format( '#,##0.0000', cert.totalareaha ) + ')'
+			cert.areatype = 'ha'
+		}
+		else {
+			cert.areainwords = numSvc.convertLong( cert.totalareasqm.longValue() ).toUpperCase()
+			cert.areainwords += ' (' + numSvc.format( '#,##0.00', cert.totalareasqm ) + ')'
+			cert.areatype = 'square meter'
+		}
+	}
+
+}

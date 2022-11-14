@@ -1,0 +1,18 @@
+<schema>
+
+	<element tablename="collectiontype_account">
+		<field name="objid"  primary="true"/>
+		<field name="collectiontypeid" required="true"/>
+		<field name="account_objid" required="true"/>
+		<field name="account_title"  required="true"/>
+		<field name="tag"  />
+		<field name="valuetype" />
+		<field name="defaultvalue" required="true" type="decimal"/>
+		<field name="sortorder" required="true"/>
+
+		<complex ref="itemaccount" name="account" jointype="many-to-one" required="false" includefields="objid,code,title,type,valuetype,defaultvalue,fund.*,org.*">
+			<key field="account_objid" target="objid"/> 
+		</complex>
+	</element>
+
+</schema>

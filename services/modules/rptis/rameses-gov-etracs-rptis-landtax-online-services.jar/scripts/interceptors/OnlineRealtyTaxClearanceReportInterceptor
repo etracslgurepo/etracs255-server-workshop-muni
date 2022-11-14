@@ -1,0 +1,16 @@
+import com.rameses.annotations.*;
+
+class OnlineRealtyTaxClearanceReportInterceptor {
+    @Service("LandTaxReportTaxClearanceService")
+	def clearanceSvc;
+	
+	@After(pattern="FormReportService.getData", eval="#{args[0].reportid == 'rpttaxclearance'}", index=100)
+	public void afterGetData(def evt) {
+		def arg = evt.args[0];
+		def result = evt.result;
+
+		def data = clearanceSvc.getOnlineIssuedClearance([refid: arg.parameters.objid]);
+		data.template = "reports/rpt/taxclearance";
+		result.data = data;
+	}
+}

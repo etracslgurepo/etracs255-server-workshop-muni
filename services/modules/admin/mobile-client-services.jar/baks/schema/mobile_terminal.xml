@@ -1,0 +1,14 @@
+<schema>
+
+	<element name="mobile_terminal" tablename="sys_terminal">
+		<field name="terminalid" primary="true"/>	
+		<field name="parentid" />
+		<field name="parentcode" />
+		<field name="parenttype" />
+		<field name="macaddress" required="true"/>
+		<field name="dtregistered" required="true"/>
+		<field name="registeredby" required="true"/>		
+		<field name="state" />
+	</element>
+
+</schema>

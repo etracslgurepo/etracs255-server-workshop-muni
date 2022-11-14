@@ -1,0 +1,55 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.common.*
+import com.rameses.services.extended.*
+
+public class CreditMemoAccountLookupService  {
+	
+	@ActiveDB("creditmemo")
+	def em
+
+
+	@ProxyMethod
+	public def getColumns(o) {
+		return[
+			[name:'code', caption:'Item Code', width:80, resizable:false ],
+			[name:'title', caption:'Item Title' ],
+			[name:'fund.title', caption:'Fund Title', maxWidth:150 ],
+		];
+	}
+
+	//getList is used when adding items in the actual credit memo
+	@ProxyMethod
+	public def getList( def params ) { 
+		if ( !params.typeid ) throw new Exception("typeid is required");
+
+		params.filter = ''; 
+		params._pagingKeys = 'i.objid'; 
+		if ( params.searchtext  ) {
+			params.searchtext += "%";
+			params.filter = ''' AND i.title LIKE $P{searchtext} ''';
+		}	
+
+		//check first if creditmemo type has an account
+		def c = em.findHasCreditMemoTypeAccount( params )?.count;
+		if ( c && c > 0 ) {
+			return em.getLookupByAccount( params );
+		} else {
+			return em.getLookupByCreditMemoFund( params );
+		} 
+	}
+
+	//getLookupByFund used when
+	@ProxyMethod
+	public def getLookupByFund( def params ) {
+		if ( !params.fundid ) throw new Exception("fundid is required"); 
+
+		params.filter = '';
+		if ( params.searchtext ) { 
+			params.searchtext = params.searchtext+"%";
+			params.filter = ''' AND i.title LIKE $P{searchtext} '''; 
+		} 
+		return em.getLookupByFund( params );
+	} 
+} 

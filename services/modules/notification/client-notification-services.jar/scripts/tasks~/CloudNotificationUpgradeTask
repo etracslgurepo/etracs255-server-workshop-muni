@@ -1,0 +1,61 @@
+
+import com.rameses.annotations.*;
+import com.rameses.http.*;
+import com.rameses.util.*;
+
+class CloudNotificationUpgradeTask 
+{	
+    @ActiveDB(value='cloud_notification', em='notification')
+    def em_old;
+
+    @ActiveDB(value='notification', em='notification')
+    def em_new;
+
+    @Service('CloudNotificationData') 
+    def dataUtil;     
+
+    @Service('CloudSettings') 
+    def settings;     
+
+	@Schedule(interval=2)
+	public void process( task ) { 
+        if ( !settings.isEnabled() ) { 
+            //facility is disabled, exit immediately 
+            return;  
+        } 
+
+		def info = em_old.findPendingDurableMessage([ _start:0, _limit:1, _pagingKeys:'p.objid' ]); 
+		if ( !info ) return; 
+
+		def header = em_new.findHeader( info ); 
+		if ( header ) {
+			//
+			//record already upgraded 
+			// 
+		} else { 
+			def msg = em_old.read( info ); 
+			upgrade( msg );
+		} 
+
+		em_old.removePending( info );  
+	} 
+
+	void upgrade( msg ) { 
+		if ( !msg ) return; 
+
+		def data = msg.remove('data'); 
+		data = new Base64Cipher().decode( data ); 
+		
+		msg.origintype = 'local'; 
+		msg.chunkcount = 0;
+		msg.chunksize = 0; 
+		msg.completed = 1;
+		em_new.create( msg ); 
+
+		dataUtil.save([ objid: msg.objid, data: data ]); 
+        em_new.updateChunkInfo( msg );  
+
+        def pendingdata = [ objid: msg.objid, indexno: 0 ]; 
+        em_new.create( pendingdata, 'pending' ); 
+	}
+}

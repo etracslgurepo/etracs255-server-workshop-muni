@@ -1,0 +1,450 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import com.rameses.util.*
+import com.rameses.services.extended.*
+
+
+class ResectionService
+{
+	@Env 
+	def env
+
+	@Service('DateService')
+	def dtSvc 
+
+	@Service('SequenceService')
+	def seqSvc 
+
+	@Service('TxnRefService')
+	def txnRefSvc 
+
+	@Service('RPTRedFlagService')
+    def redFlagSvc 
+
+    @Service('FAASService')
+    def faasSvc
+
+    @Service('RPUService')
+    def rpuSvc 
+
+    @Service('RealPropertyService')
+    def rpSvc 
+
+	@DataContext('resection')
+	def em_resection
+
+	@DataContext('resection_item')
+	def em_resection_item
+
+	@DataContext('resection_task')
+	def em_task
+
+	@DataContext('faas_list')
+	def em_faas_list 
+
+	@DataContext('rptledger')
+	def em_rptledger 
+
+	@DataContext('rpu_type_suffix')
+	def em_suffix 
+
+	@Service('RPTUtil')
+	def util
+
+	
+
+	def TXNTYPE_TYPE = [objid: 'RS',  name: 'Resection']
+
+
+	@ProxyMethod
+	public def create(entity) {
+		entity.barangayid = entity.barangay?.objid 
+		def faases = validateAndLoadFaases(entity)
+
+		entity.txntype = TXNTYPE_TYPE
+		entity.originlgu = [objid: env.ORGID]
+		entity.txnno = env.ORGCODE.replaceAll('-', '') + seqSvc.getNextFormattedSeries('RESECTION')
+		entity.txndate = dtSvc.serverDate 
+		entity.items = []
+		faases.each{faas ->
+			def item = [faas: faas] 
+			item.parent = [objid: entity.objid]
+			item.resectioned = 0
+			entity.items << item 
+		}
+
+		em_resection.create(entity)
+		return entity 
+	}
+
+	@ProxyMethod
+	public def update(entity) {
+		return em_resection.update(entity)
+	}
+
+	@ProxyMethod
+	public def open(entity) {
+		entity = em_resection.read(entity)
+		entity.txntype = TXNTYPE_TYPE
+		return entity 
+	}
+
+	@ProxyMethod
+	public void delete(entity) {
+		def old = em_resection.select('state').find([objid: entity.objid]).first()
+		if (old.state == 'APPROVED')
+			throw new Exception('Record has already been approved.')
+		
+		entity.items.each{
+			deleteFaas(it)
+		}
+
+		em_resection.delete(entity)
+	}
+
+	@ProxyMethod
+	public def deleteFaas(item) {
+		if (item.faas.rputype == 'land') {
+			def p = [pin: item.faas.pin]
+			def improvements = em_resection_item.where('faas_pin = :pin and faas_suffix > 0', p).list()
+			improvements.each{
+				doDeleteFaas(it)
+			}
+		}
+		doDeleteFaas(item)
+		return item
+	}
+
+
+	@ProxyMethod
+	public def getFaasListing(objid) {
+		def list = em_resection_item
+					.where('parent_objid = :objid and newfaas_objid is not null', [objid:objid])
+					.orderBy('faas_pin, faas_suffix')
+					.list()
+
+		return list.collect{
+						[objid: it.newfaas.objid, rputype: it.faas.rputype, tdno: it.newfaas.tdno]
+					}
+	}
+
+
+    @ProxyMethod
+    public def getOpenRedflagCount(entity){
+        return redFlagSvc.getOpenRedflagCount(entity)
+    }
+
+    @ProxyMethod
+    public def validateNewParcel(item) {
+        def newsection = util.toInteger(item.newfaas.section)
+        if (!newsection)
+            throw new Exception('New Section is required.');
+
+    	def newparcel = util.toInteger(item.newfaas.parcel)
+        if (!newparcel)
+            throw new Exception('New Parcel is required.')
+        if ('new' == item.pintype) {
+            if (newparcel > 99)
+                throw new Exception('New Parcel must not exceed 99.')
+        } else {
+            if (newparcel > 999)
+                throw new Exception('New Parcel must not exceed 999.')
+        }
+
+        if ('land' == item.faas.rputype){
+        	item.newfaas.suffix = util.toInteger(item.faas.suffix);
+        }
+
+        return item
+    }
+
+	@ProxyMethod
+    public void validateNewSuffix(item) {
+    	def suffixes = em_suffix.find([rputype: item.faas.rputype]).orderBy('from').list()
+    	if (!suffixes) {
+    		throw new Exception('Suffixes for type ' + item.faas.rputype + ' is not defined.')
+    	}
+
+    	def suffix = item.newfaas.suffix
+    	for (int i = 0; i < suffixes.size(); i++){
+    		if (suffix >= suffixes[i].from && suffix <= suffixes[i].to){
+    			return
+    		}
+    	}
+
+    	if (item.rputype == 'land')
+			throw new Exception('Suffix must be 0.')
+    	else 
+    		throw new Exception('Suffix must be between ' + suffixes[0].from + ' and ' + suffixes[0].to + '.')
+    }
+		
+    @ProxyMethod
+    public void validateNewTdNo(newfaas) {
+        if (!newfaas.tdno) throw new Exception('New TD No. must be specified')
+        faasSvc.checkDuplicateTdNo( newfaas.objid, newfaas.tdno )
+    }
+
+    @ProxyMethod
+    public void validateNewPin(resectionitem) {
+        def faas = em_faas_list.select('objid,state,ry').find([objid: resectionitem.faas.objid]).first();
+        if (!faas) throw new Exception('Referenced FAAS does not exist or has already been deleted');
+
+        def newfaas = resectionitem.newfaas;
+        if (!newfaas.fullpin) throw new Exception('New PIN must be specified');
+
+        def duplicate = em_resection_item
+            .select('faas.*')
+            .find([parent_objid: resectionitem.parent.objid])
+            .where('faas_objid <> :faasid AND newfaas_fullpin = :fullpin', [
+                faasid: resectionitem.faas.objid,
+                fullpin: resectionitem.newfaas.fullpin
+            ]).first()
+
+        if (duplicate) {
+            def msg = 'Section ' + resectionitem.newfaas.section
+            msg += ' Parcel ' + resectionitem.newfaas.parcel
+            msg += ' is already assigned to PIN ' + duplicate.faas.pin 
+            throw new Exception(msg)
+        }
+
+    }
+
+    @ProxyMethod
+    public def createNewFaas(item) {
+    	def faas = faasSvc.openFaas(item.faas)
+		def prevfaas = buildPreviousFaas(faas)
+
+    	faas.objid = prevfaas.faasid
+    	faas.state = 'PENDING'
+    	faas.tdno = item.newfaas.tdno 
+		faas.prevtdno = prevfaas.prevtdno 
+    	faas.datacapture = false
+    	faas.utdno = faasSvc.generateUniqueTdNo(faas)
+    	faas.txntype = faasSvc.getTxnType('RS')
+    	faas.memoranda = item.memoranda
+    	faas.effectivityyear = dtSvc.serverYear + 1
+
+    	faas.previousfaases = [prevfaas]
+    	faas.backtaxes = [] 
+    	faas.rp.state = 'INTERIM'
+
+    	if (item.faas.rputype == 'land') {
+    		faas.rp.objid = 'RP' + new java.rmi.server.UID()
+    		faas.rp.pin = item.newfaas.fullpin 
+    		faas.rp.section = item.newfaas.ssection
+    		faas.rp.parcel = item.newfaas.sparcel
+    	} else {
+    		faas.rp = rpSvc.open([objid:item.newfaas.rpid])
+    	}
+
+    	faas.rpu.realpropertyid = faas.rp.objid 
+    	faas.rpu.state = 'INTERIM'
+    	faas.rpu.fullpin = item.newfaas.fullpin
+    	faas.rpu.suffix = item.newfaas.suffix
+    	rpuSvc.generateNewIds(faas.rpu)
+
+    	faas.rpuid = faas.rpu.objid
+    	faas.realpropertyid = faas.rp.objid 
+    	faasSvc.createFaas(faas)
+
+    	item.newfaas.objid = faas.objid 
+    	item.newfaas.rpuid = faas.rpu.objid
+    	item.newfaas.rpid = faas.rp.objid
+    	em_resection_item.update(item)
+    	return item
+    }
+
+    @ProxyMethod
+    public def updateItem(item) {
+    	em_resection_item.update(item)
+    	return item
+    }
+
+
+    @ProxyMethod
+    public def initSubmitToProvince(entity) {
+    	return entity
+    }
+
+    @ProxyMethod
+    public def assignNewTdNos(entity){
+    	entity.items.each{
+    		if (it.newfaas.objid && !it.newfaas.tdno) {
+				assignFaasNewTdNo(it)
+    		}
+    	}
+    }
+
+
+    @ProxyMethod
+    public def submitToProvince(entity){
+        insertFaasSignatories(entity)
+        entity.state = 'FORAPPROVAL'
+        em_resection.find([objid: entity.objid]).update([state: entity.state])
+        return entity
+    }    
+
+    @ProxyMethod
+    public def approveResectionedFaas(entity, item){
+    	def faas = faasSvc.openFaas(item.newfaas)
+        faas.approver = entity.approver 
+        faasSvc.approveFaas(faas)
+    }
+
+    @ProxyMethod
+    public def approve(entity){
+        checkPendingFaases(entity)
+        entity.state = 'APPROVED'
+        em_resection.find([objid: entity.objid]).update([state: entity.state])
+        deleteTxnRefs(entity)
+        return entity
+    }
+
+    void deleteTxnRefs(entity){
+    	entity.items.each {
+        	txnRefSvc.delete(it.faas.objid)
+    	}
+    }
+
+    void checkPendingFaases(entity){
+        def res = em_resection.findPendingFaasesCount(entity)
+        if (res.icount > 0)
+            throw new Exception('Unable to approve resection. There are still pending resectioned FAAS.\nCancel the transaction and approve again.')
+    }    
+
+
+    @ProxyMethod
+    public void insertFaasSignatories(entity) {
+        def _taskid = entity._taskid
+    	def currTask = em_task.find([objid: _taskid]).first()
+        if (!currTask) return 
+
+    	def items = em_resection_item.find([parent_objid: entity.objid]).list()
+    	items.each {
+    		faasSvc.insertOnlineFaasSignatory([
+                taskid: _taskid, 
+                faasid: it.newfaas?.objid, 
+                task: currTask
+            ])
+    	}
+    }
+
+	@ProxyMethod
+	public void updateSignatories(task) {
+		if (task.state.matches('assign.*') || env.action?.matches('return.*'))
+            return;
+
+        def t = [
+            objid       : task.objid,
+            refid       : task.refid,
+            state       : task.state, 
+            action      : task.action, 
+            actor       : task.actor, 
+            enddate     : task.enddate,
+        ]
+
+        def items = em_resection_item.find([parent_objid: task.refid]).list()
+        items.each {
+            t.refid = it.newfaas.objid
+            faasSvc.updateSignatoryInfo(t)
+        }
+	}
+
+    @ProxyMethod
+    public def getReportData(entity) {
+        return  open(entity)
+    }
+
+
+    void assignFaasNewTdNo(item){
+    	def faas = em_resection.findFaasInfo(item.newfaas)
+    	if (!faas) {
+            throw new Exception('FAAS ' + item.newfaas.objid + ' does not exist or has been deleted.')
+        }
+        
+        faasSvc.updateTDNo(faas)
+        faasSvc.updateTdNoByRecord(faas)
+        item.newfaas.tdno = faas.tdno 
+        em_resection_item.update(item)
+    }       
+
+
+
+
+
+	def validateAndLoadFaases(entity) {
+		//check duplicate 
+		def resection = em_resection.select('txnno')
+								    .where("objid <> :objid and section = :section and state <> 'APPROVED' and barangay_objid = :barangayid ", entity)
+								    .first()
+		if (resection)
+		throw new Exception('Duplicate resection with Txn No. ' + resection.txnno + ' is found.')
+
+
+		def faases = em_resection.getItems(entity)
+		if (!faases) 
+		throw new Exception('There are no current FAAS for this section.')
+
+		faases.each{faas ->
+			if (!'PROVINCE'.equalsIgnoreCase(env.ORGCLASS)) {
+				def ledger = em_rptledger.select('state,tdno').find([faasid: faas.objid]).first()
+				if ('PENDING'.equalsIgnoreCase(ledger.state)){
+					throw new Exception('Ledger for TD No. ' + ledger.tdno + ' is still pending.')
+				}
+				if ('CANCELLED'.equalsIgnoreCase(ledger.state)){
+					throw new Exception('Ledger for TD No. ' + ledger.tdno + ' has already been cancelled.')
+				}
+			}
+
+			txnRefSvc.checkReference(faas.objid)
+		}
+
+		return faases 
+	}
+
+
+	void doDeleteFaas(item) {
+		def newfaasid = item.newfaas?.objid
+		
+		item.newfaas = [:]
+		em_resection_item.find([objid: item.objid]).update([
+			newfaas_objid: null,
+			newfaas_rpuid: null,
+			newfaas_rpid: null,
+			newfaas_section: null,
+			newfaas_parcel: null,
+			newfaas_suffix: null,
+			newfaas_tdno: null,
+			newfaas_fullpin: null,
+		])
+
+		if (newfaasid) {
+			try{
+				faasSvc.deleteFaasById(newfaasid)
+			}
+			catch(e) {
+				e.printStackTrace()
+			}
+		}
+	}
+
+	def buildPreviousFaas(faas) {
+		return [
+			objid: faas.objid, 
+			faasid: 'F' + new java.rmi.server.UID(),
+			prevfaasid: faas.objid,
+			prevrpuid: faas.rpu.objid,
+			prevtdno: faas.tdno, 
+			prevpin: faas.fullpin,
+			prevowner: faas.owner.name,
+			prevadministrator: faas.administrator?.name,
+			prevav: faas.rpu.totalav,
+			prevmv: faas.rpu.totalmv,
+			prevareasqm: faas.rpu.totalareasqm,
+			prevareaha: faas.rpu.totalareaha,
+			preveffectivity: faas.effectivityyear,
+		]
+	}
+
+}
+

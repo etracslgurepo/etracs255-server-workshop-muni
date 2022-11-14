@@ -1,0 +1,116 @@
+package planttreeassessment;
+
+import rptis.facts.*;
+import rptis.planttree.facts.*;
+import java.util.*;
+import com.rameses.rules.common.*;
+
+global RuleAction action;
+
+
+rule "initial-bmv-productive"
+	agenda-group "INITIAL"
+	salience -500000
+	no-loop
+	when
+		PTD : PlantTreeDetail(PRODUCTIVE:productive, UV:unitvalue, areacovered <= 0.0)
+	then	
+		Map bindings = new HashMap();
+		bindings.put("PRODUCTIVE", PRODUCTIVE);
+		bindings.put("UV", UV);
+
+		Map map = new HashMap();
+		map.put("planttreedetail", PTD);
+		map.put( "expr", (new ActionExpression("PRODUCTIVE * UV", bindings)) );
+		action.execute( "calc-planttree-bmv", map, drools );
+end
+
+rule "initial-bmv-areacovered"
+	agenda-group "INITIAL"
+	salience -500000
+	no-loop
+	when
+		PTD : PlantTreeDetail(UV:unitvalue, AREACOVERED:areacovered > 0.0)
+	then	
+		Map bindings = new HashMap();
+		bindings.put("AREACOVERED", AREACOVERED);
+		bindings.put("UV", UV);
+
+		Map map = new HashMap();
+		map.put("planttreedetail", PTD);
+		map.put( "expr", (new ActionExpression("AREACOVERED * UV", bindings)) );
+		action.execute( "calc-planttree-bmv", map, drools );
+end
+
+rule "initial-adjustment"
+	agenda-group "ADJUSTMENT"
+	salience -500000
+	no-loop
+	when
+		PTD : PlantTreeDetail(BMV:basemarketvalue, RATE:adjustmentrate)
+	then	
+		Map bindings = new HashMap();
+		bindings.put("BMV", BMV);
+		bindings.put("RATE", RATE);
+
+		Map map = new HashMap();
+		map.put("planttreedetail", PTD);
+		map.put( "expr", (new ActionExpression("@ROUND(BMV * RATE / 100.0)", bindings)) );
+		action.execute( "calc-planttree-adjustment", map, drools );
+end
+
+rule "initial-mv"
+	agenda-group "MARKETVALUE"
+	salience -500000
+	no-loop
+	when
+		PTD : PlantTreeDetail(BMV:basemarketvalue, ADJ:adjustment)
+	then	
+		Map bindings = new HashMap();
+		bindings.put("BMV", BMV);
+		bindings.put("ADJ", ADJ);
+
+		Map map = new HashMap();
+		map.put("planttreedetail", PTD);
+		map.put( "expr", (new ActionExpression("@ROUND(BMV + ADJ)", bindings)) );
+		action.execute( "calc-planttree-mv", map, drools );
+end
+
+
+rule "initial-assess-value"
+	agenda-group "ASSESSEDVALUE"
+	salience -500000
+	no-loop
+	when
+		PTD  : PlantTreeDetail(MV:marketvalue,AL:assesslevel)
+	then	
+		Map bindings = new HashMap();
+		bindings.put("PTD", PTD );
+		bindings.put("MV", MV );
+		bindings.put("AL", AL );
+
+		Map map = new HashMap();
+		map.put("planttreedetail", PTD);
+		map.put( "expr", (new ActionExpression("@ROUND( MV * AL / 100.0 )", bindings)) );
+		action.execute( "calc-planttree-av", map, drools );
+end
+
+
+
+rule "ADD_ASSESSMENT_INFO"
+	agenda-group "SUMMARY"
+	salience -500000
+	no-loop
+	
+	when
+		PTD: rptis.planttree.facts.PlantTreeDetail (   )
+	then
+		Map bindings = new HashMap();
+		bindings.put("PTD", PTD );
+		Map _p0 = new HashMap();
+		_p0.put( "planttreedetail", PTD );
+		action.execute( "add-planttree-assessment-info",_p0,drools);
+end
+
+
+	

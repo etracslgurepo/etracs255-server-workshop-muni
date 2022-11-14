@@ -1,0 +1,33 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.services.extended.*;
+
+class BankAccountLookupService  {
+
+	@ActiveDB("bankaccount")
+	def em;
+
+	@ProxyMethod
+	public def getColumns(def m) {
+		return [
+			[name:"code", caption:"Account No."],
+			[name:"title", caption:"Account Title"],
+			[name:"bank.code", caption:"Bank Code"],
+			[name:"bank.name", caption:"Bank Name"],
+			[name:"branchname", caption:"Branch Name"],
+		];
+	}
+
+	@ProxyMethod
+	public def getList(def o) {
+		if( o.fundid ) {
+			def m = [fundid: o.fundid];	
+			return  em.getListByFund(m);
+		}
+		else {
+			return  em.getList();
+		}
+	}
+
+}

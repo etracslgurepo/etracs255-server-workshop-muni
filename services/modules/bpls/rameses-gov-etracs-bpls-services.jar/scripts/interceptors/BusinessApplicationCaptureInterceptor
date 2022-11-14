@@ -1,0 +1,153 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.services.extended.*;
+
+public class BusinessApplicationCaptureInterceptor {
+
+	@Env
+	def env;
+
+	@Service("BusinessApplicationWorkflowService")
+	def workflowSvc;
+
+	@Service("BusinessMasterService")
+	def bizSvc;
+
+	@Service("BusinessLobService")
+	def lobSvc;
+
+	@Service("BusinessInfoService")
+	def infoSvc;
+
+	@Service("BusinessRequirementService")
+	def reqSvc;
+
+	@Service("DateService")
+	def dateSvc;
+
+	@Service("BusinessReceivableService")
+	def receivableSvc;
+
+	@Service("BusinessPaymentService")
+	def paymentSvc;
+
+	@ActiveDB('business_application') 
+	def business_application;
+
+
+	@After(pattern="BusinessApplicationService.initNew", eval="#{args[0].txnmode == 'CAPTURE' }")
+	void initNew(def evt) { 
+		def parms = evt.args[0];
+
+		def entity = evt.result;
+		def o = evt.args[0];
+		entity.putAll(o);
+
+		if(!entity.business) entity.business = [:];
+		if(!entity.business.address) entity.business.address = [:];
+	    if(!entity.lobs) entity.lobs = [];
+		if(!entity.appinfos) entity.appinfos = [];
+	    if(!entity.assessmentinfos) entity.assessmentinfos = [];
+	    if(!entity.payments) entity.payments = [];
+	    entity.objid = "BACAP"+ new UID();
+	} 
+
+	@Before(pattern="BusinessApplicationService.create", eval="#{args[0].txnmode == 'CAPTURE'}")
+	void beforeCreate( evt ) { 
+		def app = evt.args[0];
+		
+		def b = app.business;
+		b.yearstarted =  app.appyear; 
+		b.activeyear = app.appyear; 
+		b.apptype = app.apptype; 
+		b.state = app.state; 	
+		if ( !b.state ) b.state = 'ACTIVE'; 
+
+		def biz = bizSvc.create(b);
+		if ( !biz.bin ) throw new Exception("BIN is null. Pls. check business master service BIN creation"); 
+
+		app.business.objid = biz.objid;
+		app.appno = biz.bin +  "-1C";
+		app.state = 'COMPLETED';
+		bizSvc.updateOnApply( b ); 
+	} 
+
+	@After(pattern="BusinessApplicationService.create", eval="#{args[0].txnmode == 'CAPTURE' }")
+	void afterCreate( evt ) { 
+		def o = evt.args[0];
+		
+		//reverse first the amtpaid because this will be posted by the payment.
+		o.taxfees?.each {
+			if ( it.amtpaid == null ) it.amtpaid = 0;
+		}
+		
+		//add the lobs and app infos
+		def b = [businessid: o.business.objid, activeyear: o.appyear, applicationid: o.objid];
+		b.lobs = o.lobs;
+		b.appinfos = o.appinfos;
+		b.assessmentinfos = o.assessmentinfos;
+		b.requirements = o.requirements;
+		b.entries = o.taxfees;
+
+		if ( !o.lobs ) throw new Exception("Capture have at least 1 line of business");
+
+		bizSvc.updateApplicationId( b ); 
+
+		def bb = [businessid: b.businessid, lobs: o.lobs, appinfos: o.appinfos, assessmentinfos: o.assessmentinfos ];
+		bb.remove_all = true;
+
+		if( b.lobs ) {
+			lobSvc.addAppLobs( b );
+			lobSvc.addActiveLobs( bb );
+		}	
+		if( b.appinfos ) {
+			infoSvc.addAppInfos( b );
+			infoSvc.addActiveAppInfos( bb );
+		}	
+		if( b.assessmentinfos ) {
+			infoSvc.addAssessmentInfos( b );
+			infoSvc.addActiveAssessmentInfos( bb );
+		}	
+		if( b.requirements) reqSvc.addRequirements( b );	
+
+		if( b.entries) {
+			receivableSvc.addReceivables(b);
+		} 
+
+		o.payments?.each {
+			it.businessid = b.businessid;
+			it.reftype = "capture";
+			it.voided = 0;
+			it.appyear = o.appyear;
+			it.amount = it.total;
+			it.items.each {
+				it.amount = it.amtpaid;
+			}
+			paymentSvc.create(it);	
+		}
+
+		lobSvc.updateActiveLOBHistory([ businessid: o.business.objid, appyear: o.appyear ]);  
+	} 
+
+	@After(pattern="BusinessApplicationService.updateInfos")
+	void afterUpdateInfos( evt ) { 
+		def params = evt.args[0]; 
+		def app = business_application.read([ objid: params.applicationid ]); 
+		if ( !app ) return; 
+		
+		if ( app.txnmode.toString().toUpperCase() != 'CAPTURE' ) return; 
+		if ( app.state.toString().toUpperCase() != 'COMPLETED' ) return; 
+
+		def latestapp = business_application.findLatestApplication([ businessid: params.businessid ]); 
+		if ( latestapp.objid != params.applicationid ) 
+			throw new Exception('Process failed. This facility is applicable only to the current application.'); 
+
+		/*def lobs = lobSvc.getAppLobs( params ); 
+		lobs.each{
+			println '>>> ' + it; 
+		}
+		//lobSvc.addActiveLobs( bb );
+		throw new Exception('stop'); */
+	} 
+}

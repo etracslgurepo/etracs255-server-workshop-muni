@@ -1,0 +1,52 @@
+import com.rameses.annotations.*
+
+class EntityPhotoService {
+
+	@DataContext("entity_photo")
+	def	photo_db; 
+
+	@Service 
+	def self;
+
+	@ProxyMethod
+	public def getImage( params ) {
+		return photo_db.find([ objid: params.objid ]).select('image').first(); 
+	}
+
+	@ProxyMethod
+	public def getThumbnail( params ) {
+		return photo_db.find([ objid: params.objid ]).select('thumbnail').first(); 
+	}
+
+	@ProxyMethod(local=true) 
+	public def getMedia( params ) { 
+		def o = null; 
+		if ( params.thumbnail ) {
+			def res = self.getThumbnail( params ); 
+			if ( res ) o = res.thumbnail; 
+
+		} else {
+			def res = self.getImage( params ); 
+			if ( res ) o = res.image; 
+		} 
+
+		if ( o == null ) return null; 
+
+		if ( o instanceof String ) {
+			def base64 = new com.rameses.util.Base64Cipher(); 
+            if ( base64.isEncoded( o )) {
+                o = base64.decode( o ); 
+            }
+		}
+
+		if ( o ) {
+			def mf = new com.rameses.common.MediaFile(); 
+			mf.setContentType('image/jpeg');  
+			mf.setContent( o );  
+			return mf; 
+			
+		} else {
+			return null; 
+		} 
+	}
+}

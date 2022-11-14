@@ -1,0 +1,129 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class RPTReportComparativeMVService
+{
+	@Env 
+	def env 
+
+    @ActiveDB('rptreport_comparativemv')
+    def em
+
+    @Service('Var')
+    def var 
+
+    @DataContext('propertyclassification')
+    def propertyclassification
+
+    @DataContext('exemptiontype')
+    def exemptiontype
+    
+    @Service('RPTUtil')
+    def util
+
+
+    @Async
+    @ProxyMethod
+	public Map generateComparativeMV(params) {
+		params.filter = ''
+
+		if (params.ry){
+			params.filter += ' AND rp.ry =  $P{ry} ' 
+		}
+
+		if (params.lgu){
+			params.filter += ' AND f.lguid =  $P{lguid} ' 
+			params.lguid = params.lgu.objid 
+		}
+
+		if (params.barangay){
+			params.filter += ' AND rp.barangayid = $P{barangayid} '
+			params.barangayid = params.barangay.objid 
+		}
+
+		util.buildReportFormalTitlePeriod('COMPARATIVE DATA ON MARKET VALUE OF REAL PROPERTY ASSESSMENT', params)
+		util.buildStartEndDateFilter(params)
+
+		def starttaxables 	= em.getStartComparativeMV(params)
+		def startexempts 	= em.getStartComparativeMVExempt(params)
+		def endtaxables		= em.getEndComparativeMV(params)
+		def endexempts		= em.getEndComparativeMVExempt(params)
+
+		def loadMVSumaryInfo = { data, list ->
+			def info = list.find{ it.classid == data.classid }
+			if( info ) data.putAll( info )
+		}
+	
+		int lineno = 1
+		int charindex = 'a' 
+		def classifications = getClassifications()
+		def firstspecial = classifications.find{ it.special == 1 }
+		classifications.add( classifications.indexOf( firstspecial), [objid:'SPECIAL', name:'SPECIAL', special:0] )
+		def taxables = classifications.collect{ buildComparativeMVInfo(it, 'TAXABLE') }
+		taxables.each { data ->
+			loadMVSumaryInfo( data, starttaxables )
+			loadMVSumaryInfo( data, endtaxables )
+			if( data.special == 0 ) {
+				data.classname = lineno + '. ' + data.classname 
+				lineno += 1
+			}
+			else {
+				data.classname = '   ' + ((char)charindex) + '. ' + data.classname 
+				charindex += 1
+			}
+		}
+		
+		lineno = 1 
+		def exempts  = getExemptionTypes().collect{ buildComparativeMVInfo(it, 'EXEMPT') }
+		exempts.each { data -> 
+			loadMVSumaryInfo( data, startexempts )
+			loadMVSumaryInfo( data, endexempts )
+			data.classname = lineno + '. ' + data.classname 
+			lineno += 1
+		}
+
+		def forlguname = env.ORGCLASS +  ' OF ' + env.ORGNAME 
+		if (params.lgu){
+			forlguname = params.lgu.lgutype.toUpperCase() + ' OF ' + params.lgu.name
+		}		
+
+		def p = [
+			PERIOD 		: params.period,
+			PERIODTYPE 	: params.periodtype,
+			TITLE 		: params.title,
+			FORLGUNAME  : forlguname,
+		]
+
+		return [
+			parameters  : p,
+			reportdata  : taxables + exempts ,
+		]
+	} 
+	
+	def buildComparativeMVInfo( info, taxability ) {
+		return [ classid	: info.objid, 
+				classname	: info.name, 
+				special		: info.special ,
+				taxability	: taxability,
+				startlandmv : 0.0,
+				startimpmv 	: 0.0,
+				starttotal	: 0.0,
+				endlandmv 	: 0.0,
+				endimpmv 	: 0.0,
+				endtotal	: 0.0,
+			]
+	}	
+
+
+    @ProxyMethod
+    public def getClassifications(){
+    	return propertyclassification.find([state:'APPROVED']).orderBy('orderno').list()
+    }
+
+    
+    @ProxyMethod
+    public def getExemptionTypes(  ) {
+    	return 	exemptiontype.find([state:'APPROVED']).orderBy('orderno').list()
+    }
+}

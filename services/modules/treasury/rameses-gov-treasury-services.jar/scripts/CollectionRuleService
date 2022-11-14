@@ -1,0 +1,28 @@
+import com.rameses.annotations.*;
+import com.rameses.rules.common.*;
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.common.*;
+import treasury.facts.*;
+import treasury.actions.*;
+import treasury.utils.*;
+
+
+class CollectionRuleService  {
+
+	@Service("BillingRuleService")
+	def ruleSvc;
+
+	@ProxyMethod
+	public def execute( def p ) {
+		def req = [rulename: "collection", params: p.params ];
+		req.include_billitems = false;
+		req.include_items = true;
+		def res = ruleSvc.execute( req ); 
+		return res;
+	}
+
+
+
+}

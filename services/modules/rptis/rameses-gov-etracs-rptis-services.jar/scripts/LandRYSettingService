@@ -1,0 +1,668 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import com.rameses.util.*
+import com.rameses.services.extended.*
+
+
+public class LandRYSettingService
+{
+    @Env
+    def env 
+
+    @ActiveDB('landrysetting')
+    def em 
+
+    @DataContext('rysetting_land')
+    def em_land
+
+    @DataContext('rysetting_land_assesslevel')
+    def em_assesslevel
+
+    @DataContext('rysetting_land_assesslevel_range')
+    def em_assesslevelrange 
+
+    @DataContext('rysetting_land_specificclass')
+    def em_specificclass 
+
+    @DataContext('rysetting_land_subclass')
+    def em_subclass
+
+    @DataContext('rysetting_land_stripping')
+    def em_stripping 
+
+    @DataContext('rysetting_land_adjustmenttype')
+    def em_adjustmenttype 
+
+
+    @DataContext('rysetting_lgu')
+    def em_rysettinglgu 
+
+    @DataContext('propertyclassification')
+    def em_classification 
+
+
+    @Service('RPTParameterService')
+    def paramSvc 
+
+    @Service('RPTUtil')
+    def util
+
+    @Service('LandRYSettingService')
+    def self
+
+
+    @ProxyMethod
+    public def getList( params ) {
+        def list = []
+        if (params.searchtext) 
+            list = em_land.orderBy('ry')
+                .find([ry:params.searchtext])
+                .limit(params._start, params._limit)
+                .list()
+        else 
+            list = em_land.where('1=1')
+                .orderBy('ry')
+                .limit(params._start, params._limit)
+                .list()
+        return list 
+    }
+
+
+    @ProxyMethod
+    public def create( entity ) {
+        entity.state = 'DRAFT'
+        if (entity.ry == null) throw new Exception('Revision year is required.')
+        if (entity.ry <= 0) throw new Exception('Revision year must be greater than zero.')
+
+        def exist = em_land.where('1=1').first()
+        if (exist) 
+            throw new Exception('A Revision Year setting has already been created.\nUse copy or revise setting instead.')
+
+        em_land.create(entity )
+
+        //load initial assessment levels
+        getPropertyClassifications().each{pc->
+            def al = [:]
+            al.objid = 'AL' + new java.rmi.server.UID()
+            al.landrysettingid = entity.objid 
+            al.classification = pc 
+            al.code = 'A' + pc.code 
+            al.name = pc.name 
+            al.fixrate = true 
+            al.rate = 0.0 
+            saveAssessLevel(al)
+        }
+        initStandardAdjustments(entity)
+        initStandardStripping(entity)
+        return open(entity)
+    }
+
+
+    @ProxyMethod
+    public def open(entity){
+        entity = em_land.read(entity)
+        if (!entity) throw new Exception('Record does not exist or has already been deleted.')
+        entity.type = 'land'
+        return entity
+    }
+
+
+    @ProxyMethod
+    public def update(entity){
+        return em_land.update(entity)
+    }
+
+
+    @ProxyMethod
+    public def approve(entity){
+        def old = open(entity)
+        if ('APPROVED'.equalsIgnoreCase(old.state)){
+            return old;
+        }
+        entity.state = 'APPROVED';
+        return update(entity)
+    }
+
+    @ProxyMethod
+    public void removeEntity(entity) {
+        def params = [landrysettingid:entity.objid]
+        em.deleteAllAdjustmentTypeClassifications(params)
+        em_adjustmenttype.find(params).delete()
+        em_subclass.find(params).delete()
+        em_specificclass.find(params).delete()
+        em_stripping.find(params).delete()
+        em_assesslevelrange.find(params).delete()
+        em_assesslevel.find(params).delete()
+        em_rysettinglgu.find([rysettingid:entity.objid]).delete()
+        em_land.delete(entity)
+    }
+
+
+    /*-------------------------------------------------------------------
+    * ASSESS LEVEL SUPPORT
+    -------------------------------------------------------------------*/
+    @ProxyMethod
+    public def getAssessLevels(entity){
+        return em_assesslevel.find([landrysettingid:entity.objid])
+                .orderBy('classification.orderno, code')
+                .list()
+                .each{ it.fixrate = util.toBoolean(it.fixrate, true)}
+    }
+
+    @ProxyMethod
+    public def saveAssessLevel( al ){
+        if (util.isTrue(al.fixrate)){
+            em_assesslevelrange.find([landassesslevelid:al.objid]).delete()
+        }
+        return em_assesslevel.save(al)
+    }
+
+
+    @ProxyMethod
+    public void removeAssessLevel(al) {
+        em_assesslevelrange.find([landassesslevelid:al.objid]).delete()
+        em_assesslevel.delete(al)
+    }
+
+    @ProxyMethod
+    public def getRanges(al){
+        return em_assesslevelrange
+                    .find([landassesslevelid:al.objid])
+                    .orderBy('mvfrom')
+                    .list()
+    }
+
+    @ProxyMethod
+    public def saveRange( range ){
+        return em_assesslevelrange.save(range)
+    }
+
+    @ProxyMethod
+    public void deleteRange( range ){
+        em_assesslevelrange.delete(range)
+    }
+
+
+    /*----------------------------------------------------------
+    * LandAdjustmentTypes Support
+    -----------------------------------------------------------*/
+    @ProxyMethod
+    public List getAdjustmentTypes( setting )  {
+        return em_adjustmenttype.find([landrysettingid:setting.objid]).orderBy('idx,code').list()
+    }
+
+
+    @ProxyMethod
+    public void saveAdjustmentType( adjtype) {
+        em_adjustmenttype.save(adjtype)
+        deleteAdjustmentTypeClassifications(adjtype)
+        adjtype.classifications.each{
+            insertAdjustmentTypeClassification(adjtype, it.classification)
+        }
+    }
+    
+
+    @ProxyMethod
+    public def openAdjustmentType( adjtype  ) {
+        adjtype = em_adjustmenttype.read(adjtype)
+        if (!adjtype) throw new Exception('Adjustment Type does not exist or has already been deleted.')
+        adjtype.classifications = getAdjustmentClassifications( adjtype )
+        return adjtype 
+    }
+
+
+    @ProxyMethod
+    public List getAdjustmentClassifications( adjtype ){
+        return em.getAdjustmentTypeClassifications([adjustmenttypeid:adjtype.objid])
+    }
+
+
+    @ProxyMethod
+    public void deleteAdjustmentType( adjtype ) {
+        deleteAdjustmentTypeClassifications(adjtype)
+        em_adjustmenttype.delete(adjtype)
+    }
+
+    void deleteAdjustmentTypeClassifications(adjtype){
+        em.deleteAdjustmentTypeClassifications([adjustmenttypeid:adjtype.objid])
+    }
+
+    void insertAdjustmentTypeClassification(adjtype, classification){
+        em.insertAdjustmentTypeClassification([
+            landrysettingid      : adjtype.landrysettingid ,
+            landadjustmenttypeid : adjtype.objid,
+            classification_objid : classification.objid,
+        ])
+    }
+
+
+    @ProxyMethod
+    public def getVariableList(){
+        return paramSvc.getVariableList()
+    }
+
+
+
+    /*----------------------------------------------------------
+    * Specific Class Support
+    -----------------------------------------------------------*/
+    @ProxyMethod
+    public def getPropertyClassifications(){
+        return em_classification.where("state='APPROVED'").orderBy('orderno').list()
+    }
+
+
+    @ProxyMethod
+    public def getSpecificClasses(entity, classification){
+        def filter = [:]
+        filter.landrysettingid = entity.objid
+        filter.classificationid = (classification ? classification.objid : '%')
+        return em_specificclass
+                    .where('landrysettingid = :landrysettingid and classification_objid like :classificationid', filter)
+                    .orderBy('landspecificclass.code')
+                    .list()
+    }
+
+
+    @ProxyMethod
+    public def saveSpecificClass( sc ){
+        return em_specificclass.save(sc)
+    }
+
+
+    @ProxyMethod
+    public void deleteSpecificClass( sc){
+        em_subclass.find([specificclass_objid:sc.objid]).delete()
+        em_specificclass.delete(sc)
+    }
+
+
+
+    /*----------------------------------------------------------
+    * SubClass Support
+    -----------------------------------------------------------*/
+    @ProxyMethod
+    public def getSubClasses( specificclass){
+        return em_subclass.find([specificclass_objid:specificclass.objid]).orderBy('code').list()
+    }
+
+    @ProxyMethod
+    public def saveSubClass( subclass ){
+        return em_subclass.save(subclass)
+    }
+
+    @ProxyMethod
+    public void deleteSubClass( subclass ){
+        em_subclass.delete(subclass)
+    }
+
+
+
+    /*----------------------------------------------------------
+    * Stripping Support
+    -----------------------------------------------------------*/
+    @ProxyMethod
+    public def getStrippings(entity, classification) {
+        def filter = [:]
+        filter.landrysettingid = entity.objid 
+        filter.classificationid = (classification ? classification.objid : '%')
+        def whereclause = 'landrysettingid = :landrysettingid and classification_objid like :classificationid'
+        return em_stripping.where(whereclause, filter).orderBy('striplevel').list()
+    }
+
+    @ProxyMethod
+    public def saveStripping(stripping){
+        return em_stripping.save(stripping)
+    }
+
+    @ProxyMethod
+    public void deleteStripping( stripping ){
+        em_stripping.delete(stripping)
+    }
+
+
+    /*----------------------------------------------------------
+    * COPY AND REVISION support
+    ----------------------------------------------------------*/
+    @ProxyMethod
+    public void copy(setting) {
+        def newsetting = em_land.read(setting)
+        if (!newsetting) throw new Exception('Setting does not exist or has already been deleted.')
+
+        newsetting.objid = util.generateId('LS')
+        newsetting.appliedto = null
+        newsetting.previd = null
+        em_land.create( newsetting )
+        copyAssessLevels( newsetting, setting, false )
+        copyLcuvs( newsetting, setting, false )
+        copyLandAdjustmentTypes( newsetting, setting, false )
+    }
+
+
+    @ProxyMethod
+    public void revise( oldsetting, params ) {
+        if (params.ry <= oldsetting.ry) 
+            throw new Exception('New Revision Year must be greater than ' + oldsetting.ry + '.')
+
+        def settings = em_land.find([ry:oldsetting.ry]).list() 
+        if( !settings ) throw new Exception('Revision Year ' + oldsetting.ry  + ' settings are not defined.')
+        
+        settings.each{ setting ->
+            def newsetting = em_land.read(setting)
+            newsetting.objid = util.generateId('LS')
+            newsetting.previd = setting.objid 
+            newsetting.ry = params.ry  
+            em_land.create(newsetting )
+            copyAssessLevels( newsetting, setting, true )
+            copyLcuvs( newsetting, setting, true )
+            copyLandAdjustmentTypes( newsetting, setting, true )
+            copyLgus(newsetting, setting)
+        }
+    }
+
+
+    void copyAssessLevels( newsetting, setting, updateprevid ) {
+        def assesslevels = getAssessLevels( setting )
+        assesslevels.each { al ->
+            def ranges = getRanges(al)
+            al.previd = (updateprevid ? al.objid : null)
+            al.objid = util.generateId('AL')
+            al.landrysettingid = newsetting.objid 
+            al.fixrate = util.toBoolean(al.fixrate, true)
+            saveAssessLevel( al )
+
+            ranges.each{ range ->
+                range.previd = (updateprevid ? range.objid : null)
+                range.objid = util.generateId('RA')
+                range.landassesslevelid = al.objid 
+                range.landrysettingid = newsetting.objid 
+                saveRange( range )
+            }
+        }
+    }
+
+
+    void copyLcuvs( newsetting, setting, updateprevid ) {
+        getPropertyClassifications().each{ pc ->
+            def specificclasses = getSpecificClasses(setting, pc)
+            specificclasses.each { sc ->
+                def subclasses = getSubClasses(sc)
+                sc.previd = (updateprevid ? sc.objid : null)
+                sc.objid = util.generateId('SC')
+                sc.landrysettingid = newsetting.objid 
+                saveSpecificClass( sc )
+                
+                subclasses.each { sbc ->
+                    sbc.previd = (updateprevid ? sbc.objid : null)
+                    sbc.objid = util.generateId('SB')
+                    sbc.specificclass_objid = sc.objid
+                    sbc.landrysettingid = newsetting.objid 
+                    saveSubClass( sbc )
+                }
+            }
+            
+            def strippings = getStrippings( setting, pc)
+            strippings.each { st ->
+                st.previd = (updateprevid ? st.objid : null)
+                st.objid = util.generateId('ST')
+                st.landrysettingid = newsetting.objid 
+                saveStripping( st )
+            }
+        }
+    }
+
+
+    void copyLandAdjustmentTypes( newsetting, setting, updateprevid ) {
+        def landadjustments = getAdjustmentTypes(setting);
+        landadjustments.each { la ->
+            def adjclassifications = getAdjustmentClassifications(la)
+
+            la.previd = (updateprevid ? la.objid : null)
+            la.objid =  util.generateId('LA') 
+            la.landrysettingid = newsetting.objid
+            saveAdjustmentType( la );
+
+            adjclassifications.each{ac ->
+                ac.objid = la.objid 
+                ac.landrysettingid = newsetting.objid
+                insertAdjustmentTypeClassification(ac, ac.classification)
+            }
+        }
+    }
+
+    void copyLgus(newsetting, setting){
+        def lgus = em_rysettinglgu.find([rysettingid:setting.objid]).list()
+        lgus.each{
+            it.objid = 'RL' + new java.rmi.server.UID()
+            it.rysettingid = newsetting.objid 
+            em_rysettinglgu.create(it)
+        }
+    }
+
+
+    @Async
+    @ProxyMethod
+    public def exportData(setting) {
+        return getFullData(setting)
+    }
+
+    @ProxyMethod
+    public def getFullData(setting) {
+        setting = open(setting)
+        setting.type = 'land'
+        setting.levels = getAssessLevels(setting)
+        setting.ranges = []
+        setting.levels.each{
+            setting.ranges += getRanges(it)
+        }
+        setting.specificclasses = em_specificclass.find([landrysettingid:setting.objid]).list()
+        setting.subclasses = []
+        setting.specificclasses.each{
+            setting.subclasses += getSubClasses(it)
+        }
+        setting.strippings = em_stripping.find([landrysettingid:setting.objid]).list()
+        setting.adjustmenttypes = getAdjustmentTypes(setting)
+        setting.adjustmenttypes.each{
+            it.classifications = getAdjustmentClassifications(it)
+        }
+        setting.lgus = em_rysettinglgu.find([rysettingid:setting.objid]).list()
+        return setting
+    }
+
+    @Async
+    @ProxyMethod
+    public def importData(setting) {
+        if (setting.type != 'land')
+            throw new Exception('Invalid data. Imported data is for ' + setting.type.toUpperCase() + ' setting.');
+        sync([setting])
+    }
+
+    @ProxyMethod
+    public getSettingForSync(params) {
+        params.lguid = params.lgu.orgid
+        def settings = []
+        em.getSettingsForSync(params).each{setting -> 
+            settings << getFullData(setting)
+        }
+        return [name: 'land', type: 'land', items: settings]
+    }
+
+    @ProxyMethod
+    public void syncSetting(setting) {
+        sync(setting.items)
+    }
+
+
+
+    /*----------------------------------------------------------
+    * SYNC support
+    ----------------------------------------------------------*/
+    @ProxyMethod
+    public void sync( settings ) {
+        settings.each{ setting ->
+            em_land.save(setting)
+
+            setting.lgus.each{
+                em_rysettinglgu.save(it)
+            }
+
+            setting.levels.each{lvl -> 
+                saveAssessLevel(lvl)
+                lvl.ranges.each{ range ->
+                    saveRange(range)
+                }
+            }
+
+            setting.specificclasses.each{spc ->
+                saveSpecificClass(spc)
+                spc.subclasses.each{sub ->
+                    saveSubClass(sub)
+                }
+            }
+
+            setting.strippings.each{
+                saveStripping(it)
+            }
+
+            setting.adjustmenttypes.each{
+                saveAdjustmentType(it)
+            }
+        }
+    }
+
+
+
+    /*---------------------------------------------------------
+    *
+    * @DEPRECATED 
+    *
+    ---------------------------------------------------------*/
+    @ProxyMethod
+    public void syncData( msg ) {
+        self.doSyncData(msg)
+    }
+
+
+    /*---------------------------------------------------------
+    *
+    * @DEPRECATED 
+    *
+    ---------------------------------------------------------*/
+    @Async
+    @ProxyMethod
+    public void doSyncData( msg ) {
+        if (msg.msgtype == 'landrysetting'){
+            em_land.save( msg.data )
+            msg.data.lgus = em_rysettinglgu.find([rysettingid:msg.data.objid, lguid: env.ORGID]).list()
+            if (!msg.data.lgus){
+                if (!msg.data.lgus){
+                    msg.data.lgus << [
+                        objid: 'RSL' + new java.rmi.server.UID(),
+                        rysettingid: msg.data.objid,
+                        lguid: env.ORGID,
+                        barangayid: null,
+                        lguname: env.ORGNAME,
+                        settingtype: 'land',
+                    ]
+                }
+            }
+            msg.data.lgus?.each{
+                em_rysettinglgu.save(it)
+            }
+        }
+        else if (msg.msgtype == 'landassesslevels'){
+            msg.data.each{lvl -> 
+                saveAssessLevel(lvl)
+                lvl.ranges.each{ range ->
+                    saveRange(range)
+                }
+            }
+        }
+        else if (msg.msgtype == 'specificclasses'){
+            msg.data.each{spc ->
+                saveSpecificClass(spc)
+                spc.subclasses.each{sub ->
+                    saveSubClass(sub)
+                }
+            }
+        }
+        else if (msg.msgtype == 'strippings'){
+            msg.data.each{
+                saveStripping(it)
+            }
+        }
+        else if (msg.msgtype == 'adjustmenttypes'){
+            msg.data.each{
+                saveAdjustmentType(it)
+            }
+        } 
+    }
+
+    
+    void initStandardAdjustments(entity){
+        def agriclass = em_classification.find([name: 'AGRICULTURAL']).first() 
+        createAdjustment(entity, agriclass, 'APR', 'ALONG PROVINCIAL', '0', 0)
+        createAdjustment(entity, agriclass, 'ANR', 'ALONG NATIONAL ROAD', '0', 0)
+        createAdjustment(entity, agriclass, 'NRO', 'NO ROAD OUTLET', 'SYS_BASE_MARKET_VALUE * (-0.09)', 0)
+        createAdjustment(entity, agriclass, 'ADR', 'ALONG DIRT ROAD', 'SYS_BASE_MARKET_VALUE * (-0.06)', 0)
+        createAdjustment(entity, agriclass, 'AWR', 'ALL WEATHER ROAD', 'SYS_BASE_MARKET_VALUE * (-0.03)', 0)
+
+        createAdjustment(entity, agriclass, 'DWR1', 'DISTANCE TO ALL WEATHER ROAD (0%)', '0', 1)
+        createAdjustment(entity, agriclass, 'DWR2', 'DISTANCE TO ALL WEATHER ROAD (-2%)', 'SYS_BASE_MARKET_VALUE * (-0.02)', 1)
+        createAdjustment(entity, agriclass, 'DWR3', 'DISTANCE TO ALL WEATHER ROAD (-4%)', 'SYS_BASE_MARKET_VALUE * (-0.04)', 1)
+        createAdjustment(entity, agriclass, 'DWR4', 'DISTANCE TO ALL WEATHER ROAD (-6%)', 'SYS_BASE_MARKET_VALUE * (-0.06)', 1)
+        createAdjustment(entity, agriclass, 'DWR5', 'DISTANCE TO ALL WEATHER ROAD (-8%)', 'SYS_BASE_MARKET_VALUE * (-0.08)', 1)
+
+        createAdjustment(entity, agriclass, 'DTC1', 'DISTANCE TO TRADING CENTER (5%)', 'SYS_BASE_MARKET_VALUE * (0.05)', 2)
+        createAdjustment(entity, agriclass, 'DTC2', 'DISTANCE TO TRADING CENTER (0%)', '0', 2)
+        createAdjustment(entity, agriclass, 'DTC3', 'DISTANCE TO TRADING CENTER (-2%)', 'SYS_BASE_MARKET_VALUE * (-0.02)', 2)
+        createAdjustment(entity, agriclass, 'DTC4', 'DISTANCE TO TRADING CENTER (-4%)', 'SYS_BASE_MARKET_VALUE * (-0.04)', 2)
+        createAdjustment(entity, agriclass, 'DTC5', 'DISTANCE TO TRADING CENTER (-6%)', 'SYS_BASE_MARKET_VALUE * (-0.06)', 2)
+    }
+
+    void createAdjustment(entity, appliedto, code, name, expr, idx){
+        def adj = [ 
+            objid: code, 
+            landrysettingid: entity.objid, 
+            code: code, 
+            name: name, 
+            expr: expr, 
+            idx: idx, 
+            appliedto: appliedto?.name, 
+            previd: null,
+            classification: appliedto,
+        ]
+        em_adjustmenttype.create(adj)
+
+        em.insertAdjustmentTypeClassification([
+            landadjustmenttypeid: adj.objid,
+            classification_objid: appliedto.objid,
+            landrysettingid: entity.objid 
+        ])
+    }
+
+    void initStandardStripping(entity) {
+        def residential = em_classification.find([name: 'RESIDENTIAL']).first()
+        if (residential) {
+            createStrippings(entity, residential)
+        }
+
+        def commercial = em_classification.find([name: 'COMMERCIAL']).first()
+        if (commercial) {
+            createStrippings(entity, commercial)
+        }
+    }
+
+    def createStrippings(entity, classification) {
+        for (int i = 1; i <= 4; i++) {
+            def strip = [:]
+            strip.objid = 'ST' + new java.rmi.server.UID()
+            strip.landrysettingid = entity.objid 
+            strip.classification = classification
+            strip.striplevel = i
+            strip.rate = 100 - (i - 1) * 20 
+            em_stripping.create(strip)
+        }
+    }
+
+}

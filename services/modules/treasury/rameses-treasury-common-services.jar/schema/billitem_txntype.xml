@@ -1,0 +1,7 @@
+<schema>
+	<element tablename="billitem_txntype">
+		<field name="objid" primary="true" />
+		<field name="title" caption="Title" searchable="true"/>
+		<field name="category" caption="Category"/>
+	</element>
+</schema>

@@ -1,0 +1,22 @@
+<schema>
+	<element tablename="vw_assessment_notice">
+		<field name="objid" primary="true"/>
+		<field name="state" caption="State" searchable="true" indexed="true" width="100"/>
+		<field name="txnno" caption="Txn No." searchable="true" indexed="true" width="100"/>
+		<field name="txndate" caption="Txn Date" width="100" type="date" format="yyyy-MM-dd"/>
+		<field name="taxpayerid" />
+		<field name="taxpayername" caption="Taxpayer" searchable="true" width="180"/>
+		<field name="taxpayeraddress" caption="Address" width="100"/>
+		<field name="dtdelivered" caption="Date Received" width="80"/>
+		<field name="receivedby" caption="Received By" width="180"/>
+		<field name="remarks" caption="Remarks" width="120"/>
+		<field name="assessmentyear" caption="Assessment Year" width="80"/>
+		<field name="administrator_name" caption="Administrator" searchable="true" width="180"/>
+		<field name="administrator_address" caption="Address" width="100"/>
+		<field name="tdno" caption="TD No." searchable="true" indexed="true" width="120"/>
+		<field name="fullpin" caption="PIN" searchable="true" indexed="true" width="160"/>
+		<field name="cadastrallotno" caption="Lot No." searchable="true" indexed="true" width="80"/>
+		<field name="titleno" caption="Title No." searchable="true" indexed="true" width="80"/>
+		<field name="deliverydays" caption="Delivery Days" expr="30" width="80"/>
+	</element>
+</schema>

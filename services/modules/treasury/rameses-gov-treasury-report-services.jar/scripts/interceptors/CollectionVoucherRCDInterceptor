@@ -1,0 +1,14 @@
+import com.rameses.annotations.*;
+
+class CollectionVoucherRCDInterceptor {
+
+	@Service('CollectionVoucherRCDReportService') 
+	def reportSvc; 
+
+	@After(pattern="CollectionVoucherService.getReportData")
+	void getReportData( evt ) { 
+		def result = evt.result; 
+		def data = reportSvc.getReport( result ); 
+		if ( data ) result.putAll( data ); 
+	} 
+} 

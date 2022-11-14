@@ -1,0 +1,16 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+
+public class LobListQueryInterceptor {
+
+	@Before(pattern="QueryService.getList", eval="#{args[0]._schemaname == 'lob' && args[0].attribute !=null }")
+	public void beforeGetList( evt ) { 
+		def p = evt.args[0];
+		if(!p.where) {
+			p.where = [ "objid IN (SELECT lobid FROM lob_lobattribute  WHERE lobattributeid IN ( '" + p.attribute.objid +  "' ) ) "  ]
+		}
+	}
+
+
+}

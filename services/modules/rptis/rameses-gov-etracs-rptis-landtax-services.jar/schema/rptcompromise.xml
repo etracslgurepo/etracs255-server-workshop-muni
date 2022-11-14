@@ -1,0 +1,75 @@
+<schema>
+	<element tablename="rptcompromise">
+		<field name="objid" primary="true" prefix="RC"/>
+		<field name="state" required="true" caption="State" searchable="true" indexed="true"/>
+		<field name="txnno"  caption="Txn No." searchable="true" indexed="true"/>
+		<field name="txndate"  caption="Txn Date" searchable="true" indexed="true" type="date"/>
+		<field name="cutoffdate"  caption="Cutoff Date" type="date"/>
+		<field name="faasid" />
+		<field name="rptledgerid" required="true" />
+		<field name="lastyearpaid" type="integer" required="true"  caption="Last Year Paid" />
+		<field name="lastqtrpaid" type="integer" required="true" caption="Last Qtr Paid"/>
+		<field name="startyear" type="integer" required="true" caption="Start Year" />
+		<field name="startqtr" type="integer" required="true" caption="Start Qtr"/>
+		<field name="endyear" type="integer" required="true" caption="End Year"/>
+		<field name="endqtr" type="integer" required="true" caption="End Qtr"/>
+		<field name="enddate" required="true" caption="End Date"/>
+		<field name="cypaymentrequired" type="boolean" required="true" />
+		<field name="cypaymentorno" />
+		<field name="cypaymentordate" />
+		<field name="cypaymentoramount" />
+		<field name="downpaymentrequired" type="boolean" required="true" />
+		<field name="downpaymentrate" type="decimal" required="true" />
+		<field name="downpayment" type="decimal" required="true" />
+		<field name="downpaymentorno" />
+		<field name="downpaymentordate" />
+		<field name="term" type="integer" required="true" caption="Term"/>
+		<field name="numofinstallment" type="integer" required="true" caption="No. of Installment"/>
+		<field name="amount" type="decimal" required="true" caption="Amount"/>
+		<field name="amtforinstallment" type="decimal" required="true" />
+		<field name="amtpaid" type="decimal" required="true" />
+		<field name="firstpartyname" required="true" />
+		<field name="firstpartytitle" required="true" />
+		<field name="firstpartyaddress" required="tue" />
+		<field name="firstpartyctcno" required="true" />
+		<field name="firstpartyctcissued" required="true" />
+		<field name="firstpartyctcdate" required="true" />
+		<field name="firstpartynationality" required="true" />
+		<field name="firstpartystatus" required="tue" />
+		<field name="firstpartygender" required="tue" />
+		<field name="secondpartyrepresentative" required="true" />
+		<field name="secondpartyname" required="true" />
+		<field name="secondpartyaddress" required="tue" />
+		<field name="secondpartyctcno" required="true" />
+		<field name="secondpartyctcissued" required="true" />
+		<field name="secondpartyctcdate" required="true" />
+		<field name="secondpartynationality" required="true" />
+		<field name="secondpartystatus" required="tue" />
+		<field name="secondpartygender" required="tue" />
+		<field name="dtsigned"  />
+		<field name="notarizeddate" />
+		<field name="notarizedby" />
+		<field name="notarizedbytitle" />
+		<complex name="signatories" type="list" serializer="default"/>
+		<field name="manualdiff" required="true" type="decimal" />
+		<field name="cypaymentreceiptid" />
+		<field name="downpaymentreceiptid" />
+
+		<complex name="installments" ref="rptcompromise_installment" jointype="one-to-many" required="true" orderBy="installmentno">
+			<key field="objid" target="parentid"/>
+		</complex>
+
+		<complex name="items" ref="rptcompromise_item" jointype="one-to-many" required="true" orderBy="year,qtr,priority,revtype">
+			<key field="objid" target="parentid"/>
+		</complex>
+
+		<complex name="credits" ref="rptcompromise_credit" jointype="one-to-many" required="false" orderBy="ordate desc">
+			<key field="objid" target="parentid"/>
+		</complex>
+
+		<complex name="rptledger" ref="rptledger" jointype="many-to-one"
+			includefields="objid,tdno,fullpin,cadastrallotno,blockno,titleno,totalmv,totalav,rputype,classcode,totalareasqm,totalareaha,taxpayer.name,taxpayer.address.text,barangay.name,administrator.name,administrator.address">
+			<key field="rptledgerid" target="objid"/>
+		</complex>
+	</element>
+</schema>

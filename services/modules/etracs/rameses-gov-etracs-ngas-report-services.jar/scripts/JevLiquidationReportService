@@ -1,0 +1,128 @@
+import com.rameses.annotations.*;
+
+class JevLiquidationReportService  {
+
+	@ActiveDB('jev_liquidation_report')
+	def em;
+
+	@Env 
+	def env;
+
+	@DataContext('collectionvoucher') 
+	def liq_db;
+
+	@DataContext('fund') 
+	def fund_db;
+
+	@DataContext('account_maingroup') 
+	def acctgroup_db;
+
+	@Service("NumberService")
+	def numSvc;
+
+	@Service("DateService")
+	def dateSvc;	
+
+	def PADDING_SIZE = 10;
+
+	@ProxyMethod 
+	public def initReport( param ) {
+		def m = [funds: []]; 
+		m.funds = em.getLiquidationFunds([ refid: param.objid ]); 
+		m.acctgroups = acctgroup_db.where("reporttype IN ('NGAS','PPSAS')").orderBy('reporttype, version, title').list(); 
+		return m; 
+	}
+
+	@ProxyMethod 
+	public def getReport( param ) { 
+		if ( !param.fund?.objid ) 
+			throw new Exception('fund parameter is required'); 
+		
+		def refdata = liq_db.find([ objid: param.objid ]).first(); 			
+		if ( !refdata?.objid ) 
+			throw new Exception('Transaction record not found'); 
+
+		def fund = fund_db.find([ objid: param.fund.objid ]).first(); 
+		if ( !fund?.objid ) 
+			throw new Exception(''+ param.fund.objid +' fund record not found'); 
+
+		def p = [refid: param.objid];
+		p.maingroupid = param.acctgroup?.objid.toString(); 
+
+		def res = buildJevEntries( p.maingroupid, refdata, fund ); 
+		if ( res ) refdata.putAll( res );  
+
+		refdata.txnno = refdata.controlno;
+		refdata.fund = fund;
+		refdata.header = [:];
+		return refdata; 
+	} 
+
+	@ProxyMethod 
+	def buildJevEntries( maingroupid, liqdata, fund ) {
+		def padding = '      ';
+		def revtype = ' ';
+		def fundgroupid = fund.groupid.toString().toUpperCase(); 
+		if ( fundgroupid == 'GENERAL' ) { 
+			revtype = 'basic%';
+		} 
+		else if ( fundgroupid == 'SEF' ) { 
+			revtype = 'sef%';
+		} 
+
+		def params = [:]; 
+		params.revtype = revtype; 
+		params.orgtype = env.ORGCLASS;
+		params.fundid = fund.objid;
+		params.maingroupid = maingroupid; 
+		params.collectionvoucherid = liqdata.objid;
+
+		def credits = em.getJevEntries( params ).each{ 
+			it.account.title = padding + it.account.title; 
+		} 
+		def rptreceivable = em.findRPTReceivables( params ); 
+		if ( rptreceivable.credit != null ) {
+			credits << rptreceivable;
+		} 
+
+		if ( !credits ) return [:]; 
+
+		credits.each{ 
+			it.credit = (it.credit == null ? 0.0 : it.credit); 
+		}
+		credits.sort{a,b -> a.account.code <=> b.account.code }
+
+		//build debits
+		def debits = [];
+		def rptdiscount = em.findRPTBasicDiscount( params )?.discount; 
+		if (rptdiscount == null) rptdiscount = 0.0;	
+
+		debits << [account:[title:'Cash in Vault', code:'101'], debit: credits.credit.sum() - rptdiscount, credit:0.0]
+		debits << [account:[title:'Other Receivables', code:'149'], debit:0.0, credit:0.0]
+		debits << [account:[title:'Discount on RPT', code:'954'], debit:rptdiscount, credit:0.0]
+
+		//rptincomes 
+		def rptincomes = em.getRPTIncomes( params ).each{
+			it.account.title = padding + it.account.title;
+			it.credit = (it.credit == null ? 0.0 : it.credit);
+		} 
+		if (rptincomes) { 
+			 rptincomes.add(0, [account:[code:'451', title:'DEFERRED RPT INCOME'], credit:0.0, debit:rptincomes.credit.sum()]); 
+		} 
+		else {  
+			rptincomes = [[debit:0.0, credit:0.0]]; 
+		} 
+
+		def m = [
+			totaldebit  : debits.debit.sum() + rptincomes.debit.sum(),
+			totalcredit : credits.credit.sum() + rptincomes.credit.sum(),
+			items 		: debits + credits,
+			rptincomes 	: rptincomes,
+			shares 		: em.getRPTShares(params).each{it.sharetype = it.sharetype.toUpperCase()} 
+		]; 
+		m.itemcount = m.items.size(); 
+		m.rptincomecount = m.rptincomes.size(); 
+		m.sharecount = m.shares.size(); 
+		return m; 
+	} 
+}

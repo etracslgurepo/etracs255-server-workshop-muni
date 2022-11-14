@@ -1,0 +1,10 @@
+<schema>
+	<element tablename="propertyclassification">
+		<field name="objid" primary="true" prefix="PC"/>
+		<field name="state" caption="State" required="true" searchable="true" indexed="true" width="100" />
+		<field name="code" caption="Code" required="true" searchable="true"  indexed="true" width="60" />
+		<field name="name" caption="Classification" required="true" searchable="true"  indexed="true" width="200" />
+		<field name="special" caption="Special?" type="boolean" required="true" indexed="true" width="100" />
+		<field name="orderno" caption="Order No." type="integer" required="true" width="100" />
+	</element>
+</schema>

@@ -1,0 +1,10 @@
+<schema>
+	<element tablename="sys_report_subreport_def">
+		<field name="objid" primary="true" prefix="SUBRPT" />
+		<field name="name" />
+		<field name="parentid" />
+		<field name="reportid" />
+		<field name="querytype" />
+		<field name="statement" />
+	</element>
+</schema>

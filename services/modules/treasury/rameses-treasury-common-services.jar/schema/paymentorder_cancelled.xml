@@ -1,0 +1,36 @@
+<schema>
+	<element tablename="paymentorder_cancelled">
+		<field name="objid" primary="true" visible="true" searchable="true" caption="ControlNo"/>
+		<field name="state" required="true" caption="Status"/>
+		<field name="txndate" type="timestamp" required="true" caption="TxnDate"/>
+		<field name="payer_objid"  />
+		<field name="payer_name" caption="Payer"/>
+		<field name="paidby" required="true" caption="PaidBy"/>
+		<field name="paidbyaddress" required="true" caption="PaidByAddress"/>
+		<field name="particulars" required="true" caption="Particulars"/>
+		<field name="amount" type="decimal" required="true" caption="Amount"/>
+		<field name="expirydate" type="date" required="true" caption="ExpiryDate"/>
+		<field name="refid"  />
+		<field name="refno" caption="RefNo"/>
+
+		<field name="issuedby_objid" />
+		<field name="issuedby_name" caption="Issued By"/>
+
+		<field name="email" />
+		<field name="mobileno" />
+		<field name="org_objid" />
+		<field name="org_name" />
+
+		<complex name="params" serializer="default" required="true"/>
+
+		<complex name="type" ref="paymentorder_type" jointype="many-to-one" required="true">
+			<key field="typeid" target="objid"/>
+		</complex>
+		<complex name="items" serializer="default" required="false" type="list" />
+
+		<field name="dtcancelled" required="true" type="timestamp" caption="DateCancelled"/>
+		<field name="cancelledby_objid" required="true"/>
+		<field name="cancelledby_name" required="true" caption="CancelledBy"/>
+		<field name="remarks" required="true" caption="Remarks"/>
+	</element>
+</schema>

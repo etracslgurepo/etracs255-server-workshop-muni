@@ -1,0 +1,189 @@
+import com.rameses.annotations.*;
+import com.rameses.util.KeyGen; 
+import java.rmi.server.UID;
+
+class OnlineBusinessApplicationService {
+
+	@Env 
+	def env;
+
+	@DataContext('online_business_application')
+	def online_app; 
+
+	@DataContext('business_application_lob')
+	def app_lob; 
+
+	@DataContext('business_application_info')
+	def app_info; 
+
+	@DataContext('business_application_task')
+	def app_task; 
+
+	@DataContext('business_requirement')
+	def app_requirement; 
+
+	@ActiveDB('online_bpls_renewal_builder')
+	def app_builder;
+
+	@Service('DateService') 
+	def dateSvc; 
+	
+
+	@ProxyMethod 
+	public def approve( param ) {
+		if ( !param.objid ) throw new Exception('objid parameter is required');  
+
+		def findby = [ objid: param.objid ]; 
+		def app = online_app.find( findby ).first(); 
+		if ( !app ) throw new Exception('Online application record not found'); 
+
+		if ( !app.state.toString().matches('OPEN')) 
+			throw new Exception('Application record must be in OPEN status'); 
+
+		def bus = app_builder.findBusiness( app.business ); 
+		if ( !bus.state.toString().matches('ACTIVE')) 
+			throw new Exception('Business record must be in ACTIVE status'); 
+
+		// check for any existing renewal application 
+		// that may violate the created online application
+		def test = app_builder.findExistingRenewalApp([ businessid: app.business.objid, appyear: app.appyear ]); 
+		if ( test ) 
+			throw new Exception('There is already an existing renewal application created. Please verify.'); 
+
+		def rundate = dateSvc.getServerDate(); 
+
+		def appcount = bus.appcount + 1; 
+		def appno = (''+ bus.bin +'-'+ appcount.toString() +'R').toString(); 
+
+		def uu = [ state: 'PROCESSING' ]; 
+		uu.approvedby = [ objid: env.USERID, name: env.FULLNAME ]; 
+		uu.approvedappno = appno;  
+		uu.dtapproved = rundate; 
+
+	    online_app.find( findby ).update( uu ); 
+
+	    app_builder.insertApp( findby ); 
+	    app_builder.updateBusinessForProcessing([ objid: findby.objid, appcount: appcount ]); 
+
+	    def businessid = app.business.objid; 
+
+		def alob = [:]; 
+	    app.lobs.each{
+			alob.businessid = businessid;
+			alob.applicationid = app.objid; 
+			alob.activeyear = app.appyear;
+			alob.objid = it.objid; 
+			alob.name = it.lob.name;
+			alob.lobid = it.lob.objid; 
+			alob.assessmenttype = it.assessmenttype; 
+
+			app_lob.create( alob ); 
+			alob.clear(); 
+	    } 
+
+		def activeinfos = app_builder.getBusinessAppInfos([ businessid: businessid ]); 
+		def delinfos = activeinfos.findAll{( it.attribute?.objid.toString().matches('DECLARED_GROSS|DECLARED_CAPITAL|GROSS|CAPITAL') )} 
+		if ( delinfos ) { 
+			activeinfos.removeAll( delinfos ); 
+			delinfos.clear(); 
+		} 
+
+		resolveTotalNumEmployee( activeinfos ); 
+
+		activeinfos.each { 
+			it.objid = 'BUSINFO'+ new UID().toString(); 
+			it.businessid = businessid; 
+			it.applicationid = app.objid; 
+			it.activeyear = app.appyear;
+		} 
+
+	    app.infos.each{ o-> 
+	    	def ai = activeinfos.find{( it.attribute?.objid == o.attribute?.objid.toString() )} 
+	    	if ( !ai ) return; 
+
+	    	if ( o.datatype == 'integer' ) { 
+	    		ai.intvalue = (o.value.toString() == "null" ? 0 : o.value.toString().toInteger()); 
+	    		ai.decimalvalue = ai.boolvalue = ai.stringvalue = null; 
+	    	}
+	    	else if ( o.datatype == 'decimal' ) {
+	    		ai.decimalvalue = (o.value.toString() == "null" ? 0 : new BigDecimal( o.value.toString())); 
+	    		ai.intvalue = ai.boolvalue = ai.stringvalue = null; 
+	    	}
+	    	else if ( o.datatype == 'boolean' ) {
+	    		ai.boolvalue = (o.value.toString().matches('1|true') ? 1 : 0); 
+	    		ai.decimalvalue = ai.intvalue = ai.stringvalue = null; 
+	    	}
+	    	else if ( o.datatype == 'string' ) { 
+	    		ai.stringvalue = (o.value ? o.value.toString() : null);
+	    		ai.decimalvalue = ai.boolvalue = ai.intvalue = null; 
+	    	} 
+	    } 
+
+		resolveTotalNumEmployee( activeinfos ); 
+
+		app.lobs.findAll{( it.gross != null )}.each{
+			def lobinfo = [:]; 
+			lobinfo.objid = 'BUSINFO'+ new UID().toString(); 
+			lobinfo.businessid = businessid; 
+			lobinfo.applicationid = app.objid; 
+			lobinfo.activeyear = app.appyear;
+			lobinfo.lob = it.lob; 
+			lobinfo.attribute = [objid: 'DECLARED_GROSS', name: 'DECLARED_GROSS']; 
+			lobinfo.decimalvalue = new BigDecimal( it.gross.toString()); 
+			lobinfo.phase = lobinfo.level = 0; 
+			lobinfo.type = 'appinfo'; 
+			activeinfos << lobinfo; 
+		} 
+
+		activeinfos.each{ 
+			app_info.create( it ); 
+		} 
+		activeinfos.clear(); 
+
+		def reqinfo = [:]; 
+		app.requirements.each{
+			reqinfo.objid = 'BUSREQ'+ new UID().toString(); 
+			reqinfo.businessid = businessid; 
+			reqinfo.applicationid = app.objid; 
+			reqinfo.reftype = it.ref.reftype;
+			reqinfo.title = reqinfo.reftype; 
+			reqinfo.refno = it.refno;
+			reqinfo.dtissued = it.dtissued;
+			reqinfo.placeissued = it.placeissued; 
+
+			app_requirement.create( reqinfo ); 
+			reqinfo.clear(); 
+		} 
+
+		uu.objid = app.objid; 
+		uu.contact = app.contact; 
+		uu.data = app_builder.findBusinessApp([ objid: app.objid ]); 
+		return uu; 		
+	} 
+
+    def toInteger( value ) {
+        try {
+            if ( value instanceof Number ) {
+                return value; 
+            }
+            return value.toInteger(); 
+        } catch(Throwable t) {
+            return null; 
+        }
+    }	
+
+    void resolveTotalNumEmployee( activeinfos ) {
+        def mcount = toInteger( activeinfos.find{( it.attribute.objid == 'NUM_EMPLOYEE_MALE')}?.intvalue );
+        def fcount = toInteger( activeinfos.find{( it.attribute.objid == 'NUM_EMPLOYEE_FEMALE')}?.intvalue );
+        def tcount = (mcount ? mcount : 0) + (fcount ? fcount : 0); 
+        def ai = activeinfos.find{( it.attribute?.objid == 'NUM_EMPLOYEE')} 
+        if ( !ai ) {
+        	ai = [ 
+        		type: 'appinfo', phase: 1, level: 0, intvalue: 0, 
+        		attribute: [objid: 'NUM_EMPLOYEE', name: 'NUM_EMPLOYEE'] 
+        	]; 
+        	activeinfos << ai; 
+        } 
+        ai.intvalue = tcount; 
+    } 
+} 

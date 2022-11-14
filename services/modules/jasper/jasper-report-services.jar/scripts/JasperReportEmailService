@@ -1,0 +1,110 @@
+import com.rameses.annotations.*;
+import java.io.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import java.util.zip.*;
+
+class JasperReportEmailService  {
+	
+	final String DEFAULT_EMAIL_CONNECTION = "primary-email-server";
+
+	final String outputReportPath = "/apps/server/output/";
+
+	@XConnection(dynamic=true)
+	def connDb;
+
+	@Service("JasperReportService")
+	def jasperSvc;
+
+	@DataContext( dynamic=true )
+	def dynaEm;
+
+	@ProxyMethod
+	@Async
+	public def sendAsync( def o ) {
+		return send( o );
+	}
+
+	@ProxyMethod
+	public def send( def o ) {
+		if(!o.to) throw new Exception("to is required in JasperReportEmailService.send");
+		if(!o.connection) throw new Exception("email connection is required in JasperReportEmailService.send");
+
+		def attachments = o.attachments;
+		if( attachments ) {
+			attachments.each { p->
+				if(!p.filename) {
+					def token = jasperSvc.generateReport( p );
+					p.filename = outputReportPath + token.tokenid + "." + ( p.ext ? p.ext : "pdf" );			
+				}
+				if(!p.title) p.title = p.filename;
+			}
+		}
+
+		try {
+			def z = connDb.lookup( o.connection );
+			def em = [:];
+			em.to = o.to;
+			if(o.subject) em.subject = o.subject;
+			if(o.message) em.message = o.message;
+			em.attachments = attachments;
+			z.send( em );
+			return [status: "OK"]; 
+		}
+		catch( e) {
+			throw e;		
+		}	
+		finally {
+			//delete all file attachments after sending pass or fail
+			if(attachments) {
+				attachments.each { p->
+					def file = new File( p.filename );
+					file.delete();
+				}		
+			}
+		}
+	}
+
+	@ProxyMethod
+	public def submit( o ) {
+		if ( !o.connection ) {
+			o.connection = DEFAULT_EMAIL_CONNECTION; 
+		}
+
+		if ( !o.subject || !o.message  ) {
+			if ( !o.info ) throw new Exception("info is required. info must be a map");
+
+			def em = dynaEm.lookup('sys_email_template'); 
+			def tmp = em.find([ objid: o.reportid.toString() ]).first(); 
+			if ( !tmp ) throw new Exception( o.reportid +" email template not found");
+			if ( !tmp.subject ) throw new Exception("please indicate subject in " + o.reportid +" email template");
+			if ( !tmp.message ) throw new Exception("please indicate message in " + o.reportid +" email template");
+
+			def templateEngine = new groovy.text.SimpleTemplateEngine(); 
+			if ( !o.subject ) o.subject = templateEngine.createTemplate( tmp.subject ).make( o.info )?.toString(); 
+			if ( !o.message ) o.message = templateEngine.createTemplate( tmp.message ).make( o.info )?.toString(); 				
+		} 
+
+		def static_attachments = o.attachments.findAll{( it.bytes )} 
+		if ( static_attachments ) {
+			static_attachments.each { p->
+				p.filename = outputReportPath + com.rameses.util.Encoder.MD5.encode( new java.rmi.server.UID().toString()) +'.pdf'; 
+				if ( !p.title ) p.title = p.filename; 
+
+				def inp = null; 
+				def out = null; 
+				try {
+					inp = new java.io.ByteArrayInputStream( p.bytes ); 
+					out = new java.io.FileOutputStream( new java.io.File( p.filename )); 
+					com.rameses.io.IOStream.write(inp, out, 1024*100); 
+				} 
+				finally {
+					try { out.close(); }catch(Throwable t) {;}
+					try { inp.close(); }catch(Throwable t) {;}
+				}				
+			}
+		}
+
+		return send( o ); 
+	}
+}

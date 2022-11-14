@@ -1,0 +1,225 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class BrgyShareService
+{
+	@ActiveDB('brgyshare')
+	def em
+
+	@Service('WorkflowStateService')
+	def workflowRef
+	
+	@Service('SequenceService')
+	def seqSvc
+	
+	@Service('DateService')
+	def dateSvc
+
+	@Service('RPTUtil')
+    def util 
+
+    @Service('Var')
+    def var
+
+    @Service('NumberService')
+    def numSvc
+
+	@Env
+	def env
+	
+	def SCHEMA_NAME = 'brgyshare'
+	def SCHEMA_ITEM = 'item'
+	
+	def STATE_DRAFT 	= 'DRAFT' 
+	def STATE_POSTED 	= 'POSTED' 
+	
+
+	@ProxyMethod
+	public def initBrgyShare(share) {
+		util.required('Year', share.year)
+		util.required('Month', share.mon)
+		checkPostedShare(share)
+		share.objid = util.generateId('BS')
+		share.createdby = env.FULLNAME 
+		share.createdbytitle = env.JOBTITLE 
+		share.state = 'DRAFT'
+		computeShares(share)
+		share.items.each{
+			it.objid  = util.generateId('BSI')
+			it.brgyshareid = share.objid
+		}
+		return share 
+	}
+
+	@ProxyMethod
+	public def getColumns( params ) {
+		if ('basic'.equalsIgnoreCase(params.sharetype)){
+			return [
+				[name:"barangay", caption:"Barangay", width:150],
+				[name:"basic", caption:"Basic Collection", type:'decimal', width:120],
+	            [name:"basicint", caption:"Interest Collection", type:'decimal', width:120],
+	            [name:"basicshare", caption:"Basic Share", type:'decimal', width:120],
+	            [name:"basicintshare", caption:"Basic Interest Share", type:'decimal', width:120],
+	            [name:"totalshare", caption:"Total Share", type:'decimal', width:120],
+			]	
+		}
+		return [
+				[name:"barangay", caption:"Barangay", width:150],
+				[name:"basic", caption:"Basic Collection", type:'decimal', width:120],
+	            [name:"basicint", caption:"Interest Collection", type:'decimal', width:120],
+	            [name:"basicshare", caption:"Basic Share", type:'decimal', width:120],
+	            [name:"basicintshare", caption:"Basic Interest Share", type:'decimal', width:120],
+	            [name:"commonshare", caption:"Common Share", type:'decimal', width:120],
+	            [name:"totalshare", caption:"Total Share", type:'decimal', width:120],
+			]	
+	}
+
+
+	@ProxyMethod
+	public def createBrgyShare( share ) {
+		if (!share.items)
+			throw new Exception('At least one (1) item is required.')
+
+		share.state = STATE_DRAFT
+		workflowRef.insert(share)
+		share.createdbyid = env.USERID
+		share.createdby   = (env.USERFORMALNAME ? env.USERFORMALNAME : 'system')
+		share.createdbytitle   = (env.JOBTITLE ? env.JOBTITLE : 'system')
+		share.month = share.mon.index 
+		em.create(share)
+
+		share.items.each{
+			em.create(it, SCHEMA_ITEM)
+		}
+		return share 
+	}
+
+	@ProxyMethod
+	public def openBrgyShare( objid) {
+		def share = em.findById([objid:objid])
+		if (!share) throw new Exception('Record does not exist or has already been deleted.')
+		share.items = em.getBrgyShareItems([brgyshareid:objid])
+		return share
+	}
+
+	@ProxyMethod
+	public void deleteBrgyShare( share ) {
+		em.deleteItems([brgyshareid:share.objid])
+		em.delete(share)
+	}
+
+	@ProxyMethod
+	public def postBrgyShare( share ) {
+		share.state = STATE_POSTED
+		workflowRef.insert(share)
+		def pdate = dateSvc.parseCurrentDate()
+		def cy = dateSvc.serverYear 
+		share.txnno		= cy + '-' + seqSvc.getNextFormattedSeries('BRGYSHARE-' + cy)
+		share.txndate 	= pdate.date 
+		share.postedbyid = env.USERID
+		share.postedby   = (env.USERFORMALNAME ? env.USERFORMALNAME : 'system')
+		share.postedbytitle   = (env.JOBTITLE ? env.JOBTITLE : 'system')
+		em.update(share)
+		postToAccountPayable(share)
+		return share 
+	}
+
+	@ProxyMethod
+	public def generateBrgyShareReport(entity) {
+		entity.items.each{
+			it.basictotal = it.basiccurrent + it.basicprevious
+		}
+		return [items:entity.items, rate:util.toDecimal(var.rptc_barangay_basic_rate) * 100.0]
+	}
+
+	@ProxyMethod
+	public def getMonths(  ) {
+		return dateSvc.getMonths();	
+	}
+
+	void postToAccountPayable(share){
+		def monthname = getMonths().find{it.index == share.month}?.caption
+		share.items.each{item ->
+			def ap = em.findAccountPayable([subacctid:item.barangayid])
+			if (!ap){
+				ap = [:]
+				ap.objid = util.generateId('AP') + item.barangayid;
+				em.insertPayable([objid:item.objid, apid:ap.objid])
+			}
+			em.insertPayableItem([objid:item.objid, apid:ap.objid, smonth:monthname])
+			em.updatePayableBalance([objid:ap.objid, dr:item.totalshare])
+		}
+	}
+
+	void checkPostedShare(share){
+		def s = em.findShareByYearMonth([year:share.year, month:share.mon.index])
+		if (s )
+		throw new Exception('Barangay Share for the Month of ' + share.mon.caption + ', ' + share.year + ' has already been posted.')
+	}
+
+
+	void computeShares(share){
+		share.items = em.getAllBarangays().each{
+			it.basiccurrent = 0.0
+			it.basicprevious = 0.0 
+			it.basic = 0.0
+			it.basicint = 0.0 
+			it.basicdisc = 0.0 
+			it.basicshare = 0.0 
+			it.basicintshare = 0.0 
+			it.commonshare = 0.0 
+			it.totalshare = 0.0 
+		}
+
+		def brgycollections = em.getBasicCollectionsByBarangay([year:share.year, month:share.mon.index])
+		if (!brgycollections) return
+		
+		def cityshare_rate = util.toDecimal2(var.rptc_city_basic_rate, 0.70)
+		def brgyshare_rate = util.toDecimal2(var.rptc_barangay_basic_rate, 0.30)
+
+
+		// calculate barangay shares 
+		brgycollections.each{ coll ->
+			def brgy = share.items.find{it.barangayid == coll.barangayid }
+			brgy.putAll(coll)
+			brgy.basic =  numSvc.round(brgy.basic * brgyshare_rate)
+			brgy.basicint =  numSvc.round(brgy.basicint * brgyshare_rate)
+			brgy.basicshare = brgy.basic 
+			brgy.basicintshare = brgy.basicint 
+			brgy.totalshare = brgy.basic + brgy.basicint 
+		}
+
+		share.totalshare = share.items.totalshare.sum()
+
+		if (share.sharetype.equalsIgnoreCase('COMMON_SHARE')){
+			def commonsharerate = 0.50 
+			share.items.each{ 
+				it.bshare = numSvc.round(it.basic * commonsharerate)
+				it.bishare = numSvc.round(it.basicint * commonsharerate)
+				it.basicshare = it.basic - it.bshare
+				it.basicintshare = it.basicint - it.bishare
+			}
+			
+			def totalcommonshare = share.items.bshare.sum() + share.items.bishare.sum()
+			def commonshare = numSvc.round(totalcommonshare / share.items.size())
+			share.items.each { 
+				it.commonshare = commonshare 
+				it.totalshare = it.basicshare + it.basicintshare + it.commonshare
+			}
+
+			def totalshare = share.items.totalshare.sum()
+			def diff = share.totalshare - totalshare
+
+
+			//adjust first item with non-zero basicintshare with diff value 
+			def item = share.items.find{it.basicintshare > 0.0}
+			if (item) {
+				item.basicintshare += diff 
+				item.totalshare += diff 
+			}
+		}
+
+	}
+
+}

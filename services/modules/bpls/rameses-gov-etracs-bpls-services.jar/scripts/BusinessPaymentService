@@ -1,0 +1,134 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.services.extended.*;
+
+public class BusinessPaymentService extends ActiveCrudListService {
+
+	@ActiveDB("business_payment")
+	def em;
+
+	@Service("DateService")
+	def dateSvc;
+
+	@Service("BusinessTaxCreditService")
+	def taxCreditSvc;
+
+
+	public void afterCreate(def o) {
+		o.items.each {
+			def amount = it.amount;
+			def balance = it.amount-it.amtdue-it.discount; 
+			it.objid = 'BPPMTITEM'+new UID();
+			it.parentid = o.objid;
+			it.amount = it.amtdue;
+			it.partial = (balance > 0);
+			em.create( it, "item" ); 
+			it.amount = amount; 
+		}
+		em.updateReceivables([paymentid: o.objid]); 
+
+		if(o.taxcredit > 0) {
+			def detail = [:];
+			detail.businessid = o.businessid;
+			detail.refid = o.refid;
+			detail.refdate = o.refdate;
+			detail.particulars = o.particulars;
+			detail.refid = (!o.refid)?o.objid:o.refid;
+			detail.refdate = o.refdate;
+			detail.reftype = o.reftype;
+			detail.refno = o.refno;
+			detail.dr = o.taxcredit;
+			detail.cr = 0;
+			taxCreditSvc.post( detail );
+		} 
+	}	
+
+	public void afterOpen( def o ) { 
+		if ( !o ) return;  
+
+		o.items = em.getItems(o);
+	}
+
+	@ProxyMethod
+	public void voidPayment(def o) {
+		def voidrct = o.voidrct;
+		def pmt = open( o );
+		pmt.voided = 1;
+		pmt.remarks = o.reason;
+		em.update( pmt );
+		em.voidReceivables([paymentid: pmt.objid]);
+		em.removePaymentItems([paymentid: pmt.objid]);
+
+		/*
+		if( pmt.taxcredit>0) {
+			//reverse the taxcredit.
+			def entry = [businessid:pmt.businessid];
+			entry.dr = 0;
+			entry.cr = it.amount;
+			entry.refno = pmt.refno;
+			entry.refdate = voidrct.txndate;
+			entry.refid = voidrct.objid;
+			entry.particulars = "void:"+voidrct.reason;
+			entry.reftype = "cashreceipt:void";
+			taxCreditSvc.post( entry );
+		}
+		return pmt;*/
+	}
+
+	@ProxyMethod
+	public def getApplicationPayments(def o) {
+		if(!o.applicationid) 
+			throw new Exception("applicationid is required in BusinessPaymentService.getApplicationPayments");
+		return  em.getApplicationPayments(o);
+	}
+
+	@ProxyMethod
+	public def findLastQtrPaid( params ) {
+		if ( !params.applicationid ) throw new Exception('applicationid is required in findLastQtrPaid'); 
+
+		return em.findLastQtrPaid( params ); 
+	} 
+
+	@ProxyMethod
+	public def findLastQtrPaidWithLob( params ) {
+		if ( !params.applicationid ) throw new Exception('applicationid is required in findLastQtrPaidWithLob'); 
+		if ( !params.lobid ) throw new Exception('lobid is required in findLastQtrPaidWithLob'); 
+
+		return em.findLastQtrPaidWithLob( params ); 
+	} 	
+
+	@ProxyMethod
+	public boolean hasFullyPaidQtr( params ) {
+		def info = null; 
+		if ( params.lobid ) {
+			info = findLastQtrPaidWithLob( params ); 	
+		} else {
+			info = findLastQtrPaid( params ); 	
+		} 
+		if ( !info ) return true; 
+
+		def currentDate = dateSvc.getBasicServerDate(); 
+		def pqtr = dateSvc.getQtr( currentDate ); 
+		if ( params.qtr ) pqtr = params.qtr; 
+
+		return ( info.qtr== 0 || info.qtr >= pqtr ); 
+	} 
+
+	@ProxyMethod 
+	public void removePayment( params ) {
+		if ( !params.paymentid ) throw new Exception('paymentid parameter is required'); 
+
+		def payobj = em.read([ objid: params.paymentid ]); 
+		if ( !payobj ) throw new Exception('Business Payment record not found'); 
+		if ( payobj.reftype.toString().toLowerCase() != 'capture' ) 
+			throw new Exception('Removing this kind of payment receipt is not allowed.'); 
+
+		em.removePaymentItems( params ); 
+		em.delete([ objid: payobj.objid ]); 
+
+		def m = [ applicationid: payobj.applicationid ]; 
+		em.resetLedgerAmtPaid( m ); 
+		em.resyncLedgerAmtPaid( m ); 
+	} 
+} 

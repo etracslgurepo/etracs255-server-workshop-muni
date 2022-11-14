@@ -1,0 +1,18 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+
+class DefaultMobileOrgService
+{
+	@ActiveDB(value='org', em='system') 
+    def em; 
+
+	@ProxyMethod 
+	public Map getInfo( params ) {
+		return em.findByName(params);
+	}
+
+	@ProxyMethod 
+	public Map getRoot( params ) {
+		return em.findRoot(params); 
+	} 
+} 

@@ -1,0 +1,375 @@
+import com.rameses.annotations.*
+import com.rameses.util.*
+import com.rameses.services.extended.*
+
+class LandRPUService
+{
+	@ActiveDB('landrpu')
+	def em
+
+	@ActiveDB('planttreerpu')
+	def ptem 
+    
+    @Service('NumberService')
+	def numberSvc
+    
+    @Service('RPUService')
+	def rpuSvc
+	
+	@Service('PlantTreeRPUService')
+	def planttreeSvc
+
+	@Service('Var')
+	def var 
+
+	@Service('RPTUtil')
+	def util
+
+	@Service('LandAssessmentRuleService')
+	def ruleSvc 
+
+	@DataContext('landrpu')
+	def em_landrpu
+	
+	
+	@Env
+	def env
+    
+	def SCHEMA_LANDDETAIL 		= 'landdetail'
+	def SCHEMA_LANDADJUSTMENT	= 'landadjustment'
+	def SCHEMA_PARAMETER 		= 'parameter'
+	def SCHEMA_PLANTTREE_DETAIL	= 'planttreedetail'
+	
+	def ADJ_TYPE_LANDVALUE		= 'LV'
+	def ADJ_TYPE_ACTUALUSE		= 'AU'
+
+
+	@ProxyMethod
+	public def initLandRpu(rpu) {
+		rpu.idleland    	= false
+		rpu.publicland    	= false
+		rpu.totallandbmv = 0.0
+		rpu.totallandmv = 0.0
+		rpu.totallandav = 0.0
+		rpu.totalplanttreebmv = 0.0
+		rpu.totalplanttreeadjustment = 0.0
+		rpu.totalplanttreemv = 0.0
+		rpu.totalplanttreeav = 0.0
+		rpu.landvalueadjustment = 0.0
+		rpu.landdetails 	= []
+		rpu.planttrees  	= []
+		rpu.landadjustments = []
+		return rpu 
+	}
+
+	@ProxyMethod
+	public def createLandRpu( rpu ) {
+		em.create(rpu)
+		saveLandAdjustments(rpu)
+		saveLandDetails(rpu)
+		savePlantTrees(rpu)
+		return rpu
+	}
+
+
+	@ProxyMethod
+	public def updateLandRpu(rpu) { 
+		em.updateImmediate(rpu)
+		saveLandAdjustments(rpu)
+		saveLandDetails(rpu)
+		savePlantTrees(rpu)
+		return rpu
+	}
+
+
+	@ProxyMethod
+	public def openLandRpu( objid ) {
+		def landrpu = em.read([objid:objid])
+		if (landrpu) {
+			landrpu.idleland			= util.toBoolean(landrpu.idleland, false)
+			landrpu.publicland			= util.toBoolean(landrpu.publicland, false)
+			landrpu.landdetails 		= getLandDetails(landrpu)
+			landrpu.planttrees 			= getPlantTrees(landrpu)
+			landrpu.landadjustments 	= getLandAdjustments(landrpu)
+			landrpu.assessments 		= em.getAssessments(landrpu)
+		} else {
+			landrpu = [objid: objid, idleland: false, publicland: false]
+			landrpu.landdetails = []
+			landrpu.planttrees = []
+			landrpu.landadjustments = []
+			landrpu.assessments = []
+		}
+		return landrpu 
+	}
+
+
+	@ProxyMethod
+	public def deleteLandRpu(rpu){
+		deleteItems(rpu)
+		em.delete(rpu)
+	}
+
+	@ProxyMethod
+	public def deleteItems(rpu) {
+		rpu.planttrees.each{
+			ptem.delete(it, SCHEMA_PLANTTREE_DETAIL)
+		}
+		rpu.landdetails.each{ ld ->
+			ld.landadjustments.each{
+				deleteAdjustment(it)
+			}
+			ld.actualuseadjustments.each{
+				deleteAdjustment(it)
+			}
+			em.delete(ld, SCHEMA_LANDDETAIL)
+		}
+		rpu.landadjustments.each{
+			deleteAdjustment(it)
+		}
+		em.deleteAdjustmentParametersByRpu([ landrpuid: rpu.objid ]); 
+		em.deleteLandAdjustments(rpu)
+	}
+
+
+	@ProxyMethod
+	public def generateNewIds( rpu ) {
+		rpu.landdetails.each{ ld ->
+			ld.objid     = util.generateId('LD')
+			ld.landrpuid = rpu.objid 
+
+			ld.landadjustments.each{
+				it.objid     	= util.generateId('LA')
+				it.landdetailid = ld.objid 
+				generateParamsId(it)
+			}
+			ld.actualuseadjustments.each{
+				it.objid     = util.generateId('LA')
+				it.landdetailid = ld.objid 
+				generateParamsId(it)
+			}
+		}
+		
+		rpu.landadjustments.each{
+			it.objid     	= util.generateId('LA')
+			it.landrpuid  	= rpu.objid 
+			generateParamsId(it)
+		}
+
+		rpu.planttrees.each{
+			it.objid     	= util.generateId('PT')
+			it.landrpuid    = rpu.objid 
+		}
+	}
+
+
+	@ProxyMethod
+	public def getLandRpuByRealPropertyId( realpropertyid  ) {
+		return em.findLandRpuByRealPropertyId([realpropertyid:realpropertyid])
+	}
+
+	
+
+	@ProxyMethod
+	public def calculateAssessment( rpu ) {
+		return ruleSvc.execute(rpu)
+	}
+
+    def getApplicableClassifications(adjtype){
+    	return em.getAdjustmentApplicationClassifications(adjtype)
+    }
+
+
+    @ProxyMethod
+    public def getClassifications(  ) {
+    	return rpuSvc.getClassifications()
+    }
+
+
+    @ProxyMethod
+    public def getExemptionTypes(){
+        return rpuSvc.getExemptionTypes()
+    }
+
+
+
+    /*----------------------------------------------------------------
+    *
+    * HELPER METHODS
+    *
+    *-------------------------------------------------------------- */
+
+	void saveLandAdjustments(rpu){
+		rpu.landadjustments.each{ lda ->
+			lda.landrpuid = rpu.objid 
+			lda.type = ADJ_TYPE_LANDVALUE
+			saveAdjustment(lda)
+		}
+
+		rpu._landadjustments?.each{ lda->
+			deleteAdjustment(lda)
+		}
+		rpu.landdetails.each{ld ->
+			ld._landadjustments?.each{lda ->
+				removeAdjustment(lda)
+			}
+			ld._actualuseadjustments?.each{lda ->
+				removeAdjustment(lda)
+			}
+		}
+	}
+
+	void removeAdjustment(lda){
+		em.delete(lda, SCHEMA_LANDADJUSTMENT)
+	}
+
+	void saveLandDetails(rpu){
+		rpu.landdetails.each{ ld ->
+			ld.taxable = util.toBoolean(ld.taxable,true)
+			if (!ld.landspecificclass) ld.landspecificclass = ld.specificclass
+			em.save(ld, SCHEMA_LANDDETAIL)
+
+			ld.landadjustments.each{ lda ->
+				lda.landdetailid = ld.objid 
+				lda.type = ADJ_TYPE_LANDVALUE
+				saveAdjustment(lda)
+			}
+
+			ld.actualuseadjustments.each{ lda ->
+				lda.landdetailid = ld.objid 
+				lda.type = ADJ_TYPE_ACTUALUSE
+				saveAdjustment(lda)
+			}
+		}
+
+		rpu._landdetails?.each{ ld ->
+			ld.landadjustments?.each{ lda ->
+				deleteAdjustment(lda)
+			}
+			ld.actualuseadjustments?.each{lda ->
+				deleteAdjustment(lda)
+			}
+			em.delete(ld, SCHEMA_LANDDETAIL)
+		}
+	}
+
+
+	void savePlantTrees(rpu){
+		rpu.planttrees.each{ pt ->
+			ptem.save(pt, SCHEMA_PLANTTREE_DETAIL)
+		}
+
+		rpu._planttrees?.each{pt ->
+			ptem.delete(pt, SCHEMA_PLANTTREE_DETAIL)
+		}
+	}
+
+
+    void saveAdjustment(adj) {
+    	adj.landrpuid = em_landrpu.select('objid').find([objid:adj.landrpuid]).first()?.objid 
+		em.save(adj, SCHEMA_LANDADJUSTMENT)
+		adj.params.each{
+			if (!it.objid )
+				it.objid = 'P' + new java.rmi.server.UID()
+			it.landrpuid = adj.landrpuid 
+			it.landadjustmentid = adj.objid
+			em.save(it, SCHEMA_PARAMETER)
+		}
+    }
+
+    void deleteAdjustment(adj){
+    	em.deleteAdjustmentParameters(adj)
+    	em.delete(adj, SCHEMA_LANDADJUSTMENT)
+    }
+
+
+    @ProxyMethod
+    public def getLandDetails(rpu){
+    	def details = em.getLandDetails([landrpuid:rpu.objid])
+		details.each{ detail ->
+			detail.landadjustments 	= em.getLandDetailAdjustments([landdetailid:detail.objid, type:ADJ_TYPE_LANDVALUE]).each{
+				it.params = em.getAdjustmentParameters(it)
+			}
+			detail.actualuseadjustments = em.getLandDetailAdjustments([landdetailid:detail.objid, type:ADJ_TYPE_ACTUALUSE]).each{
+				it.params = em.getAdjustmentParameters(it)
+			}
+			detail.taxable = util.toBoolean(detail.taxable, true)
+			if (!detail.landspecificclass || !detail.landspecificclass.objid ) {
+				detail.landspecificclass = detail.specificclass
+			}
+			if (!detail.subclass.code){
+				detail.specificclass.areatype = 'SQM'
+				detail.subclass.unitvalue = 0 
+				detail.unitvalue = 0 
+				detail.areatype = 'SQM'
+			}
+		}
+		return details 
+    }
+
+
+	def getPlantTrees(rpu){
+		return em.getPlantTrees([landrpuid:rpu.objid])
+	}
+
+
+	def getLandAdjustments(rpu){
+		def adjs = em.getLandAdjustments([landrpuid:rpu.objid, type:ADJ_TYPE_LANDVALUE])
+		adjs.each{
+			it.params = em.getAdjustmentParameters(it)
+		}
+	}
+
+
+	def getRPTSetting(){
+		return [roundadjmarketvalue:true]
+	}
+
+
+    def determineAssessLevel( landdetail, ry ) {
+        if( util.isTrue(landdetail.actualuse.fixrate)) {
+            return landdetail.actualuse.rate 
+        }
+        def params = [ry:ry, landassesslevelid:landdetail.actualuse.objid, marketvalue:landdetail.marketvalue]
+        def range = em.findAssessLevelRange(params)
+        if( ! range ) throw new Exception('Market Value of P' + numberSvc.format('#,##0.00', landdetail.marketvalue) + ' has no assess level range definition.' )
+        return range.rate 
+    }
+
+
+    def calculateLandValueAdjustment( ld ) {
+        if( ld.landadjustments.size() > 0 ) {
+            return ld.landadjustments.adjustment.sum() 
+        }
+        return 0.0 
+    }
+    
+    def calculateActualUseAdjustment( ld ) {
+    	if( ld.actualuseadjustments.size() > 0 ) {
+            return ld.actualuseadjustments.adjustment.sum() 
+        }
+        return 0.0 
+    }
+
+    boolean isApplicableAdjustment( landdetail, classifications ) {
+    	def classid = landdetail.actualuse.classification.objid 
+    	def adjustall = util.toBoolean( var.landrpu_calculate_landvalueadjustment_all, false )
+		if (adjustall) 
+			return true 
+
+		if ( classifications.find{ it.objid == classid } )
+			return true
+
+		return false 
+	}
+
+
+	void generateParamsId(adj){
+		adj.params.each{
+			it.objid = util.generateId('PRM')
+			it.landadjustmentid = adj.objid 
+		}
+	}
+
+
+}
+ 

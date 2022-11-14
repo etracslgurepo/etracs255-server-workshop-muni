@@ -1,0 +1,41 @@
+<schema adapter="main">
+    <element name="rpu" tablename="rpu">
+        <field name="objid" primary="true" />
+        <field name="state" required="true" />
+        <field name="realpropertyid" />
+        <field name="rputype" required="true" />
+        <field name="ry" required="true" />
+        <field name="fullpin"  />
+        <field name="suffix"  />
+        <field name="subsuffix"  />
+        <field name="classification_objid" />
+        <field name="exemptiontype_objid" />
+        <field name="taxable" required="true" type="boolean"  />
+        <field name="totalareaha" required="true" />
+        <field name="totalareasqm" required="true" />
+        <field name="totalbmv" required="true" />
+        <field name="totalmv" required="true" />
+        <field name="totalav" required="true" />
+        <field name="hasswornamount" required="true" type="boolean" />
+        <field name="swornamount" required="true" type="decimal" />
+        <field name="useswornamount" required="true" type="boolean" />
+        <field name="previd" />
+        <field name="rpumasterid"  />
+        <field name="reclassed" type="boolean"  />
+        <field name="isonline" type="boolean"  />
+    </element>
+
+    <element name="assessment" tablename="rpu_assessment">
+        <field name="objid" primary="true" />
+        <field name="rpuid" required="true" />
+        <field name="rputype" required="true" />
+        <field name="classification_objid" />
+        <field name="actualuse_objid" />
+        <field name="areasqm" required="true" type="decimal" />
+        <field name="areaha" required="true" type="decimal" />
+        <field name="marketvalue" required="true" type="decimal" />
+        <field name="assesslevel" required="true" type="decimal" />
+        <field name="assessedvalue" required="true" type="decimal" />
+        <field name="taxable" type="boolean" />
+    </element>
+</schema>

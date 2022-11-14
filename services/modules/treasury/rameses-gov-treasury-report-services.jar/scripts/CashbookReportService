@@ -1,0 +1,229 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+
+class CashbookReportService { 
+
+	@ActiveDB('cashbook_report')
+	def report_db;
+
+	@DataContext('sys_user_role')
+	def userrole_db; 
+
+	@DataContext('fund')
+	def fund_db; 
+
+	@DataContext('fundgroup')
+	def fundgroup_db; 
+
+	@Service('DateService')
+	def dateSvc;
+
+	@Env
+	def env; 
+
+	@Service('Var')
+	def var; 
+ 
+	@ProxyMethod 
+	public def initReport( param ) { 
+		def allow_multiple_fund_selection = var.cashbook_report_allow_multiple_fund_selection; 
+		allow_multiple_fund_selection = allow_multiple_fund_selection.toString().matches('true|1'); 
+
+		def wheresql = ['usergroup.objid = :uroleid']; 
+		def whereparam = [uroleid: 'TREASURY.COLLECTOR']; 
+
+		def tag = param.tag.toString().toLowerCase();
+		if ( tag == 'report' ) { 
+			// do nothing 
+		} 
+		else { 
+			wheresql << 'objid = :collectorid'; 
+			whereparam.collectorid = env.USERID; 
+		} 
+
+		def em = userrole_db.select('objid,firstname,lastname,middlename,jobtitle'); 
+		def users = em.where(wheresql.join(' AND '), whereparam).list(); 
+		users.unique().each { 
+			it.name = [it.firstname, it.middlename, it.lastname].findAll{( it )}.join(' '); 
+			it.title = it.jobtitle; 
+		} 
+
+		def funds = []; 
+		def fundgroups = fundgroup_db.where('1=1').orderBy('indexno').list();
+		fundgroups.each{ fg-> 
+			funds.addAll( fund_db.find([ groupid: fg.objid ]).orderBy('code').list()); 
+		} 
+		return [ 
+			users  : users, 
+			funds  : funds, 
+			date   : dateSvc.getBasicServerDate(),
+			year   : dateSvc.getServerYear(), 
+			months : dateSvc.getMonths(), 
+
+			fundgroups : fundgroups, 
+
+			allow_multiple_fund_selection : allow_multiple_fund_selection  
+		]; 
+	} 
+
+	@ProxyMethod
+	public def generateReport( params ) {
+		if ( params.fund == null &&  params.fundgroup == null ) 
+			throw new Exception("Please specify a Fund or Fund Group"); 
+
+		buildDateFilter( params ); 
+		params.accountid = params.account ? params.account.objid : env.USERID;
+
+		def funds = null; 
+		if ( params.fundgroup?.objid ) {
+			funds = fund_db.find([ groupid: params.fundgroup.objid ]).select('objid,title,code').orderBy('code').list(); 
+		} 
+		else if ( params.fund instanceof java.util.List ) {
+			funds = params.fund;
+		}
+
+		if ( funds instanceof java.util.List ) {
+			params.fundfilter = funds.collect{( "'"+ it.objid +"'" )}.join(","); 
+			params.fundtitle = funds.collect{ it.title }.join(", ");
+			params.fundgroupname = funds.collect{ it.group?.title }.findAll{( it )}.unique().join(', '); 
+			funds.clear(); 
+		} 
+		else if ( params.fund ) {
+			params.fundfilter = "'"+ params.fund.objid +"'"; 
+			params.fundtitle = params.fund.title; 
+			params.fundgroupname = params.fund.group?.title; 
+		} 
+		else {
+			params.fundfilter = "''"; 
+		}
+
+
+		def data = [:];
+		data.begbal = 0.0; 
+		
+		def balinfo = null; 
+		def revfund = null;
+		boolean is_summary = ( params.template?.code == 'summary' ); 
+		boolean allow_begbal = false; 
+		
+		if ( is_summary ) {
+			data.items = report_db.getSummaries( params ); 
+			balinfo = report_db.findBeginBalance( params ); 
+			revfund = report_db.findRevolvingFund( params ); 
+			
+			def bal_dr = (balinfo.dr ? balinfo.dr : 0.0); 
+			def bal_cr = (balinfo.cr ? balinfo.cr : 0.0);
+			balinfo.balance = bal_dr - bal_cr; 
+
+			if ( balinfo.balance ) { 
+				balinfo.adr = balinfo.balance;
+				balinfo.acr = null; 
+			} 
+
+			def YMD = new java.text.SimpleDateFormat("yyyy-MM-dd");
+			def arr = YMD.format( params.fromdate ).split('-');
+			boolean is_first_month = (arr[1] == '01'); 
+			if ( is_first_month ) {
+				balinfo.dr = balinfo.adr; 
+				balinfo.cr = balinfo.acr = null; 
+			}
+			else {
+				def mm = [:];
+				mm.putAll( params );
+				mm.fromdate = arr[0] +'-01-01';
+				def begbalinfo = report_db.findBeginBalance( mm );
+				mm.clear(); 
+
+				balinfo.dr = bal_dr - (begbalinfo.dr ? begbalinfo.dr : 0.0);
+				balinfo.cr = bal_cr - (begbalinfo.cr ? begbalinfo.cr : 0.0);
+				balinfo.balance = balinfo.dr - balinfo.cr; 
+			}
+
+			if ( balinfo.balance ) {
+				allow_begbal = true; 
+			}
+		} 
+		else { 
+			data.items = report_db.getDetails( params ); 
+			balinfo = report_db.findBeginBalance( params ); 
+
+			def bal_dr = (balinfo.dr ? balinfo.dr : 0.0); 
+			def bal_cr = (balinfo.cr ? balinfo.cr : 0.0);
+			balinfo.balance = bal_dr - bal_cr; 
+
+			if ( balinfo.balance ) { 
+				allow_begbal = true; 
+				balinfo.dr = balinfo.adr = balinfo.balance; 
+				balinfo.cr = balinfo.acr = null;
+			}
+		} 
+		
+		if ( allow_begbal ) { 
+			balinfo.refid = 'begin_balance'; 
+			balinfo.reftype = '** BEGIN BALANCE **'; 
+			balinfo.particulars = balinfo.reftype; 
+
+			if ( balinfo.dr > 0 && balinfo.balance > 0 && balinfo.cr > 0 ) {
+				balinfo.dr += balinfo.balance; 
+			}
+			if ( balinfo.dr < 0 && balinfo.dr == balinfo.balance ) {
+				balinfo.dr = null;
+				balinfo.adr = 0.0;
+				balinfo.balance = 0.0;
+			}
+
+			if ( data.items ) { 
+				data.items.add(0, balinfo); 
+			} else { 
+				data.items << balinfo; 
+			} 
+		}
+
+		if ( !data.items ) throw new Exception("No record(s) that matches your criteria");
+
+		def MDY = new java.text.SimpleDateFormat("MMMMM dd, yyyy");
+		data.info = [
+			FUNDNAME 	 : params.fundtitle, 
+			ACCOUNTNAME	 : (params.account ? params.account.name : env.FULLNAME),  
+			ACCOUNTTITLE : (params.account ? params.account.title : env.JOBTITLE), 
+			REV_FUND_AMT : (revfund?.amount ? revfund.amount : 0.0) 
+		]; 
+		if ( params.fundgroup?.objid ) {
+			data.info.FUNDNAME = params.fundgroup.objid.toString() +' GROUP'; 
+			data.info.FUNDGROUPNAME = params.fundgroup.objid; 
+		}
+		else {
+			data.info.FUNDGROUPNAME = params.fundgroupname; 
+		}
+
+		if ( params.period?.code == 'daily' ) { 
+			data.info.PERIOD = MDY.format( params.fromdate ); 
+			data.info.PERIODCOVERED = data.info.PERIOD; 
+		}
+		else if ( params.period?.code == 'monthly' ) { 
+			data.info.PERIOD = 'FOR THE MONTH OF ' + params.month.caption + ', ' + params.year; 
+			data.info.FROMPERIOD = MDY.format( params.fromdate ); 
+			data.info.TOPERIOD = MDY.format( dateSvc.add( params.todate, '-1d' ));  
+			data.info.PERIODCOVERED = ''+ data.info.FROMPERIOD +' to '+ data.info.TOPERIOD; 
+		} 
+		return [reportdata: data, info: data.info]; 
+	}
+
+	void buildDateFilter( params ) { 
+		def YMD = new java.text.SimpleDateFormat('yyyy-MM-dd'); 
+		if ( params.period?.code == 'daily' ) { 
+			if ( !params.date ) throw new Exception('date parameter is required'); 
+
+			params.fromdate = YMD.parse( params.date.toString() ); 
+			params.todate   = dateSvc.add( params.fromdate, '1d' ); 
+		}
+		else if ( params.period?.code == 'monthly' ) { 
+			def strdate = ''+ params.year +'-'+ params.month.index +'-01';
+			params.fromdate = YMD.parse( strdate );  
+			params.todate   = dateSvc.add( params.fromdate, '1M' ); 
+		} 
+		else {
+			throw new Exception("'"+ params.period?.code +"' period option not supported"); 
+		}
+	}
+}

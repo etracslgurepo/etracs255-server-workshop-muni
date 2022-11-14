@@ -1,0 +1,11 @@
+<schema>
+	
+	<element tablename="entitymultiple" extends="entity">
+		<field name="objid" required="true" primary="true"/>
+		<field name="fullname" />
+		<complex name="members" ref="entitymember" jointype="one-to-many" orderBy="itemno" required="false">
+			<key field="objid" target="entityid"/>		
+		</complex> 
+	</element>
+
+</schema>

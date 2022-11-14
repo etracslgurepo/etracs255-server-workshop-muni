@@ -1,0 +1,68 @@
+import com.rameses.annotations.*;
+
+class AFTxnItemInterceptor { 
+	
+	@DataContext("aftxnitem")
+	def aftxnitem_db;
+
+	@DataContext("af_control")
+	def afc_db;
+
+	@DataContext("af_control_detail")
+	def afcd_db;
+
+	@Service('PersistenceService') 
+	def persistenceSvc; 
+
+	@After(pattern="PersistenceService.update", eval="#{ args[0]._schemaname == 'aftxnitem' }")
+	public void afterUpdate( evt ) { 
+		def param = evt.args[0]; 
+		if ( !param.objid ) return; 
+
+		if ( param._tag == 'change-txntype-issuance' ) {
+			def aftxnitem = aftxnitem_db.find([ objid: param.objid ]).select('objid,txntype').first(); 	
+			if ( !aftxnitem ) return; 
+
+			def cols = 'objid,controlid,reftype,txntype,receivedstartseries,receivedendseries,qtyreceived';
+			afcd_db.find([ aftxnitemid: param.objid ]).select( cols ).list().each{ dd-> 
+				if ( dd.reftype != 'ISSUE' ) 
+					throw new Exception('Action not allowed. Please check the reftype of your AF Control Detail'); 
+
+				def aa = afc_db.find([ objid: dd.controlid ]).select('objid,state,startseries,endseries').first(); 
+				aa.state = aa.state.toUpperCase();
+				aa.salecost = 0.0;
+
+				dd.txntype = aftxnitem.txntype.toUpperCase(); 
+				if ( dd.txntype == 'SALE' ) {
+					dd.qtyending = 0; 
+					dd.endingstartseries = dd.endingendseries = '{NULL}'; 
+					dd.issuedstartseries = dd.receivedstartseries; 
+					dd.issuedendseries = dd.receivedendseries;
+					dd.qtyissued = dd.qtyreceived;
+					dd.remarks = dd.txntype;
+
+					aa.currentseries = aa.endseries + 1; 
+					aa.state = ( aa.state == 'PROCESSING' ? aa.state : 'SOLD' );
+				}
+				else {
+					dd.qtyissued = 0; 
+					dd.issuedstartseries = dd.issuedendseries = '{NULL}'; 
+					dd.endingstartseries = dd.receivedstartseries; 
+					dd.endingendseries = dd.receivedendseries;
+					dd.qtyending = dd.qtyreceived;
+					dd.remarks = dd.txntype;
+
+					aa.currentseries = aa.startseries;
+					aa.state = ( aa.state == 'PROCESSING' ? aa.state : 'ISSUED' );
+				}
+
+				afcd_db.find([ objid: dd.objid ]).update( dd ); 
+				afc_db.find([ objid: dd.controlid ]).update( aa ); 
+
+				aa._schemaname = 'af_control'; 
+				aa._tag = param._tag; 
+				persistenceSvc.update( aa ); 
+			}
+		}
+	} 
+}

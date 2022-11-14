@@ -1,0 +1,5 @@
+<schema>
+	<element  tablename="profession">
+		<field name="objid" primary="true" />
+	</element>
+</schema>

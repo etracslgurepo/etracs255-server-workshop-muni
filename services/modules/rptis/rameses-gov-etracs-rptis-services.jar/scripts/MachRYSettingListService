@@ -1,0 +1,29 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import com.rameses.eserver.*;
+import java.rmi.server.UID;
+
+public class MachRYSettingListService
+{
+	@PersistenceContext('main')
+	def em
+	
+    @ProxyMethod 
+    public List getList( params ) {
+        if (! params ) params = [:]
+
+        def filter = ''
+        if (params.searchtext) {
+            filter = ' WHERE ry = $P{searchtext}'
+        }
+
+        def qry = em.sqlContext.createNamedQuery('machrysetting:getList')
+        qry.setPagingKeys('objid')
+
+        if (params._start != null ) qry.setFirstResult( params._start )
+        if (params._limit != null ) qry.setMaxResults( params._limit )
+        
+        return qry.setParameters( params ).setVars([filter:filter]).resultList 
+    }
+    
+}

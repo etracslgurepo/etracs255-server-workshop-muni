@@ -1,0 +1,21 @@
+<schema>
+	<element  tablename="cashreceipt_largecattletransfer">
+		<field name="objid" primary="true"/>
+		<field name="purchasedby" required="true"/>
+		<field name="price" required="true"/>
+		<field name="citymuni" required="true"/>
+		<field name="province" required="true"/>
+		<field name="sex" required="true"/>
+		<field name="age" required="true"/>
+		<field name="municipalitybrand" />
+		<field name="ownerbrand" />
+		<field name="certificateno" required="true"/>
+		<field name="issuedate" required="true"/>
+		<field name="issuedcitymuni" required="true"/>
+		<field name="issuedprovince" required="true"/>
+		<field name="attestedby" required="true"/>
+		<field name="treasurer" required="true"/>
+	</element>
+
+	
+</schema>

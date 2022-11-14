@@ -1,0 +1,78 @@
+import com.rameses.annotations.*
+import com.rameses.util.*
+import com.rameses.services.extended.*
+
+class RPTRevisionSettingSupportService
+{
+	@Env
+	def env 
+
+    @DataContext('sys_org') 
+    def em_org
+
+    @Service('LandRYSettingService')
+    def landSettingSvc
+
+    @Service('BldgRYSettingService')
+    def bldgSettingSvc
+
+    @Service('MachRYSettingService')
+    def machSettingSvc
+    
+    @Service('PlantTreeRYSettingService')
+    def planttreeSettingSvc
+    
+    @Service('MiscRYSettingService')
+    def miscSettingSvc
+
+
+    @ProxyMethod
+    public def getRevisionSettingData(params) {
+        def handler = handlers[params.name]
+        return handler.getData(params);
+    }
+
+    @ProxyMethod
+    public void saveRevisionSettingData(setting) {
+        def handler = handlers[setting.name]
+        handler.saveData(setting)
+        println 'setting ' + setting.name + ' has been successfully updated.'; 
+    }
+
+    @ProxyMethod
+    public def getRemoteOrg(data) {
+        def org = em_org.select('orgid: {objid}, orgcode: {code}, orgclass')
+                .find([objid: data.remote.orgid])
+                .first()
+        if (org) {
+            org.orgcode = org.orgcode.replace('-', '')
+        }
+        return org
+    }
+
+    
+    def handlers = [
+        land: [
+            getData: {params -> return landSettingSvc.getSettingForSync(params) },
+            saveData: { setting -> landSettingSvc.syncSetting(setting) }
+        ],
+        bldg: [
+            getData: {params -> return bldgSettingSvc.getSettingForSync(params) },
+            saveData: { setting -> bldgSettingSvc.syncSetting(setting) }
+        ],
+        mach: [
+            getData: {params -> return machSettingSvc.getSettingForSync(params) },
+            saveData: { setting -> machSettingSvc.syncSetting(setting) }
+        ],
+        planttree: [
+            getData: {params -> return planttreeSettingSvc.getSettingForSync(params) },
+            saveData: { setting -> planttreeSettingSvc.syncSetting(setting) }
+        ],
+        misc: [
+            getData: {params -> return miscSettingSvc.getSettingForSync(params) },
+            saveData: { setting -> miscSettingSvc.syncSetting(setting) }
+        ],
+    ]
+
+}
+ 

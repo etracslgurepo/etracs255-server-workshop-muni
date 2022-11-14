@@ -1,0 +1,39 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+import java.rmi.server.*;
+import com.rameses.common.*
+import com.rameses.services.extended.*
+
+class HolidayService  {
+
+	
+	@DataContext("holiday")
+	def holidayEm;
+
+	//specify date  
+	@ProxyMethod
+	public def lookup( def date ) {
+		def p = [:]
+		def db = new DateBean( date );
+		def cal = Calendar.instance;
+		cal.setTime(date);
+
+		p.year = db.year;
+		p.month = db.month;
+		p.day = db.day;
+		p.dow = cal.get( Calendar.DAY_OF_WEEK );
+		p.week = cal.get( Calendar.WEEK_OF_MONTH );
+		
+		def entries = holidayEm.where("(year = :year  OR year=0) AND month = :month AND ( day = :day OR ( dow=:dow AND week =:week ) )", p).list();
+
+		if( entries ) {
+			return [date: date, name: entries*.name.join(",") ];
+		}
+		else {
+			return null;
+		}
+	}
+
+
+		
+}

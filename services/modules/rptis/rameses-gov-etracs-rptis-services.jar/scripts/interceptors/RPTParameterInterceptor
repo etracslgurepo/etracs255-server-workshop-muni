@@ -1,0 +1,19 @@
+import com.rameses.annotations.*
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+
+class RPTParameterInterceptor
+{
+	
+	@Before(pattern="PersistenceService.(create|update)", eval="#{args[0]._schemaname=='rptparameter'}") 
+	public void before( evt ) {
+		def entity = evt.args[0]
+		if (entity.paramtype.matches('.*range.*')){
+			if (entity.minvalue > entity.maxvalue){
+				throw new Exception("Minimum Value must be less than or equal to Maximum Value.")
+			}
+		}
+	}
+
+}
+

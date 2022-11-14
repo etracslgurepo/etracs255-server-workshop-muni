@@ -1,0 +1,46 @@
+import com.rameses.annotations.*;
+import com.rameses.common.*;
+import com.rameses.services.extended.*;
+import com.rameses.util.Base64Cipher;
+import com.rameses.util.KeyGen;
+
+class QrCodeInfoService {
+	
+	@ProxyMethod
+	public def getInfos(params) {
+		return [];
+	}
+
+	@ProxyMethod
+	public def encode(params) {
+		def b64 = new Base64Cipher();
+		def random = KeyGen.generateAlphanumKey('',  10);
+		def prefix = random.substring(0,5);
+		def suffix = random.substring(5);
+		def retval = [:]
+		def encoded = b64.encode(params);
+		def len = encoded.length();
+		retval.data = encoded.substring(0, 5) + prefix + encoded.substring(5, len-5)  + suffix + encoded.substring(len-5);
+		return retval;
+	}
+
+	@ProxyMethod
+	public def getData(params) {
+		def retval = encode(params);
+		def host = params.host ? params.host : 'https://www.filipizen.com';
+		return host + '/qr?data=' + retval.data;
+	}
+
+	@ProxyMethod
+	public def decode(params) {
+		if (!params.data) throw new Exception('data must be specified');
+		def len = params.data.length();
+		def data = params.data.substring(0,5) + params.data.substring(10, len - 10) + params.data.substring(len-5);
+		def b64 = new Base64Cipher();
+		def res = b64.decode(data, true);	
+		if (res instanceof Map || res instanceof List) {
+			return res; 
+		}
+		throw new Exception('Data is invalid.');
+	}
+}

@@ -1,0 +1,13 @@
+<schema>
+	<element tablename="rpt_sms">
+		<field name="objid" primary="true"/>
+		<field name="traceid" />
+		<field name="phoneno" />
+		<field name="logdate"/>
+		<field name="message"/>
+		<field name="amount" required="true"/>
+		<field name="amtpaid" required="true"/>
+		<field name="action"/>
+		<field name="status"/>
+	</element>
+</schema>

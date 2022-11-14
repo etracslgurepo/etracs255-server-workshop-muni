@@ -1,0 +1,27 @@
+<schema>
+	<element tablename="cashreceiptpayment_noncash">
+		<field name="objid" primary="true" prefix="CRPMT"/>
+		<field name="receiptid" required="true" />
+		<field name="refid" required="true"/>
+		<field name="refno" required="true"/>
+		<field name="refdate" required="true"/>
+		<field name="reftype" required="true"/>
+		<field name="amount" />
+		<field name="voidamount" />
+		<field name="particulars" />
+		<field name="fund_objid" required="true"/>
+
+		<!-- this one is placed to provide strong relationship with checkpayment -->
+		<field name="checkid" />
+
+		<complex name="receipt" ref="cashreceipt" jointype="many-to-one"  
+			includefields="receiptno,receiptdate,collector.name,remittanceid,remittance.collectionvoucherid" required="false">
+			<key field="receiptid" target="objid" />
+		</complex> 
+
+		<complex name="fund" ref="fund" jointype="many-to-one"  includefields="objid,code,title">
+			<key field="fund_objid" target="objid" />
+		</complex>  
+
+	</element>
+</schema>

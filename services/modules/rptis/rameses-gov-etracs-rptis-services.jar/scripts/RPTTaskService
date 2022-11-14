@@ -1,0 +1,149 @@
+import com.rameses.annotations.*
+import com.rameses.common.*
+import com.rameses.util.*
+import com.rameses.services.extended.*
+
+
+class RPTTaskService
+{
+	@Env 
+	def env
+
+	@ActiveDB('rpttask')
+	def em 
+
+	@Service('QueryService')
+	def querySvc
+
+	@Service('PersistenceService')
+	def persistenceSvc
+
+	@Service('DateService')
+	def dtSvc
+
+	@Service('NotificationService')
+	def notificationSvc
+
+	@DataContext('sys_wf_node')
+	def em_node 
+
+	@DataContext('faas_list')
+	def em_faaslist 
+
+	@DataContext('rptcertification')
+	def em_certification
+
+
+	/* Returns the available states for the processname*/
+	@ProxyMethod
+	public def getTaskStates(entity) {
+		def param = [_schemaname: 'sys_wf_node']
+		param.where = ["processname = :processname and nodetype = 'state' and name not like 'assign%'", entity]
+		param.select = 'name, role'
+		param.orderBy = 'idx'
+		return querySvc.getList(param)
+	}
+
+	@ProxyMethod
+	public def getAssignees(param) {
+		def assignees = []
+		def roles = getRoles(param)
+		roles.each{role ->
+			param.role = role 
+			assignees +=  em.getAssignees(param);
+		}
+		assignees.each {
+			it.name = it.lastname + ', ' + it.firstname 
+			if (it.middlename) {
+				it.name += ' ' + it.middlename
+			}
+		}
+		return assignees;
+	}
+
+
+	@ProxyMethod
+	public def findCurrentTask(entity) {
+		def param = [_schemaname: entity.processname + '_task']
+		param.where =['refid = :objid and enddate is null', entity]
+		def currenttask = querySvc.findFirst(param)
+		if (!currenttask) throw new Exception('Current does does not exist or has already been deleted.')
+		return currenttask
+	}
+
+	@ProxyMethod
+	public def reassign(entity) {
+		def newtask = [:]
+		def currenttask = entity.task
+		currenttask._schemaname = entity.processname + '_task'
+		newtask.putAll(currenttask)
+
+		//close current task
+		currenttask.enddate = dtSvc.serverDate
+		currenttask.actor = [objid: env.USERID, name: env.NAME, title: env.JOBTITLE ]
+		currenttask.message = 'Reassigned task to ' + entity.assignee.name 
+		persistenceSvc.update(currenttask)
+
+		//insert new assignee task
+		newtask.objid = 'TSK' + new java.rmi.server.UID()
+		newtask.processname = entity.processname
+		newtask.startdate = dtSvc.serverDate
+		newtask.state = entity.newstate.name 
+		newtask.assignee = entity.assignee 
+		newtask.enddate = null 
+		newtask.actor = null 
+		newtask.message = 'Task is reassgined to you by ' + currenttask.actor.name 
+		newtask.signature = null 
+		persistenceSvc.create(newtask)
+		updateTaskInfoReference(entity, newtask)
+		notifyAssignee(newtask)
+	}
+
+	def notifyAssignee( task ) {
+        def msg = [
+            objid     : task.refid,
+            recipientid : task.assignee.objid,
+            recipienttype : 'user',
+            senderid  : task.assignee.objid,
+            sender    : task.assignee.name,
+            message   : task.message, 
+            filetype  : task.processname,
+            data 	  : [taskid: task.objid],
+        ]
+        notificationSvc.removeMessage([objid:task.refid])
+        notificationSvc.addMessage(msg)
+	}
+
+	private void updateTaskInfoReference(entity, newtask) {
+		if ('faas' == entity.processname) {
+			def info = [
+				taskid: newtask.objid, 
+				taskstate: newtask.state, 
+				assignee_objid: newtask.assignee.objid
+			]
+			em_faaslist.find([objid: newtask.refid]).update(info)
+		}
+		if ('rptcertification' == entity.processname) {
+			em_certification.find([objid: newtask.refid]).update([taskid: newtask.objid])
+		}
+	}
+
+	private def getRoles(param) {
+		def roles = []
+		if (param.role) {
+			if (param.role.indexOf(',') >= 0) {
+				def tokens = param.role.split(',');
+				tokens.each{
+					if (it.trim().length() > 0) {
+						roles << it 
+					}
+				}
+			} else {
+				roles << param.role
+			}
+		}
+		return roles 
+	}
+
+}
+

@@ -1,0 +1,17 @@
+import com.rameses.annotations.*;
+import com.rameses.util.*;
+
+class MobileLogoutInterceptor 
+{
+	@Service('AdminSessionService')
+	def svc;
+
+	@After(pattern="LogoutService.logout", eval="env.CLIENTTYPE=='mobile'") 
+	public void logout( evt ) 
+	{
+		def map = evt.args[0];
+		if (!map.SESSIONID) throw new Exception('Please specify SESSIONID'); 
+
+		svc.closeSession( map.SESSIONID );
+	} 
+}
