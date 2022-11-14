@@ -1,0 +1,15 @@
+._.DS_Store
+._.*
+.DS_Store
+.osiris_pid
+.shutdown_pid
+Thumbs.db
+_tmp
+/_custom
+/_tools
+/fileserver
+/custom-template
+/bin/env.conf
+/web/resources/downloads/modules/custom
+**/resources/platform/etracs255-platform/**
+zzz-custom
