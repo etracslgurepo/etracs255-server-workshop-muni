@@ -5498,3 +5498,22 @@ from migrated_business mb
   inner join business b on b.objid = mb.objid 
   inner join business_application a on a.objid = mb.applicationid 
 ;
+
+
+
+
+UPDATE sys_var SET 
+  VALUE='ba4d084b31b41fbe55302c0429d93c81' 
+WHERE name='sa_pwd'
+;
+DELETE FROM sys_var WHERE name='sa_pwd_change_on_logon'
+;
+INSERT IGNORE INTO sys_terminal (terminalid) VALUES ('T12345678')
+;
+
+
+alter table sys_org add txncode varchar(5) NULL 
+;
+
+alter table remittance add remarks varchar(255) null 
+; 
