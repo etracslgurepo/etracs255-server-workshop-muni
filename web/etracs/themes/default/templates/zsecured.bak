@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta name="keywords" content="${PROJECT.keywords}"/>
+		<meta name="description" content="${PROJECT.description}" />
+		<title>${PROJECT.title} - ${PAGE.title}</title> 
+		
+		@stdlib()
+		@css("secured")		
+		@page-imports()		
+		
+		<style>
+ 			.master-menubar { padding-top:3px; }
+			.master-header-content-wrapper {padding-right:15px;} 
+		</style> 
+	</head>
+	
+	<body class="rui-theme-background">
+		<div class="rui-theme-header-background master-header">
+			<div class="master-header-content-wrapper">
+				<table cellpadding="0" cellspacing="0" width="100%" border="0">
+				<tr>
+					<td class="master-logo" width="180px">
+						<img class="master-logo-icon" src="${PROJECT.logo}"/>
+					</td>
+					<td align="right" class="header-action" width="50">@logout()</td>
+				</tr>
+				</table>
+			</div> 
+			
+			<div class="rui-theme-menubar-background master-menubar">
+				@navbar() 
+				<div class="master-menubar-baseline"></div> 
+			</div> 
+		</div>	
+		
+		<div class="master-body-wrapper">
+			<table class="master-body" cellpadding="0" cellspacing="0" border="0" width="100%" height="100%">
+			<tr>
+				<td class="master-sidebar"> ${_sidebar} </td> 
+				<td class="master-content"> ${_content} </td> 
+			</tr> 
+			</table> 		
+		
+			<div class="master-footer">${_footer}</div> 
+		</div>
+		
+		<script> RUI.createSideMenu(); </script> 			
+	</body>
+</html>

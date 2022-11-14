@@ -1,0 +1,39 @@
+<app>
+<env>
+app.title=ETRACS 2.5 build 2.5.05.01 (${lgu_name})
+app.host=${app_server_ip}:18070
+app.cluster=osiris3
+app.context=etracs25
+app.help=http://${app_server_ip}:18080/help
+app.loader=com.rameses.osiris2.client.OsirisAppLoader
+readTimeout=300000
+connectionTimeout=5000
+filemgmt.enabled=false
+
+ws.host=${app_server_ip}:18060
+#res.host=${app_server_ip}
+
+socketio.host=${app_server_ip}:17080
+</env>
+<modules>
+  <module version="1.00" file="libs/commons-net-3.5.jar"  />
+
+  <import file="custom/updates.pxml"/> 
+
+  <import file="core/updates.pxml"/> 
+
+  <import file="shared/updates.pxml"/> 
+
+  <import file="etracs/updates.pxml"/> 
+
+  <import file="entity/updates.pxml"/> 
+
+  <import file="treasury/updates.pxml"/> 
+
+  <import file="queue/updates.pxml"/> 
+
+  <import file="rptis/updates.pxml"/> 
+
+  <import file="bpls/updates.pxml"/> 
+</modules>
+</app>

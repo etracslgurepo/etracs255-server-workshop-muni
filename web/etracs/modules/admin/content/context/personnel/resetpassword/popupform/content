@@ -1,0 +1,57 @@
+<script>
+	\$put( "${PAGE.context}", new function() {
+		var svc = Service.lookup( "UserAccountService", "admin");
+		
+		this.useraccount = {};
+		
+		this.save = function() {
+			if ( this.useraccount.newpassword != this.useraccount.confirmpassword ) 
+			{
+				alert('New password and Confirm password must be the same');
+				return;
+			}
+			
+			svc.changePassword( this.useraccount );
+			alert('Password successfully changed');
+			return "_close";
+		}
+		
+		this.cancel = function() { 
+			if (confirm(" Discard changes? ")) return "_close";
+		}
+	});
+</script>
+
+<style>
+#tbl { margin-left:20px; margin-top:20px; }
+#tbl input { width:200px; }
+</style>
+
+<div r:dockto="pagefooter">
+	<input type="button" r:context="${PAGE.context}" r:name="save" value="Save"/> 
+	<input type="button" r:context="${PAGE.context}" r:name="cancel" r:immediate="true" value="Cancel"/> 
+</div>
+
+<table id="tbl" class="dataform" cellpadding="0" cellspacing="2" style="white-space:nowrap;">
+<tr>
+	<th width="130">User Name :</th>
+	<td>
+		<div class="textfield disabled">
+			<label r:context="${PAGE.context}" r:name="useraccount.username"/>
+		</div>
+	</td>
+</tr>
+<tr>
+	<th>New Password :</th>
+	<td>
+		<input type="password" r:context="${PAGE.context}" r:name="useraccount.newpassword"  r:required="true" r:caption="New Password"/>
+	</td>
+</tr>
+<tr>
+	<th>Confirm Password :</th>
+	<td>
+		<input type="password" r:context="${PAGE.context}" r:name="useraccount.confirmpassword"  r:required="true" r:caption="Confirm Password"/>
+	</td>
+</tr>
+</table>
+ 

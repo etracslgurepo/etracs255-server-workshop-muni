@@ -1,0 +1,21 @@
+<app>
+<env>
+
+</env>
+<modules>
+  <module version="2.02" file="shared/client-system.jar" />
+  <module version="2.08" file="shared/client-ui-extended.jar" />
+  <module version="2.03" file="shared/rameses-client-menu.jar" />
+  <module version="2.02" file="shared/rameses-client-report.jar" />
+  <module version="2.08" file="shared/rameses-rules-mgmt.jar" />
+  <module version="2.08" file="shared/rameses-workflow-mgmt.jar" />
+  <module version="2.02" file="shared/rameses-app-common.jar" />
+  <module version="2.08" file="shared/rameses-enterprise.jar" />
+  <module version="2.04" file="shared/rameses-enterprise-admin.jar" />
+  <module version="2.05" file="shared/rameses-enterprise-admin-plugin.jar" />
+  <module version="2.05" file="shared/rameses-enterprise-financial.jar" />
+  <module version="2.02" file="shared/rameses-client-notification2.jar" />
+  <module version="2.02" file="shared/rameses-email-client.jar" />
+  <module version="2.09" file="shared/rameses-jasper-client.jar" />
+</modules>
+</app>

@@ -1,0 +1,10 @@
+
+<table id="fragmentdocument" class="rui-fragment" cellpadding="0" cellspacing="0" width="100%" border="0">
+<tr>
+	<td id="pagetitle" valign="top"> @pagetitle() </td> 
+	<td id="actions" valign="top" align="right" style="display:none;">&nbsp;</td>
+</tr>
+<tr>
+	<td id="pagecontent" valign="top" colspan="2"> ${_content} </td>
+</tr>
+</table>

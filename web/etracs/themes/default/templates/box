@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en-us">
+	<head>
+		<meta name="keywords" content="${PROJECT.keywords}"/>
+		<meta name="description" content="${PROJECT.description}" />
+		<meta name="author" content="${PROJECT.author}" />		
+		<title>${PROJECT.title} - ${PAGE.title}</title> 
+		
+		@stdlib()
+		@css('box') 
+		@page-imports() 
+		
+		<style>
+			/*
+			body { background: url(/res/login-header-shadow.png) 0 -35px repeat-x; } 
+			
+			.login { margin: 5% auto 0 auto; width: 400px; }
+			.login-content { 
+				background: #fff;
+				padding: 20px 20px 40px 20px;
+				border: solid 1px #ccc;
+				border-radius: 4px;
+				box-shadow: 0 2px 10px #bbb;
+			}
+			.login-title { color:#505050; margin-bottom:0px; } 
+			#login-box { padding-left:20px; } 
+			#login-box form table td { width:100px; white-space:nowrap; } 
+			#login-box form input[type="text"], #login-box form input[type="password"] { width:180px; } 
+			*/
+
+			.layout-header {
+				background: url(/res/login-header-shadow.png) 0 -35px repeat-x;
+				height:20px;				
+			}
+			.layout-body {
+				position:absolute; top:10%; right:0; bottom:0; left:0;
+				min-width: 500px; min-height: 400px;
+			}
+			.layout-box {
+				width: 400px;
+			}
+			.layout-box-header {
+				padding-bottom:10px;
+			}
+			.layout-box-content { 				
+				background-color: #fff;				
+				padding: 20px;
+				border: solid 1px #ccc;
+				border-radius: 4px;
+				box-shadow: 0 2px 10px #bbb;
+			} 
+			.layout-box-footer {
+				padding-top:10px;
+			}
+		</style> 
+	</head>
+	
+	<body class="theme-font">
+		<div class="layout-header">&nbsp;</div>
+		<div class="layout-body">
+			
+			<table class="layout-box" cellpadding="0" cellspacing="0" align="center">
+			<tr>
+				<td class="layout-box-panel">
+					<div class="layout-box-header" id="layout-box-header">
+						<img src="/images/login-logo.png" height="60px"/>
+					</div>
+					<div class="layout-box-content">
+						${_content}
+					</div>
+					<div class="layout-box-footer" id="layout-box-footer">
+						<div class="left">
+							&copy; 2012 
+							<a href="http://www.ramesesinc.com" target="_blank">
+								Rameses Systems Inc. 
+							</a>
+						</div>
+						<div class="right">
+							<a href="http://www.ramesesinc.com" target="_blank">
+								<img src="/res/rameses.png" height="25px"/>
+							</a>
+						</div>
+					</div>
+				</td>
+			</tr>
+			</table>
+		</div>
+	</body>
+</html>

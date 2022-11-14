@@ -1,0 +1,105 @@
+<%
+	def OBJECT_ID = new java.rmi.server.UID().toString(); 
+%>
+<script>
+var controller = new function(){ 
+	var self = this;	
+	var svc = Service.lookup('UserService', 'admin'); 
+
+	this.entity = {objid:'${OBJECT_ID}'} 
+
+	this.cancel = function() {
+		return '_close'; 
+	}
+
+	this.save = function() {
+		this.entity = svc.create(this.entity); 
+		self._controller.refresh();
+	}
+}
+
+\$put('${PAGE.context}', controller); 
+</script> 
+
+<style>
+.formtemplate > .title {
+	font-size: 1.2em;
+	font-weight: 500;
+	color: #505050;
+	background-color: #fff; 
+	padding: 2px 10px;
+}
+.formtemplate > .toolbar {
+	background-color: #eaeaea;
+	padding: 5px 5px; 
+}
+.formtemplate > .toolbar .rui-button {
+	background:transparent; border:1px solid transparent; box-shadow:none;
+	font-size:12px; color:#4a4a4a; text-shadow:1px 1px #f0f0f0;
+}
+.formtemplate > .toolbar .rui-button:hover {
+	border:1px solid #909090;
+	border-radius: 5px; 
+	-webkit-border-radius: 5px;
+	-moz-border-radius: 5px; 
+}
+.formtemplate > .close-action {
+	position: absolute; width: 16px; height: 16px;
+	top: 5px; right: 6px;
+}
+.formtemplate .formpanel td.label {
+	width: 120px;
+}
+.formtemplate .formpanel td.editor > input {
+	width: 250px;
+}
+</style>
+<div class="formtemplate">
+
+	<div class="toolbar">
+		<button r:context="${PAGE.context}" r:name="cancel" icon="cancel">Cancel</button> 
+		<button r:context="${PAGE.context}" r:name="save" icon="save">Save</button> 
+	</div>
+
+	<div style="padding:15px 5px 0px 15px;">
+		<table class="formpanel" cellpadding="1" cellspacing="0" border="0">
+		<tr>
+			<td class="label">Username:</td>
+			<td class="editor">
+				<input type="text" r:context="${PAGE.context}" r:name="entity.username"/> 
+			</td> 
+		</tr>
+		<tr>	
+			<td class="label">Last Name:</td>
+			<td class="editor">
+				<input type="text" r:context="${PAGE.context}" r:name="entity.lastname"/> 
+			</td> 
+		</tr>
+		<tr>	
+			<td class="label">First Name:</td>
+			<td class="editor">
+				<input type="text" r:context="${PAGE.context}" r:name="entity.firstname"/> 
+			</td> 
+		</tr>
+		<tr>	
+			<td class="label">Middle Name:</td>
+			<td class="editor">
+				<input type="text" r:context="${PAGE.context}" r:name="entity.middlename"/> 
+			</td> 
+		</tr>
+		<tr>	
+			<td class="label">Job Title: </td>
+			<td class="editor">
+				<input type="text" r:context="${PAGE.context}" r:name="entity.jobtitle"/> 
+			</td> 
+		</tr>
+		<tr>	
+			<td class="label">User Txn Code:</td>
+			<td class="editor">
+				<input type="text" r:context="${PAGE.context}" r:name="entity.txncode"/> 
+			</td> 
+		</tr>
+		</table>
+	</div>
+
+</div>

@@ -1,0 +1,11 @@
+{
+	secured		: true,
+	type		: 'admin.home.action',	
+	title		: 'Roles',
+	description : 'Manage User Roles',
+	href	    : '/admin/role/list', 	
+	icon		: '/res/admin/admin-role.png',
+	domain 		: 'ADMIN',
+	role 		: 'SYSADMIN',
+	sortorder   : 1
+}

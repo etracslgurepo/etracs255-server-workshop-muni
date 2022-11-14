@@ -1,0 +1,5 @@
+{
+	secured		: true,
+	title		: 'Tools',
+	description : 'Tool Management'
+}

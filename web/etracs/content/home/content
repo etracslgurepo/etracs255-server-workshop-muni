@@ -1,0 +1,16 @@
+<style>
+#tbl { margin-top:20px; }
+#page-title1 { border-bottom:1px solid #a0a0a0; }
+</style>
+
+<table id="tbl" cellpadding="0" cellspacing="0" align="center" border="0" width="800">
+<tr>
+	<td valign="top" align="left"> 
+		<div id="page-title1" class="page-title">Control Panel</div>
+		<br/>
+
+		@desktop-toolbar(iconHeight:45, iconWidth:50, width:250, showFooter:false)
+	</td>
+</tr>
+</table>
+

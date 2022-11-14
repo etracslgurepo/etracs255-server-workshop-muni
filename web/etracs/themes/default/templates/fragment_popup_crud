@@ -1,0 +1,20 @@
+
+<table id="fragment-popup-crud" class="rui-fragment rui-fragment-dialog" cellpadding="0" cellspacing="0" border="0">
+<tr>
+	<td id="pagecontent" valign="top"> ${_content} </td> 
+</tr> 
+</table>
+
+<div style="position:absolute;left:0;bottom:0;right:0;">
+	<div class="actions-separator"></div> 
+	<div id="pagefooter" class="pagefooter-actions">
+		<input type="button" r:context="${PAGE.context}" r:name="edit"  r:visibleWhen="#{mode=='read'}" r:immediate="true" value="Edit"/>
+		<input type="button" r:context="${PAGE.context}" r:name="cancelRead" r:visibleWhen="#{mode=='read'}" r:immediate="true" value="Close"/>
+		
+		<input type="button" r:context="${PAGE.context}" r:name="saveCreate"   r:visibleWhen="#{mode=='create'}" value="Save"/>
+		<input type="button" r:context="${PAGE.context}" r:name="cancelCreate" r:visibleWhen="#{mode=='create'}" r:immediate="true" value="Cancel"/>
+		
+		<input type="button" r:context="${PAGE.context}" r:name="saveUpdate"   r:visibleWhen="#{mode=='edit'}" value="Save"/>
+		<input type="button" r:context="${PAGE.context}" r:name="cancelUpdate" r:visibleWhen="#{mode=='edit'}" r:immediate="true" value="Cancel"/>
+	</div>	
+</div>

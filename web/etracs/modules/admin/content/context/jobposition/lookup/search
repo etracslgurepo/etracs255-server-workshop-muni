@@ -1,0 +1,18 @@
+<div class="optionbox"> 
+	<table cellpadding="0" cellspacing="0"  width="100%" style="white-space:nowrap;">
+	<tr>
+		<td style="padding-right:30px;width:100%;">
+			<b> Org. Unit : </b>
+			<select r:context="${PAGE.context}" r:items="orgUnits" r:name="orgUnit" r:itemLabel="code" r:allowNull="true" r:emptyText="All"></select>
+		</td>
+		<td width="100">
+			<b>Search: </b>
+			<input type="text" r:context="${PAGE.context}" r:name="searchText" style="width:250px;"/>
+		</td>
+		<td width="50" style="padding-left:5px;">
+			<button r:context="${PAGE.context}" r:name="doSearch" icon="rui-icon rui-icon-find">Go</button>
+			<button r:context="${PAGE.context}" r:name="reset" icon="rui-icon rui-icon-undo">Reset</button>
+		</td>		
+	</tr>
+	</table>
+</div> 

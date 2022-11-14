@@ -1,0 +1,144 @@
+<% 
+	def getContextPath = { return MODULE.name? '/'+MODULE.name: ''; }
+
+	def ROLE_INFO = ANUBIS.getFile( getContextPath()+"/context/role/info.pg" );
+%>
+<script>
+	@register( ROLE_INFO.path );
+	
+	\$put("${PAGE.context}", new function() { 
+		var self = this;
+		var svc = Service.lookup( "RoleService", "admin" );
+		
+		this.resultList;
+		this.selectedItem;
+		this.domains;
+		
+		this.domain;
+		this.sysrole;
+
+		this.onload = function() {
+			this.domains = svc.getDomainList();	
+		}
+		
+		this.getSysRoles = function() {
+			if(!this.domain) return [];
+			return svc.getSysRoles({domain:this.domain});
+		}
+		
+		this.listModel = {
+			rows: 13,
+			fetchList: function(o) {
+				o.exclude_system = true;
+				o.sysrole = null;
+				o.domain = null;
+				if ( self.sysrole ) o.sysrole = self.sysrole;
+				if ( self.domain ) o.domain = self.domain;
+				
+				self.resultList = svc.getList( o );	
+				return self.resultList;
+			} 
+		}
+
+		this.refreshListModel = function() {
+			self.listModel.refresh(true);	
+		}
+		
+		var refreshList = function() {
+			self.listModel.refresh(true);	
+		}
+		
+		var reloadList = function() {
+			self.listModel.load();
+		}
+
+		this.addNew = function() {
+			var params = {saveHandler:refreshList};
+			var rc = this.sysrole;
+			var dc = this.domain; 
+			params.entity = { sysrole: (rc ? rc : null), domain: (dc ? dc : null) };
+			return new PopupOpener( "${ROLE_INFO.name}", params, {title:"Add Role"} );
+		}
+		
+		this.open = function() {
+			return new PopupOpener( "${ROLE_INFO.name}", {saveHandler:refreshList, mode:'read', entity:this.selectedItem}, {title:"Role"} ); 
+		}
+
+		this.propertyChangeListener = {
+			"sysrole" : function(o) {
+				reloadList();
+			},
+			"domain" : function(o) {
+				self.sysrole = null;
+				reloadList();
+			}
+		}
+		
+		this.removeItem = function() { 
+			try {
+				if (!this.resultList) 
+					throw new Error('No available selected item(s)'); 
+				
+				var selectedList = this.resultList.collect(function(o){ return (o.selected==true? o: null); });
+				if (selectedList.length == 0) 
+					throw new Error('No available selected item(s)'); 
+				
+				if (confirm("You are about to remove the selected items. Do you want to continue?") ) { 
+					svc.remove( selectedList );
+					refreshList(); 
+				} 
+			} 
+			catch(e) {
+				alert(e);
+			} 
+		} 
+	});
+</script>
+
+<table r:context="${PAGE.context}" r:model="${PAGE.listModel? PAGE.listModel: 'listModel'}" r:name="selectedItem" r:varName="item" r:varStatus="stat" class="grid" cellpadding="0" cellspacing="0" width="100%" border="1"> 
+<thead>
+	<tr>
+		<th class="action">&nbsp;</th> 
+		<th width="150">Role</th>
+		<th width="70">Domain</th>
+		<th width="100">Sys Role</th>
+		<th>Description</th>
+	</tr>
+</thead>
+<tbody>
+	<tr>
+		<td class="action">
+			<input type="checkbox" r:context="${PAGE.context}" r:name="resultList[#{stat.index}].selected"/> 
+		</td> 
+		<td>
+			<a r:context="${PAGE.context}" r:name="open">#{item.role}</a> 
+		</td>
+		<td>#{item.domain}</td>
+		<td>#{item.sysrole}</td>
+		<td>#{item.description}</td>
+	</tr>
+</tbody>
+</table>
+
+<style>
+input[type=button] { width:70px; }
+</style>
+
+<div r:dockto="actions">
+	<input type="button" class="green" r:context="${PAGE.context}" r:name="addNew" value="Add"> 
+	<input type="button" class="green" r:context="${PAGE.context}" r:name="removeItem" value="Remove"/>
+</div>
+
+<div r:dockto="search">
+	<table cellpadding="0" cellspacing="0" border="0">
+	<tr>
+		<td style="padding-left:50px;">
+			<b>Domain: </b>
+			<select r:context="${PAGE.context}" r:items="domains" r:name="domain" r:allowNull="true" r:emptyText="- All -"></select>
+			&nbsp;&nbsp;&nbsp;
+			<b>Sys Role: </b>
+			<select r:context="${PAGE.context}" r:items="getSysRoles()" r:name="sysrole" r:allowNull="true" r:emptyText="- All -" r:depends="domain"></select>
+		</td>	
+	</tr>
+	</table>
+</div>

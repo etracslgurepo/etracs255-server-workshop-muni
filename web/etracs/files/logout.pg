@@ -1,0 +1,11 @@
+{ 
+	fragment	: true,	
+	type		: 'topmenu', 
+	title		: 'Logout', 
+	context		: 'logout', 
+	secured		: true, 
+	sortorder	: 1000, 
+
+ 	target		: 'popup',
+ 	options		: {headless:true, width:400}
+} 

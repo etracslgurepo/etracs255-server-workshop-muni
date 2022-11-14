@@ -1,0 +1,112 @@
+<% 
+	def getContextPath = { return MODULE.name? '/'+MODULE.name: ''; }
+	def ORGUNIT = ANUBIS.getFile( getContextPath()+"/context/orgunit/info.pg" );
+%>
+
+<script>
+	@register( ORGUNIT.path );
+	
+	\$put("${PAGE.context}", new function() {
+		var self = this;
+		var svc = Service.lookup( "OrgunitService", "admin" );
+
+		this.resultList;
+		this.selectedItem;
+		this.orgTypes;
+		
+		this.orgType;
+
+		this.onload = function() {
+			this.orgTypes = svc.getOrgtypes();
+			if(this.orgTypes && this.orgTypes.length > 0 ) {
+				this.orgType = this.orgTypes[0];
+			}
+		}
+
+		this.listModel = {
+			rows: 13,
+			fetchList: function(o) {
+				o.orgtype = self.orgType.name;
+				self.resultList = svc.getList( o );	
+				return self.resultList;
+			}
+		}
+
+		var refreshList = function() {
+			self.listModel.refresh(true);	
+		}
+
+		this.addNew = function() {
+			var params = {saveHandler:refreshList, entity:{orgtype: this.orgType.name }};
+			return new PopupOpener( "${ORGUNIT.name}", params, {title: "Org Unit"} );
+		}
+
+		this.open = function() {
+			var params = {saveHandler:refreshList, entity:this.selectedItem, mode:"read" };
+			return new PopupOpener( "${ORGUNIT.name}", params, {title: "Org Unit"} );
+		}
+
+		this.propertyChangeListener = {
+			orgType : function(o) { self.listModel.load(); }
+		}
+		
+		this.isSystemOrgType = function() {
+			return this.orgType && this.orgType.system==1;
+		}
+		
+		this.removeItem = function() {
+			try {
+				if (!this.resultList) 
+					throw new Error('No available selected item(s)'); 
+				
+				var selectedList = this.resultList.collect(function(o){ return (o.selected==true? o: null); });
+				if (selectedList.length == 0) 
+					throw new Error('No available selected item(s)'); 
+				
+				if (confirm("You are about to remove the selected item(s). Do you want to continue?") ) { 
+					svc.remove( selectedList ); 
+					refreshList(); 
+				} 
+			} 
+			catch(e) { 
+				alert(e);
+			} 
+		} 
+	});
+</script>
+
+<style>
+.pagelist {width:90%;margin-top:10px;}
+input[type=button] {width:70px;}
+</style> 
+
+<table r:context="${PAGE.context}" r:model="${PAGE.listModel? PAGE.listModel: 'listModel'}" r:name="selectedItem" r:varName="item" r:varStatus="stat" class="grid" cellpadding="0" cellspacing="0" width="100%"> 
+<thead>
+	<tr>
+		<th class="action">&nbsp;</th> 
+		<th width="100"> Code </th> 
+		<th> Description </th> 
+	</tr>
+</thead>
+<tbody>
+	<tr>
+		<td class="action">
+			<input type="checkbox" r:context="${PAGE.context}" r:name="resultList[#{stat.index}].selected"/> 
+		</td>	
+		<td>
+			<a r:context="${PAGE.context}" r:name="open">#{item.code}</a> 
+		</td>		
+		<td> #{item.title} </td>
+	</tr>
+</tbody>
+</table>
+
+<div r:dockto="actions">
+	<input type="button" class="green" r:context="${PAGE.context}" r:name="addNew" value="Add"/>
+	<input type="button" class="green" r:context="${PAGE.context}" r:name="removeItem" value="Remove"/>
+</div>
+
+<div r:dockto="search">
+	<b>Org. Type : </b>
+	<select r:context="${PAGE.context}" r:name="orgType" r:items="orgTypes" r:itemLabel="name" r:allowNull="true" r:emptyText="Select an Org.Type"></select> 
+</div>

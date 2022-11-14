@@ -1,0 +1,48 @@
+<%
+	def listModel = PAGE.listModel? PAGE.listModel: 'listModel';
+%>
+<style>
+.doc-title {white-space:nowrap;width:100%;} 
+#doc-actions {width:auto;padding-top:5px;} 
+.pagelist-search > div {float:right;} 
+</style>	
+
+<table id="fragment-document" class="rui-fragment" cellpadding="0" cellspacing="0" width="100%" border="0">
+<tr>
+	<td id="pagetitle" class="doc-title" valign="top"> @pagetitle() </td> 
+</tr>
+<tr>
+	<td id="pagelist-body" class="doc-content" valign="top">	
+		<table class="pagelist" cellpadding="0" cellspacing="0" border="0" width="100%" height="100%"> 
+		<tr class="actions-parent search-parent" style="height:1px;display:none;"> 
+			<td class="pagelist-header">
+				<table cellpadding="0" cellspacing="0" width="100%" border="0"> 
+				<tr>
+					<td id="actions" class="pagelist-actions"></td> 
+					<td id="search" class="pagelist-search" align="right"></td> 
+				</tr>
+				</table> 
+			</td> 
+		</tr> 
+		<tr> 
+			<td class="pagelist-center pagelist-content" colspan="2"> 
+				${_content} 
+			</td> 
+		</tr>
+		<tr> 
+			<td class="pagelist-footer">
+				<button r:context="${PAGE.context}" r:name="${listModel}.moveFirst" icon="rui-button-icon12 rui-icon-navfirst12" title="Go to first page"/>
+				<button r:context="${PAGE.context}" r:name="${listModel}.movePrev"  icon="rui-button-icon12 rui-icon-navprev12" title="Go to previous page"/>
+				<button r:context="${PAGE.context}" r:name="${listModel}.moveNext"  icon="rui-button-icon12 rui-icon-navnext12" title="Go to next page"/>
+				<span style="padding-left:10px;"/>
+				<button r:context="${PAGE.context}" r:name="pagelist_refresh"  icon="rui-button-icon12 rui-icon-refresh12" title="Refresh page"/>				
+			</td> 
+		</tr> 		
+		</table> 
+				
+		<script> \$ctx("${PAGE.context}").pagelist_refresh = function() { this.${listModel}.refresh(true); } </script> 		
+	</td>
+</tr>
+</table>
+
+

@@ -1,0 +1,39 @@
+<script>
+	\$put( "${PAGE.context}", new function() { 
+		var svc = Service.lookup( "PersonnelService", "admin" ); 
+		
+		this.selectHandler;
+		this.selectedItem;
+		this.myname;
+
+		this.select = function() {
+			if( !this.selectedItem )
+				throw Error('No personnel information selected.');
+			
+			this.selectHandler( this.selectedItem );
+			return "_close";
+		} 
+		
+		this.cancel = function() {
+			return "_close";
+		} 
+
+		this.lookupName = function(x) {
+			return svc.getList( {lastname: x+"%"} );
+		}
+	});
+</script>
+
+<style>
+#tblsearch { margin-left:20px; margin-top:20px; }
+</style> 
+
+<table id="tblsearch" cellpadding="0" cellspacing="0" align="center" border="0" style="white-space:nowrap;">
+<tr>
+	<td style="width:120px;"> Enter Last Name: </td> 
+	<td>
+		<input type="text" r:context="${PAGE.context}" r:name="myname" r:suggest="lookupName" 
+			   r:suggestName="selectedItem" r:suggestExpression="#{lastname}, #{firstname}" style="width:280px;"/> 
+	</td> 
+</tr> 
+</table> 

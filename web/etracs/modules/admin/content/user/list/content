@@ -1,0 +1,60 @@
+<%
+	def MODULE_PATH = '';
+	if (MODULE.name) MODULE_PATH = '/' + MODULE.name; 
+%>
+
+<script>
+var userinfopg = @register(MODULE_PATH + '/user/info') 
+
+\$put('${PAGE.context}', new function(){ 
+	var svc = Service.lookup('UserService', 'admin');
+	var self = this;	
+
+	this.selectedItem;
+
+	this.listModel = { 
+		rows: 15,
+		fetchList: function(o) { 
+			return svc.getList(o);	
+		}
+	} 
+
+	this.onclose = function() { 
+		window.location.href = '/admin/console'; 
+	} 
+
+	this.create = function() { 
+		return new PopupOpener(userinfopg.id, {}); 
+	} 
+}); 
+</script> 
+
+<div r:dockto="formActions">
+	<button r:context="${PAGE.context}" r:name="create" icon="create">New</button> 
+	<button r:context="${PAGE.context}" r:name="open" icon="open" r:depends="selectedItem" r:visibleWhen="#{ctx.selectedItem != null}">
+		Open
+	</button> 
+</div> 
+
+<table class="datatable datatable-border" r:context="${PAGE.context}" r:model="${PAGE.listModel? PAGE.listModel: 'listModel'}" r:name="selectedItem" r:varName="item" cellpadding="0" cellspacing="0" width="100%"> 
+<thead>
+	<tr>
+		<td>User Name</td>
+		<td>Last Name</td>
+		<td>First Name</td>
+		<td>Middle Name</td>
+		<td>Job Title</td>
+		<td>Status</td>
+	</tr>
+</thead>
+<tbody>
+	<tr>
+		<td> #{item.username} </td>	
+		<td> #{item.lastname} </td>	
+		<td> #{item.firstname} </td> 
+		<td> #{item.middlename} </td> 
+		<td> #{item.jobtitle} </td>	
+		<td> #{item.state} </td>	
+	</tr>
+</tbody>
+</table>

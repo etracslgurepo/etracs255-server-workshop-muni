@@ -1,0 +1,6 @@
+{
+	secured		: true, 
+	context		: 'terminallist', 
+	title		: 'Terminals', 
+	description : 'Manage Terminals'
+}

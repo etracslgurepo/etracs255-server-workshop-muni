@@ -1,0 +1,207 @@
+<%
+	def ifNull = { o,v->
+		return (o) ? o : v; 
+	}
+	def getValue = {bean,name-> 
+		def value = bean[name]; 
+		if (!value) return null; 
+		if (value instanceof Number) 
+			return value; 
+		else 
+			return "'"+value+"'"; 
+
+	}
+	def getContextPath = { return (MODULE.name? '/'+MODULE.name: ''); }
+
+	def svc = SERVICE.lookup( "PersonnelService", "admin", MODULE.name);
+	def info = svc.read( [objid: PARAMS.objid] );
+	def positions = svc.getPositions( [objid: PARAMS.objid] ); 
+	
+	svc = SERVICE.lookup("UserAccountService", "admin", MODULE.name);
+	def useracct = svc.getAccount( [objid:PARAMS.objid] );
+	
+	def USERACCT = ANUBIS.getFile( getContextPath()+"/context/personnel/createaccount/popupform.pg" );
+	def PWD = ANUBIS.getFile( getContextPath()+"/context/personnel/resetpassword/popupform.pg" );
+	def PERSONNEL_EDIT = ANUBIS.getFile( getContextPath()+"/context/personnel/edit.pg" );
+	def LOOKUP_JOBPOSITION = ANUBIS.getFile( getContextPath()+"/context/jobposition/lookup.pg" );
+%>
+
+<script>
+	@register( USERACCT.path )
+	@register( PWD.path )
+	@register( PERSONNEL_EDIT.path )
+	@register( LOOKUP_JOBPOSITION.path )
+	
+	\$put( "$PAGE.context", new function() {
+	
+		var self = this;
+		
+		var handler = function() {
+			self._controller.reload();		
+		}
+	
+		this.edit = function() {
+			var info = ${com.rameses.anubis.JsonUtil.toString(info)};
+			var params = { saveHandler:handler, entity:info, mode:'edit', closeOnSave:true };
+			params.oncancelUpdate = function() { return '_close'; } 
+			return new PopupOpener( "${PERSONNEL_EDIT.name}", params);
+		}
+		
+		this.createAccount = function() {
+			var usr = {
+				type: 'personnel', 			
+				objid: ${getValue(info,'objid')}, 
+				lastname: ${getValue(info,'lastname')}, 
+				firstname: ${getValue(info,'firstname')}, 
+				middlename: ${getValue(info,'middlename')},  				
+				email:	${getValue(info,'email')} 
+			}
+			return new PopupOpener( "${USERACCT.name}", {saveHandler: handler, useraccount: usr} ); 	
+		}
+				
+		<%if(useracct){%>
+		var userSvc = Service.lookup("UserAccountService", "admin");
+
+		this.removeAccount = function() {
+			if( confirm("Your about to remove the login account of this user. Continue?")) {
+				userSvc.removeAccount( {objid: '${info.objid}' } );
+				handler();
+			}
+		}
+		
+		this.resetPassword = function() {
+			return new PopupOpener( "${PWD.name}", {useraccount:{username:'${useracct.uid}'}} ); 
+		}
+		<%}%>
+		
+		this.selectedJobPosition;
+		this.viewPermissions = function() {
+			return new PopupOpener( "jobposition-permissions", {jobposition: this.selectedJobPosition} );
+		}
+		
+		this.assignPosition = function() {
+			return new PopupOpener( "${LOOKUP_JOBPOSITION.name}", {assigneeid: "${info.objid}", selectHandler: handler  } );
+		}
+		
+		this.removeAssignee = function() {
+			if( confirm( "You are about to remove this assigned position. Continue?") ) {
+				var jobpossvc = Service.lookup( "JobpositionService", "admin" );
+				jobpossvc.unassign( {objid: self.selectedJobPosition.objid  } );
+				handler();
+			}
+		}
+	});	
+</script>
+
+<style>
+.page-title { padding-top:5px; }
+p.section {
+	background-color:#999999; color:#fff;
+	margin:3px 0; padding:1px; padding-left:5px; 
+	font-size:1.05em;
+}
+#tblgeninfo, #tblacctinfo { margin-left:15px; margin-top:5px; }
+</style>
+
+<p class="section">General Information</p>
+<table id="tblgeninfo" class="dataform" cellpadding="0" cellspacing="0" border="0">
+<tr>
+	<th width="100">Staff No. :</th>
+	<td> 
+		${info.staffno} 
+		<span class="rui-spacer"/> 
+		( <a r:context="$PAGE.context" r:name="edit" title="Edit information"> Edit </a> )
+	</td>
+</tr>
+<tr>
+	<th>Last Name :</th>
+	<td>${info.lastname}</td>
+</tr>
+<tr>
+	<th>First Name :</th>
+	<td>${info.firstname}</td>
+</tr>
+<tr>
+	<th>Middle Name :</th>
+	<td>${ ifNull(info.middlename,'-')}</td>
+</tr>
+<tr>
+	<th>Birthdate :</th>
+	<td>${ifNull(info.birthdate,'-')}</td>
+</tr>
+<tr>
+	<th>Gender :</th>
+	<td>${(info.gender=='M')?'Male':'Female'}</td>
+</tr>
+<tr>
+	<th>Email :</th>
+	<td>${ifNull(info.email,'-')}</td>
+</tr>
+<tr>
+	<th>Txn Code :</th>
+	<td>${ifNull(info.txncode,'-')}</td>
+</tr>
+</table>
+<br>
+
+<p class="section">Account Information</p>
+<table id="tblacctinfo" class="dataform" cellpadding="0" cellspacing="0">
+<%if( useracct) {%>
+	<tr>
+		<th width="100">User Account: </th>
+		<td>${useracct.uid}</td>
+	</tr>
+	<tr>
+		<td colspan="2"> 
+			<a r:context="${PAGE.context}" r:name="resetPassword">Reset Password</a>
+			&nbsp;
+			<a r:context="${PAGE.context}" r:name="removeAccount">Remove Account</a>
+		</td>
+	</tr>	
+<%} else {%>
+	<tr>
+		<td colspan="2" style="padding-top:5px;"> 
+			<font color="red"><i>There is no user account defined yet.</i></font>
+			&nbsp;&nbsp;
+			<a r:context="${PAGE.context}" r:name="createAccount"> Create an account</a>
+		</td>
+	</tr> 
+<%}%> 
+</table>
+
+
+<br>
+<p class="section">Job Positions</p>
+<a r:context="${PAGE.context}" r:name="assignPosition">Assign Position</a>
+<%if( positions ) {%>
+	<table class="grid" cellpadding="0" cellspacing="0">
+		<thead>
+			<tr>
+				<th width="50">Code</th>
+				<th width="400">Description</th>
+				<th width="10">&nbsp;</th>
+				<th width="10">&nbsp;</th>
+			</tr>
+		</thead>
+		<tbody>
+			<%positions.each{%>
+				<tr>
+					<td>${it.code}</td>
+					<td>${it.title}</td>
+					<td>
+						<a r:context="${PAGE.context}" r:name="viewPermissions" r:params="{selectedJobPosition:{ objid:'${it.objid}', code:'${it.code}', title:'${it.title}'}}">
+							<span class="rui-icon rui-icon-key" title="View permissions"/> 
+						</a>
+					</td>
+					<td>
+						<a r:context="${PAGE.context}" r:name="removeAssignee" r:params="{selectedJobPosition:{ objid:'${it.objid}', code:'${it.code}', title:'${it.title}'}}">Unassign</a>
+					</td>
+				</tr>
+			<%}%>
+		</tbody>
+	</table>
+<%}%>
+<%if( !positions) {%>
+	<font color="red"><i>There are no job positions defined</i></font>
+<%}%>
+

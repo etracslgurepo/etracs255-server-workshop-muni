@@ -1,0 +1,66 @@
+<script>
+var termgenerator = @register('/admin/terminal/generatekey') 
+
+\$put('${PAGE.context}', new function(){ 
+	var svc = Service.lookup('TerminalAdminService', 'admin');
+	var self = this;	
+
+	this.selectedItem;
+
+	this.listModel = { 
+		rows: 15,
+		fetchList: function(o) { 
+			return svc.getList(o);	
+		}
+	}	
+
+	this.onclose = function() {
+		window.location.href = '/admin/console'; 
+	}
+
+	this.generateKeys = function() {
+		var params = {
+			handler: function(o) {
+				svc.generateKeys(o); 
+				self.listModel.refresh(true); 
+			} 
+		}
+		return new PopupOpener(termgenerator.id, params); 
+	}
+
+	this.unassign = function() {
+		var opt = confirm('You are about to unassign this terminal. Do you want to continue?');
+		if (opt == true) {
+			svc.unassign(this.selectedItem);
+			this.listModel.refresh(true); 
+		}
+	}
+});
+</script>
+
+<div r:dockto="formActions">
+	<button r:context="${PAGE.context}" r:name="generateKeys" icon="separator">Generate Keys</button> 
+	<button r:context="${PAGE.context}" r:name="unassign" icon="separator" 
+		r:depends="selectedItem" r:visibleWhen="#{ctx.selectedItem != null && ctx.selectedItem.macaddress != null}">
+		Unassign
+	</button> 
+</div>
+
+<table class="datatable datatable-border" r:context="${PAGE.context}" r:model="${PAGE.listModel? PAGE.listModel: 'listModel'}" r:name="selectedItem" r:varName="item" cellpadding="0" cellspacing="0" width="100%"> 
+<thead>
+	<tr>
+		<td style="width:100px;maxWidth:100px;">Terminal Key</td>
+		<td style="width:100px;maxWidth:100px;">Mac Address</td>
+		<td style="width:100px;maxWidth:120px;">Date Registered</td>
+		<td>Registered By</td> 
+	</tr>
+</thead>
+<tbody>
+	<tr>
+		<td style="white-space:nowrap;"> #{item.terminalid} </td>	
+		<td style="white-space:nowrap;"> #{item.macaddress} </td>	
+		<td style="white-space:nowrap;"> #{item.dtregistered} </td>	
+		<td style="white-space:nowrap;"> #{item.registeredby} </td> 
+	</tr>
+</tbody>
+</table>

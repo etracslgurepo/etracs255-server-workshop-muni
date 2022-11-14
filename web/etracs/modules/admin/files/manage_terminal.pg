@@ -1,0 +1,11 @@
+{
+	secured		: true,
+	type		: 'admin.home.action',	
+	title		: 'Terminals',
+	description : 'Register and unregister terminals',
+	href	    : '/admin/terminal/list', 	
+	icon		: '/res/admin/admin-terminal.png',
+	domain 		: 'ADMIN',
+	role 		: 'SYSADMIN',
+	sortorder   : 5
+}

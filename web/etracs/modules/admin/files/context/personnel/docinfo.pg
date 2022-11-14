@@ -1,0 +1,6 @@
+{
+	title: 		'Personnel Info',
+	context:	'personnel',
+	fragment: 	true,
+	hidden:		true 
+}

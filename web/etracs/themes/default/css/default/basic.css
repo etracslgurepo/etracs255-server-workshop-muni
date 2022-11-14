@@ -1,0 +1,43 @@
+@import url(../common.css);
+
+.master-header {
+	position:fixed; top:0; right:0; left:0; z-index:1000;
+	overflow:hidden; border-top:0; border-right:0; border-left:0;
+}
+.master-header-height { height:50px; min-height:50px; max-height:50px; } 
+.master-body-top { top:50px; }
+.master-header .master-tblheader-section > td {
+	white-space:nowrap; padding-top:3px;
+}
+.master-header .master-tblheader-section > .logo { 
+	margin:0; padding:3px 7px 0px 30px; 
+}
+.master-body { position:absolute; left:0; right:0; bottom:0; }
+.master-tblheader #master-header-right { padding-right:20px; }
+.master-body, .master-footer {
+	vertical-align:top;
+}
+.master-body {
+	min-height:400px; min-width:400px;
+}
+.master-content { height:100%; }	
+.master-footer { 
+	white-space:nowrap; height:1px; padding:10px;
+	background-color:#7d7d7d; color:#fff; font-size:0.8em; border:0;
+	background-color:#434343; color:#b7b7b7; 
+}	
+
+.mainmenu .navbar td.selected, .mainmenu .navbar td.unselected { 
+	margin:0; padding:0px 1px; 
+	border-left: 1px dotted lightgrey;
+}
+.mainmenu .navbar td a { font-size:1.0125em; text-decoration:none; color: #15c; }
+.mainmenu .navbar td > div:hover { background-color: #e9f0fd; border:1px solid #dbe6fb; }
+.mainmenu .navbar td.selected a { color: #9fc700; }
+.mainmenu .navbar td > div { 
+	padding:3px 5px; 
+	border:1px solid transparent;
+	border-radius: 5px; 
+	-webkit-border-radius:5px;
+	-moz-border-radius:5px;	
+}

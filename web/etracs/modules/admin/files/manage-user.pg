@@ -1,0 +1,11 @@
+{
+	secured		: true,
+	type		: 'admin.home.action',	
+	title		: 'Users',
+	description : 'Manage Users',
+	href	    : '/admin/user/list', 	
+	icon		: '/res/admin/admin-user.png',
+	domain 		: 'ADMIN',
+	role 		: 'SYSADMIN',
+	sortorder   : 2
+}

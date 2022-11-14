@@ -1,0 +1,7 @@
+{
+	title: 		'Job Positions',
+	context:	'jobpositionlist',
+	fragment: 	true,
+	sortorder:	4,
+	secured:	true
+}

@@ -1,0 +1,133 @@
+<%
+	def getContextPath = { return (MODULE.name? '/'+MODULE.name: ''); }
+    def PERSONNEL_EDIT = ANUBIS.getFile( getContextPath() + "/context/personnel/edit.pg" );
+	def PERSONNEL_INFO = ANUBIS.getFile( getContextPath() + "/context/personnel/docinfo.pg" );
+%>
+
+<script type="text/javascript">
+	@register( PERSONNEL_EDIT.path ) 
+	@register( PERSONNEL_INFO.path ) 
+	
+	\$put( "${PAGE.context}", new function() {
+		var self = this;
+		var svc = Service.lookup( "PersonnelService", "admin");
+
+		this.selectedItem;
+		
+		this.qry = {};
+		
+		this.listModel = {
+			rows: 13,
+			fetchList: function(o) {
+				o.staffno = (self.qry.staffno) ? self.qry.staffno : null;
+				o.firstname = (self.qry.firstname) ? self.qry.firstname : null;
+				o.lastname = (self.qry.lastname) ? self.qry.lastname : null;
+				return svc.getList( o );	
+			}
+		}
+
+		this.reloadList = function() {
+			self.listModel.load();	
+		}
+		
+		var refreshList = function() {
+			self.listModel.refresh(true);
+		}
+
+		this.propertyChangeListener = {
+			orgUnit : function(o) { self.reloadList() }
+		}
+		
+		this.addNew = function() {
+			return new PopupOpener( "${PERSONNEL_EDIT.name}", { saveHandler: refreshList });
+		}
+		
+		this.reset = function() {
+			this.qry = {};
+			self.reloadList();
+		}
+		
+		this.show_search = true;
+		
+		this.toggleSearch = function() {
+			this.show_search = !this.show_search;
+		}
+	});
+</script>
+
+<style>
+.pagelist {width:90%;} 
+</style>
+
+<table r:context="${PAGE.context}" r:model="${PAGE.listModel? PAGE.listModel: 'listModel'}" r:name="selectedItem" r:varName="item" class="grid" cellpadding="0" cellspacing="0" width="100%"> 
+<thead>
+	<tr>
+		<th width="80">Staff No.</th>
+		<th width="150">Last Name</th>
+		<th width="150">First Name</th>
+		<th width="100">Middle Name</th>
+		<th>Allow Login?</th>
+	</tr>
+</thead>
+<tbody>
+	<tr>
+		<td>
+			<a href="#${PERSONNEL_INFO.name}?objid=#{item.objid}">#{item.staffno}</a>	
+		</td>	
+		<td>#{item.lastname}</td>	
+		<td>#{item.firstname}</td>	
+		<td>#{item.middlename}</td>
+		<td style="padding-left:20px;">
+			<span class="rui-icon rui-icon-#{item.canlogin? 'apply': 'forbidden'}"/>
+		</td>	
+	</tr>
+</tbody>
+</table>
+
+<div r:dockto="actions">
+	<input type="button" class="green" r:context="${PAGE.context}" r:name="addNew" value="Add"/>
+</div> 
+
+<div r:dockto="search" style="white-space:nowrap;padding-left:50px;">
+	<div r:context="${PAGE.context}" r:visibleWhen="#{show_search != true}">
+		<table cellpadding="0" cellspacing="0" align="right">
+		<tr>
+			<td>
+				<b>Search Criteria: &nbsp;&nbsp;</b>
+				<label r:context="${PAGE.context}" r:visibleWhen="#{qry.staffno}">Staff no like '#{qry.staffno}'.</label>
+				<label r:context="${PAGE.context}" r:visibleWhen="#{qry.lastname}">Last name like '#{qry.lastname}'.</label>
+				<label r:context="${PAGE.context}" r:visibleWhen="#{qry.firstname}">First name like '#{qry.firstname}'.</label>
+			</td>
+			<td style="padding-left:10px;">
+				<input type="button" class="green" r:context="${PAGE.context}" r:name="toggleSearch" r:immediate="true" value="Show Search"/>
+			</td>		
+		</tr>
+		</table>
+	</div>	
+
+	<div r:context="${PAGE.context}" r:visibleWhen="#{show_search == true}">
+		<table cellpadding="0" cellspacing="0" align="right">
+		<tr>
+			<td><b>Search Criteria: &nbsp;&nbsp;</b></td>
+			<td style="padding-right:5px;">
+				<input type="text" r:context="${PAGE.context}" r:name="qry.staffno" textcase="upper" r:hint="Enter Staff No" style="width:100px;"/>
+			</td>
+			<td style="padding-right:5px;">
+				<input type="text" r:context="${PAGE.context}" r:name="qry.lastname" textcase="upper"  r:hint="Enter LastName" style="width:110px;"/>
+			</td>
+			<td>
+				<input type="text" r:context="${PAGE.context}" r:name="qry.firstname" textcase="upper"  r:hint="Enter FirstName" style="width:110px;"/>
+			</td>
+			<td style="padding-left:5px;">
+				<input type="button" class="green" r:context="${PAGE.context}" r:name="reloadList" r:immediate="true" value="Go"/>
+				<input type="button" class="green" r:context="${PAGE.context}" r:name="reset" r:immediate="true" value="Undo"/>
+			</td>
+			<td style="padding-left:10px;">
+				<input type="button" class="green" r:context="${PAGE.context}" r:name="toggleSearch" r:immediate="true" value="Hide Search"/> 
+			</td>
+		</tr>
+		</table>
+	</div>
+
+</div>
+

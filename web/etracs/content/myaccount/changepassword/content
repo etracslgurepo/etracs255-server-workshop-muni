@@ -1,0 +1,76 @@
+<script>
+\$put("${PAGE.context}", new function(){
+
+	var svc = Service.lookup('PasswordService', 'admin');
+
+	this.data = {sessionid:"${SESSION.sessionid}"}
+
+	this.doSubmit = function() {
+		try {
+			if (!this.data.oldpassword) 
+				throw new Error('Old password is required'); 
+			if (!this.data.newpassword) 
+				throw new Error('New password is required'); 
+			if (!this.data.confirmpassword) 
+				throw new Error('Confirm password is required'); 
+			if (this.data.oldpassword == this.data.newpassword) 
+				throw new Error('New and Old password must not be the same');			
+			if (this.data.newpassword != this.data.confirmpassword) 
+				throw new Error('New and Confirm password must be the same');
+
+			svc.changePassword(this.data); 
+			return '_close'; 
+		} catch(e) { 
+			var forminfo = \$('#form-info');
+			forminfo.html(e+'');
+			forminfo.show();
+		} 		
+	}
+
+	this.doCancel = function() {
+		return '_close';
+	}
+}); 
+</script>
+
+<style>
+.form-title { 
+	font-size:12pt; font-weight:bold; color:#505050;
+	padding-left:5px; margin:5px; margin-bottom:20px;
+}
+#formeditor tr > td.label {
+	padding:2px 20px; white-space:nowrap; width:100px;
+}
+#formeditor tr > td.editor { padding:2px 0 3px 5px; }
+#formeditor tr > td.editor > input[type=password] { width:210px; }
+</style>
+
+<p class="form-title">Change Password</p>
+<p id="form-info" class="error-box" style="margin:0 10px 10px 10px;display:none;"></p>
+
+<table id="formeditor" cellpadding="0" cellspacing="0" width="100%" border="0">
+<tr>
+	<td class="label">Old Password: </td> 
+	<td class="editor">
+		<input type="password" r:context="${PAGE.context}" r:name="data.oldpassword" r:textcase="none"/>
+	</td>
+</tr> 
+<tr>
+	<td class="label">New Password: </td> 
+	<td class="editor">
+		<input type="password" r:context="${PAGE.context}" r:name="data.newpassword" r:textcase="none"/>
+	</td>
+</tr> 
+<tr>
+	<td class="label">Confirm Password: </td> 
+	<td class="editor">
+		<input type="password" r:context="${PAGE.context}" r:name="data.confirmpassword" r:textcase="none"/>
+	</td>
+</tr> 
+<tr>
+	<td colspan="2" align="right" style="padding:40px 25px 20px 20px;">
+		<input type="button" r:context="${PAGE.context}" r:name="doSubmit" value=" Submit "/>
+		<input type="button" r:context="${PAGE.context}" r:name="doCancel" value=" Cancel "/>
+	</td> 
+</tr>
+</table>

@@ -1,0 +1,69 @@
+<% 
+	def listModel = PAGE.listModel? PAGE.listModel: 'listModel'; 
+%>
+<style>
+.pagelist { margin:10px 20px; width:97%; min-width:500px;}
+.pagelist #pagedesc { padding-bottom:10px; }
+.pagelist #pageactions, .pagelist #pagefooter {
+	background-color:#eaeaea; padding:5px 5px; 
+	border-radius: 4px; -webkit-border-radius: 4px; -moz-border-radius: 4px; 
+} 
+.pagelist #pageactions .rui-button, .pagelist #pagefooter .rui-button {
+	background:transparent; border:1px solid transparent; box-shadow:none;
+	font-size:12px; color:#4a4a4a; text-shadow:1px 1px #f0f0f0;
+}
+.pagelist #pageactions .rui-button:hover, .pagelist #pagefooter .rui-button:hover {
+	border:1px solid #909090;
+	border-radius: 5px; 
+	-webkit-border-radius: 5px;
+	-moz-border-radius: 5px; 
+}
+.pagelist #pageactions .search-label { font-weight:bold; font-size:0.9em; padding-right:10px; }
+.pagelist #pagecontent { padding-top:5px; }
+.pagelist #pagefooter { padding:2px; } 
+.pagelist #pagefooter .rui-button { font-size:11px; padding:1px 3px 2px 3px; } 
+.pagelist #pagefooter .rui-button .button-icon { font-size:9px; } 
+</style> 
+
+<table id="fragmentlist" class="rui-fragment pagelist ${PAGE.context}" cellpadding="0" cellspacing="0" border="0">
+<tr>
+	<td id="pageheader" valign="top" height="1"> @pagetitle() </td>
+</tr>
+<tr>
+	<td id="pagedesc" valign="top" height="1" style="display:${PAGE.description? '': 'none'};">
+		${PAGE.description? PAGE.description: ''}
+	</td>
+</tr>
+<tr>
+	<td id="pageactions">
+		<table cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;width:100%;">
+		<tr>
+			<td id="defactions" valign="top" style="white-space:nowrap;width:1px;">
+				<div> 
+					<button r:context="${PAGE.context}" r:name="onclose" icon="close">Close</button>
+					<button r:context="${PAGE.context}" r:name="fragmentlist_refresh" icon="refresh">Refresh</button>
+				</div> 
+			</td>
+			<td id="formactions" valign="top" style="white-space:nowrap;">&nbsp;</td> 
+			<td id="queryform" align="right" style="white-space:nowrap;width:1px;"> 
+				<span class="search-label">Search</span> 
+				<input type="text" r:context="${PAGE.context}" r:name="${listModel}.query.searchtext" r:control="actionfield" r:action="${listModel}.search"/> 
+			</td> 
+		</tr> 
+		</table> 
+	</td> 
+</tr> 
+<tr>
+	<td id="pagecontent" valign="top">${_content}</td>
+</tr>
+<tr> 
+	<td id="pagefooter">
+		<div> 
+			<button r:context="${PAGE.context}" r:name="${listModel}.moveFirst" icon="navfirst" iconsize="12" title="Go to first page">First</button>
+			<button r:context="${PAGE.context}" r:name="${listModel}.movePrev"  icon="navprev" iconsize="12" title="Go to previous page">Previous</button>
+			<button r:context="${PAGE.context}" r:name="${listModel}.moveNext"  icon="navnext" iconsize="12" title="Go to next page">Next</button>
+			<script> \$ctx("${PAGE.context}").fragmentlist_refresh = function() { this.${listModel}.refresh(true); } </script> 	
+		</div> 	
+	</td> 
+</tr> 
+</table>

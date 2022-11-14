@@ -1,0 +1,7 @@
+{
+	title:		'Search Job Position',
+	context:	'jobpositionlookup',
+	fragment: 	true,
+	hidden:		true,
+	options:	{width:650, height:440}
+}

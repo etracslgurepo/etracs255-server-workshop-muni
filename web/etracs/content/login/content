@@ -1,0 +1,59 @@
+<style>
+.centered { margin: 0 auto 0 auto; }
+#login-title { color:#505050; margin-bottom:0px; }
+#login-box { width:500px; }
+#login-box form td { width:100px; white-space:nowrap; padding-left:10px;  }
+#login-box form input { width:200px; }
+#login-box form input[type=submit] { 
+	width:80px; margin-top:10px; height:auto;
+	font-size: 11pt;
+}
+
+#tblbox { 
+	min-height:300px; margin-top:5%; 
+	border:0px solid #ccc;
+	border-radius: 4px; 
+	-webkit-border-radius:4px;
+	-moz-border-radius:4px;	
+}
+.login-splitter { 
+	background-image: url('/res/splitter.png'); 
+	background-repeat: repeat-y;
+	padding:5px; 
+}
+.login-icon {
+	padding:20px; padding-top:80px; 
+}
+.login-title {
+	font-size:18pt; font-weight:boldx; xfont-family:'Verdana';
+	margin:0; padding:10px; padding-bottom:30px;
+}
+.login-ads {
+	margin:0; padding-left:10px; padding-top:70px; font-size:11px;
+}
+</style>
+
+<table id="tblbox" cellpadding="0" cellspacing="0" border="0" valign="middle" align="center">
+<tr>
+	<td class="login-icon" valign="top"><img src="/res/lock.png" border="0"/></td>
+	<td class="login-splitter">&nbsp;</td>
+	<td valign="top" style="padding-left:20px;height:300px;">
+		<p class="login-title">User Login</p>
+		<div id="login-box">
+			@formlogin()
+		</div>	
+		<div class="login-ads">
+			Powered by <br/> 
+			<a href="http://www.ramesesinc.com" target="_blank">
+				<img src="/res/rameses.png" border="0" height="24"/>
+			</a> 		
+		</div>	
+	</td>
+</tr>
+</table>
+
+<script>
+	\$(function(){
+		\$("#login-box form input[name='username']").focus();
+	});
+</script>

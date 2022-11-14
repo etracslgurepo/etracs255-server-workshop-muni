@@ -1,0 +1,37 @@
+<%
+	def listModel = PAGE.listModel? PAGE.listModel: 'listModel';
+%>
+<table id="popup-pagelist" class="rui-fragment" cellpadding="0" cellspacing="0" border="0">
+<tr class="search-parent" style="height:1px;display:none;"> 
+	<td id="search" class="lookuplist-search"></td> 
+</tr>
+<tr>
+	<td class="rui-fragment-content"> ${_content} </td> 
+</tr> 
+<tr>
+	<td style="height:1px;">
+		<div class="rui-fragment-footer-separator"></div> 
+	</td> 
+</tr> 
+<tr> 
+	<td class="rui-fragment-footer"> 
+		<table cellpadding="0" cellspacing="0" width="100%">
+		<tr>
+			<td>
+				<button r:context="${PAGE.context}" r:name="${listModel}.moveFirst" icon="rui-icon rui-icon-navfirst" title="Go to first page"/>
+				<button r:context="${PAGE.context}" r:name="${listModel}.movePrev"  icon="rui-icon rui-icon-navprev" title="Go to previous page"/>
+				<button r:context="${PAGE.context}" r:name="${listModel}.moveNext"  icon="rui-icon rui-icon-navnext" title="Go to next page"/>
+				<span style="padding-left:10px;"/>
+				<button r:context="${PAGE.context}" r:name="pagelist_refresh"  icon="rui-icon rui-icon-refresh" title="Refresh page"/>			
+			</td>
+			<td align="right" style="padding-right:10px;">
+				<button r:context="$PAGE.context" r:name="select" r:immediate="true" icon="rui-icon rui-icon-apply">Select</button>
+				<button r:context="$PAGE.context" r:name="_close" r:immediate="true" icon="rui-icon rui-icon-cancel">Cancel</button>				
+			</td>  
+		</tr> 
+		</table> 
+		
+		<script> \$ctx("${PAGE.context}").pagelist_refresh = function() { this.${listModel}.refresh(true); } </script> 		
+	</td> 
+</tr> 
+</table> 

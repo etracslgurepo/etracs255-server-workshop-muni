@@ -1,0 +1,6 @@
+{
+	title		: 'Home',
+	secured		: true,
+	sortorder	: -1000, 
+	type		: 'topmenu'
+}

@@ -1,0 +1,9 @@
+{
+	href:		'/context/personnel/list',
+	sortorder:	5,
+	secured:	true,
+	fragment:	true,
+	domain: 	'hr',
+	role: 		'admin',
+	permission: 'createPersonnel'
+}

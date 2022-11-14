@@ -1,0 +1,78 @@
+<script>
+	\$put( "${PAGE.context}", new function() { 
+		var svc = Service.lookup( "TerminalService", "admin" );
+		var self = this;
+
+		this.selectedItem;
+
+		this.listModel = { 
+			rows: 13,
+			fetchList: function(o) { 
+				return svc.getList( o );	
+			}
+		}
+
+		var reloadList = function() {
+			self.listModel.refresh(true);	
+		}
+
+		this.onload = function(){
+			window.console.log(svc);
+		}
+		
+		this.addNew = function() {
+			MsgBox.prompt("Enter the no. of terminal keys to generate", function(text){  
+			
+				var size = parseInt(text);
+				if ( isNaN(size) ) return; 
+				
+				svc.allocate( {size: size} );	
+				reloadList();
+				
+			});
+		}
+		
+		this.unassign = function() {
+			if( !this.selectedItem ) return; 
+			
+			MsgBox.confirm("You are about to unassign this terminal. Do you want to continue?", function() {
+			
+				svc.unregister( self.selectedItem );
+				reloadList();
+				
+			});
+		}
+
+	});
+</script>
+
+<style>
+.pagelist {width:90%;margin-top:10px;} 
+</style>
+
+<table r:context="${PAGE.context}" r:model="${PAGE.listModel}" r:name="selectedItem" r:varName="item" class="grid" cellpadding="0" cellspacing="0" width="100%"> 
+<thead>
+	<tr>
+		<th width="140">Terminal ID</th>
+		<th width="140">Mac Address</th>
+		<th width="140">Date Registered</th>
+		<th width="200">Registered By</th>
+		<th>&nbsp;</th>
+	</tr>
+</thead>
+<tbody>
+	<tr>
+		<td style="white-space:nowrap;"> #{item.terminalid} </td>	
+		<td style="white-space:nowrap;"> #{item.macaddress} </td>	
+		<td style="white-space:nowrap;"> #{item.dtregistered} </td>	
+		<td style="white-space:nowrap;"> #{item.registeredby} </td>	
+		<td>
+			<a r:context="terminal" r:name="unassign" r:visibleWhen="#{!!item.macaddress}">Unassign</a>
+		</td>	
+	</tr>
+</tbody>
+</table>
+
+<div r:dockto="actions">
+	<input type="button" r:context="${PAGE.context}" r:name="addNew" value=" Add "/> 
+</div> 

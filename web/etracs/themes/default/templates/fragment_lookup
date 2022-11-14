@@ -1,0 +1,17 @@
+
+<table id="fragment-lookup" class="rui-fragment" cellpadding="0" cellspacing="0" border="0">
+<tr>
+	<td class="rui-fragment-content"> ${_content} </td> 
+</tr>
+<tr>
+	<td style="height:1px;">
+		<div class="rui-fragment-footer-separator"></div> 
+	</td> 
+</tr>  
+<tr> 
+	<td class="rui-fragment-footer"> 
+		<button r:context="$PAGE.context" r:name="select" r:immediate="true" icon="rui-icon rui-icon-apply">Select</button>
+		<button r:context="$PAGE.context" r:name="_close" r:immediate="true" icon="rui-icon rui-icon-cancel">Cancel</button>	
+	</td> 
+</tr>
+</table>

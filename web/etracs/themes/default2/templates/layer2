@@ -1,0 +1,30 @@
+<style>
+.layer1-navbar td.navbar-col {
+	padding: 8px 5px 1px 5px;
+}
+.layer1-navbar td.navbar-col a {
+	text-decoration :none;
+	font-size: 12pt;
+	color: #0000ee;
+}
+.layer1-navbar td.selected {
+	border-bottom: 4px solid orange;
+	font-weight: bolder; 
+}		
+.layer1-navbar td.selected a {
+	color: #551a8b; text-shadow:none;
+}
+</style>
+
+<table cellpadding="0" cellspacing="0" border="0" align="center" width="80%" style="margin-top:20px;margin-bottom:20px;min-width:800px;">
+<tr>
+	<td height="510" valign="top" style="padding-top:0px">
+		<table cellpadding="0" cellspacing="0" width="100%">
+		<tr>
+			<td valign="top" width="160">@navbar( folderid: PAGE.parentPath, class:"layer1", style:"vertical" )</td>
+			<td valign="top">${_content}</td>
+		</tr>
+		</table>
+	</td>
+</tr>
+</table>

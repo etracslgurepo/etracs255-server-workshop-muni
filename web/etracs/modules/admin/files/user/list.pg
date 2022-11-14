@@ -1,0 +1,6 @@
+{
+	secured		: true, 
+	context		: 'userlist', 
+	title		: 'Users', 
+	description : 'Manage Users'
+}

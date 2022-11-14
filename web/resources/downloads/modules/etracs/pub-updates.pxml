@@ -1,0 +1,14 @@
+<app>
+<env>
+
+</env>
+<modules>
+  <module version="2.06" file="etracs/rameses-etracs-main.jar" />
+  <module version="2.02" file="etracs/rameses-gov-etracs-ngas-report.jar" />
+  <module version="2.02" file="etracs/rameses-gov-etracs-sre-report.jar" />
+  <module version="2.02" file="etracs/rameses-gov-etracs-tools.jar" />
+  <module version="2.02" file="etracs/rameses-gov-etracs-signatory-template.jar" />
+  <module version="2.04" file="etracs/rameses-gov-lgu.jar" />
+  <module version="2.05" file="etracs/rameses-gov-lgu-treasury.jar" />
+</modules>
+</app>

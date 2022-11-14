@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<title> ${MODULE.title? MODULE.title: PROJECT.title} - ${PAGE.title} </title>	
+	<meta name="keywords" content="${PROJECT.keywords} ${MODULE.keywords? MODULE.keywords:''}"/>
+	<meta name="description" content="${PROJECT.description}"/>	
+
+	@stdlib()
+	@css('default')
+	@page-imports()
+
+	<style> 
+		body { background-color:#fff; overflow:hidden; }		
+		.theme-background { background-image:none; }
+		.theme-header-background { 
+			background: #454545; border-bottom:1px solid #c0c0c0;
+		}
+		.master-body { top:35px; } 		
+		#master-header { height:35px; min-height:35px; max-height:35px; }
+		#master-header {
+			border-top:2px solid #333; 
+			-webkit-box-shadow: 0 8px 6px -6px #808080; 
+			-moz-box-shadow: 0 8px 6px -6px #808080; 
+			box-shadow: 0 8px 6px -6px #808080; 
+		}
+		#master-header-section #header-logo {
+			white-space:nowrap; padding:0 20px; color:#eec231; 
+			font-size:1.5em; text-shadow:1px 1px solid #333;
+		}
+		#master-header-section #header-action {
+			padding:0 20px;
+		} 
+		#master-header-section #header-action table.mainmenu > tbody > tr > td {
+			color:#bbb; padding:3px 14px; border-right:1px solid #626262; font-size:0.875em; 
+		}
+		#master-header-section #header-action table.mainmenu > tbody > tr > td > a {
+			color:#bbb;	text-decoration:none;
+		}
+		#master-header-section #header-action table.mainmenu > tbody > tr > td > a:hover {
+			color:#fff;
+		}
+		#master-footer { 
+			background:#454545; color:#969696; font-size:0.75rem;
+		}
+		.notification-count {
+			background:red; color:#fff; padding:1px 4px; font-size:11px;
+			border-radius: 4px; -webkit-border-radius: 4px; -moz-border-radius: 4px; 
+			position:relative; top:-7px; left:-4px;
+		}
+		.message-container { 
+			width:250px; min-width:250px; max-width:250px; 
+			padding:0; background:#f5f5f5; 
+			border:1px solid #c0c0c0; border-top:0; border-bottom:0;
+		}
+		.message-container-body {
+			width:250px; min-width:250px; max-width:250px; 
+			overflow:auto; zoom:1; position:absolute; left:0; bottom:0; top:34px;
+		}
+		.message-container .message-container-title { 		
+			font-weight:bold; color:#444; padding:10px 10px 5px 10px; 
+			text-shadow:1px 1px #f5f5f5; font-size:10pt; border-bottom:1px solid #c0c0c0;
+		}
+		.message-container .message-container-body {
+			border-top:1px solid #fff;
+		} 
+		.message-container .message-container-body .message-content {
+			padding:10px; cursor:pointer; background-color:#fff;
+			border-bottom:1px solid #d0d0d0;
+		}
+		#message-list tr:hover > td { background-color:#c8d4f6; } 
+	</style> 
+	<script>
+	function addMessage(htmlstring, handler) {
+		if (!htmlstring || htmlstring=='') return;
+
+		var tbody = \$('#message-list > tbody');
+		var trow = \$('<tr/>');
+		var td = \$('<td class="message-content"/>');
+		td.appendTo(trow);
+		td.html(htmlstring);
+		trow.prependTo(tbody);
+
+		childcount = tbody.children().length; 
+		\$('#log-counter').html(childcount+'');
+
+		if (handler) new ___OnClickEvent(td, handler); 
+	}
+	function ___OnClickEvent(elem, callback) {
+		elem.on('click', function(e){
+			if (!callback) return; 
+			if (!callback.click) return;
+
+			callback.click(e);
+		});
+	}
+	</script>
+</head>
+
+<body class="theme-font theme-background">
+	<div id="master-header" class="theme-background theme-header-border theme-header-background master-header">
+		<table cellpadding="0" cellspacing="0" width="100%" height="100%" border="0">
+		<tr id="master-header-section">
+			<td id="header-logo" align="left" style="white-space:nowrap;width:1px;"> Mobile Tracker </td>
+			<td id="header-action" align="right" style="white-space:nowrap;">&nbsp;</td>
+		</tr>
+		</table>
+	</div>
+
+	<div class="master-body">
+		<table class="master-content-panel" cellpadding="0" cellspacing="0" width="100%" height="100%" border="0">
+		<tr class="master-content-section">
+			<td class="message-container" valign="top" style="min-width:250px;width:250px;">
+				<div class="message-container-title"> 
+					Tracker Logs &nbsp;&nbsp;&nbsp;
+					(&nbsp; <span id="log-counter">0</span> &nbsp;)
+				</div>
+				<div class="message-container-body" style="overflow:auto;zoom:1;">
+					<table id="message-list" cellpadding="0" cellspacing="0" width="100%">
+					<tr style="display:none;"><td>&nbsp;</td></tr>
+					</table>
+				</div>
+			</td>		
+			<td class="master-content" valign="top">
+				${_content}
+			</td>
+		</tr>
+		<table>		
+	</div>
+</body>
+</html>

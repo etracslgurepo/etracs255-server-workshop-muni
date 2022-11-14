@@ -1,0 +1,105 @@
+<script>
+\$put('context', new function(){
+
+	var self = this;
+	var svc = Service.lookup('WebBasicPasswordService', 'admin');
+
+	this.data = {sessionid:"${SESSION.sessionid}"}
+
+	this.submit = function() {
+		try {
+			if (this.data.newpassword != this.data.confirmpassword) 
+				throw new Error('New and Confirm password must be the same');
+
+			svc.changePasswordOnLogin(this.data); 
+			window.location.href = '/'; 
+		} catch(e) { 
+			var infobox = \$('#info-box');
+			infobox.html(e+'');
+			infobox.removeClass('info-box').addClass('error-box');
+		} 
+	}
+});
+</script> 
+
+<style>
+.centered { margin: 0 auto 0 auto; }
+#login-title { color:#505050; margin-bottom:0px; }
+#login-box { width:500px; padding-left:10px; padding-right:10px; }
+#login-box td.label, #login-box td.editor { width:130px; white-space:nowrap; padding-left:10px;  }
+#login-box td.editor input { width:200px; }
+#login-box td.editor input[type=button] { 
+	width:80px; margin-top:10px; height:auto;
+	font-size: 11pt;
+}
+
+#tblbox { 
+	min-height:300px; margin-top:5%; 
+	border:0px solid #ccc;
+	border-radius: 4px; 
+	-webkit-border-radius:4px;
+	-moz-border-radius:4px;	
+}
+.login-splitter { 
+	background-image: url('/res/splitter.png'); 
+	background-repeat: repeat-y;
+	padding:5px; 
+}
+.login-icon {
+	padding:20px; padding-top:80px; 
+}
+.login-title {
+	font-size:18pt; font-weight:boldx; xfont-family:'Verdana';
+	margin:0; padding:0px 0px 10px 10px; 
+}
+.info-box {
+	background-color:#ffffdd; border:1px solid #fdc33c;
+	margin:0; margin-bottom:20px; padding:10px; 
+	border-radius: 4px; 
+	-webkit-border-radius:4px;
+	-moz-border-radius:4px;		
+}
+.login-ads {
+	margin:0; padding-left:10px; padding-top:70px; font-size:11px;
+}
+</style>
+
+<table id="tblbox" cellpadding="0" cellspacing="0" border="1" valign="middle" align="center">
+<tr>
+	<td valign="top" style="padding:10px;">
+		<p class="login-title">Change Password</p>
+		<div id="login-box">
+			<p id="info-box" class="info-box">Please change your current password.</p>
+
+			<table cellpadding="0" cellspacing="2">
+			<tr>
+				<td class="label">New Password</td>
+				<td class="editor"><input type="password" r:context="context" r:name="data.newpassword" r:textcase="none"/></td>
+			</tr>
+			<tr>
+				<td class="label">Confirm Password</td>
+				<td class="editor"><input type="password" r:context="context" r:name="data.confirmpassword" r:textcase="none"/></td>
+			</tr>
+			<tr>
+				<td>&nbsp;</td>
+				<td class="editor">
+					<input type="button" r:context="context" r:name="submit" value="Submit"/>
+				</td>
+			</tr>
+		   </table>
+		</div>
+
+		<div class="login-ads">
+			Powered by <br/> 
+			<a href="http://www.ramesesinc.com" target="_blank">
+				<img src="/res/rameses.png" border="0" height="24"/>
+			</a> 		
+		</div>	
+	</td>
+</tr>
+</table>
+<script>
+	\$(function(){
+		//\$("#login-box input[name='newpassword']").focus();
+	});
+</script>

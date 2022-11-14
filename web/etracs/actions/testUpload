@@ -1,0 +1,11 @@
+System.out.println( SESSION );
+
+def req = SESSION.request
+def fileid = req.getParameter('file_id')
+def file = req.getFileParameter(fileid)
+
+System.out.println( '------------------------' );
+System.out.println( 'uploaded successfully: ' + file );
+
+
+println "{message: 'done'}";

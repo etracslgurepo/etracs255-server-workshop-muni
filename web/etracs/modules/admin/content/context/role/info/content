@@ -1,0 +1,93 @@
+<script>
+	\$put( "${PAGE.context}", CRUDFactory.create(new function() { 	
+		var self = this; 
+		
+		this.service = Service.lookup("RoleService", "admin");
+		this.permissions;
+		this.domains;
+		
+		this.oninit = function() { 
+			this.domains = this.service.getDomainList();
+			if (this.mode == "read") 
+			{ 
+				this.read(); 
+				this.permissions = this.service.getPermissions( this.entity );
+			} 
+		} 
+
+		this.getSysRoles = function() {
+			return (!this.entity.domain)? []: this.service.getSysRoles(this.entity);
+		}
+
+		this.onbeforeSave = function(o) {
+			o.permissions = this.permissions;
+		} 
+		
+		this.onbeforeUpdate = function(o) {
+			o.permissions = this.permissions;
+		} 
+					
+		this.propertyChangeListener = {
+			'entity.role' : function(value) {
+				if ( value ) {
+					self.entity.role = value.formatCode();
+					self._controller.refresh();
+				}
+			},
+			'entity.domain' : function(v) {
+				self.sysrole = null;
+				self.permissions = [];
+			},
+			'entity.sysrole' : function(o) {
+				self.permissions = (o)? self.service.getPermissions( self.entity ): [];
+			}
+		}; 
+	}));
+</script>
+
+<style>
+#form { margin:20px 0 0 20px; }
+#form th { font-weight:normal; }
+</style>
+
+<table id="form" class="dataform" cellpadding="0" cellspacing="0" border="0">
+<tr>
+	<th width="100">Role Name :</th>
+	<td>
+		<input type="text" r:context="${PAGE.context}" r:name="entity.role" r:required="true" r:caption="Role Name" r:disableWhen="#{mode!='create'}" r:textcase="upper" style="width:300px"/>
+	</td>
+</tr>
+<tr>
+	<th>Description :</th>
+	<td>
+		<textarea r:context="${PAGE.context}" r:name="entity.description" r:required="true" r:caption="Description" r:readonlyWhen="#{mode=='read'}" r:textcase="none" style="width:300px;height:96%;"/>
+	</td>
+</tr>
+<tr> 
+	<th>Domain :</th>
+	<td>
+		<select r:context="${PAGE.context}" r:name="entity.domain" r:allowNull="true" r:required="true" r:items="domains" r:disableWhen="#{mode=='read'}" style="width:150px;"></select>
+	</td>
+</tr>
+<tr> 
+	<th>Sys Role :</th>
+	<td>
+		<select r:context="${PAGE.context}" r:name="entity.sysrole" r:allowNull="true" r:required="true" r:items="getSysRoles()" r:disableWhen="#{mode=='read'}" r:depends="entity.domain" style="width:150px;"></select> 
+	</td>
+</tr>
+<tr>
+	<th>Permissions :</th>
+	<td>
+		<div class="scrollable" style="height:190px;"> 
+			<table class="compress-cells" r:context="${PAGE.context}" r:items="permissions" r:varStatus="stat" r:varName="item" r:depends="entity.sysrole,entity.domain" cellpadding="0" cellspacing="0" border="0"> 
+			<tr>
+				<td>
+					<input type="checkbox" r:name="permissions[#{stat.index}].allowed" r:context="${PAGE.context}" r:disableWhen="#{mode=='read'}"/>				
+				</td>
+				<td id="permission-name"> #{item.title} </td>
+			</tr>
+			</table>
+		</div> 
+	</td>
+</tr>
+</table>

@@ -1,0 +1,44 @@
+<script>
+	\$put( "${PAGE.context}", CRUDFactory.create( 
+		new function() {
+			var self = this;
+		
+			this.service = Service.lookup("OrgunitService", "admin");
+		
+			this.propertyChangeListener = {
+				'entity.code' : function(v) {
+					if (v) {
+						self.entity.code = v.formatCode();
+						self._controller.refresh();
+					}
+				}	
+			}
+		}
+	));
+</script>
+
+<style>
+#form { margin-left:20px; margin-top:20px; }
+</style>
+
+<table id="form" class="dataform" cellpadding="0" cellspacing="1">
+<tr>
+	<th width="100">Type : </th>
+	<td>
+		<input type="text" r:context="${PAGE.context}" r:name="entity.orgtype" disabled="disabled" style="width:150px;" />
+	</td>
+</tr>
+<tr>
+	<th>Code : </th>
+	<td>
+		<input type="text" r:context="${PAGE.context}" r:name="entity.code" r:required="true" r:caption="Code" r:textcase="upper" r:readonlyWhen="#{mode=='read'}" style="width:150px;"/>
+	</td>
+</tr>	
+<tr>
+	<th>Description : </th>
+	<td>
+		<input type="text" r:context="${PAGE.context}" r:name="entity.title" r:required="true" r:caption="Description" r:textcase="upper" r:readonlyWhen="#{mode=='read'}" style="width:300px"/>
+	</td>
+</tr>	
+</table>	
+

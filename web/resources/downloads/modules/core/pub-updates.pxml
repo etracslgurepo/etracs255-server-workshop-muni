@@ -1,0 +1,22 @@
+<app>
+<env>
+
+</env>
+<modules>
+   <module version="2.03" file="core/osiris2-client-themes.jar" />
+   <module version="2.06" file="core/osiris2-client-ui.jar" />
+   <module version="2.01" file="core/osiris2-draw.jar" />
+   <module version="2.04" file="core/osiris2-framework.jar" />
+   <module version="2.17" file="core/osiris2-report.jar" />
+   <module version="2.17" file="core/rameses-client-ui.jar" />
+   <module version="2.01" file="core/rameses-client-ui-bio.jar" />
+   <module version="2.01" file="core/rameses-client-ui-jfx.jar" />
+   <module version="2.01" file="core/rameses-client-notification-socketio.jar" />
+   <module version="2.05" file="core/rameses-common2.jar" />
+   <module version="2.02" file="core/rameses-custom-impl.jar" />
+   <module version="2.01" file="core/rameses-jdbc16.jar" />
+   <module version="2.16" file="core/rameses-seti.jar" />
+   <module version="2.02" file="core/rameses-file-mgmt.jar" />
+   <module version="2.01" file="core/ireport-designer-connector.jar" />
+</modules>
+</app>

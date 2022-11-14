@@ -1,0 +1,36 @@
+import com.rameses.anubis.*;
+import com.rameses.util.*;
+
+def target = PARAMS.target;
+if (!target || target=='null') target = PROJECT.login_redirect;
+if (!target || target=='null') target = "/";
+
+def changePwdTarget = PROJECT.change_pwd_on_login_redirect;
+if (!changePwdTarget || changePwdTarget == 'null') 
+	changePwdTarget = '/changepwdonlogin';
+
+try 
+{
+	if (!PARAMS.username || !PARAMS.password) 
+		throw new Exception('Invalid username and password'); 
+
+	def encPwd = Encoder.md5.encode( PARAMS.password, PARAMS.username );	
+
+	AnubisContext.currentContext.env.CLIENTTYPE = 'web';
+	def svc = SERVICE.lookup('LoginService', 'admin');
+	def resmap = svc.login([ username: PARAMS.username, password: encPwd ]); 
+	
+	SESSION.createSession(resmap.env.SESSIONID);
+	if (resmap.AUTH_OPTIONS.CHANGE_PWD_ON_LOGIN == true) return changePwdTarget;
+
+	return target;
+}
+catch(e) 
+{
+	def oe = ExceptionManager.getOriginal(e);
+	System.out.println("login [ERROR] " + oe.message);
+	e.printStackTrace();
+	
+	target = java.net.URLEncoder.encode( target );
+	return "/retrylogin?target=${target}";
+}

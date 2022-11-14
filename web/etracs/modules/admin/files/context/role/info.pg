@@ -1,0 +1,8 @@
+{
+	title: 		'Role',
+	context:	'role',
+	fragment: 	true,
+	sortorder:	2,
+	secured:	true,
+	options:	{height:400, width:500}
+}

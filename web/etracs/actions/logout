@@ -1,0 +1,11 @@
+import com.rameses.anubis.*;
+import com.rameses.util.*;
+
+def target = PARAMS.target;
+if (!target || target=='null') target = "/";
+
+def sessionid = SESSION.sessionid;
+def svc = SERVICE.lookup('LogoutService', 'admin'); 
+svc.logout([ SESSIONID: sessionid ]); 
+SESSION.destroySession(); 
+return target;

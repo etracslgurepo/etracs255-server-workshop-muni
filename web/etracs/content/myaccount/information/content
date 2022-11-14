@@ -1,0 +1,143 @@
+<%
+	def data = null; 
+	try { 
+		def svc = SERVICE.lookup("WebAccountService", "admin");
+		data = svc.getAccountInfo([sessionid: SESSION.sessionid]); 
+	} catch(Throwable e) {
+		e.printStackTrace(); 
+	}
+
+	if (!data) data = [:]; 
+	if (!data.user) data.user = [:]; 
+%>
+
+<style>
+table.datatable {
+	width:100%; margin-top:20px; background-color:transparent;
+}
+table.datatable tr:hover {
+	background-color: transparent;
+}
+table.datatable td.datatable-data {
+	padding:0; background-color:transparent;
+}
+table.datatable tr.datatable-header > td {
+	border-bottom:1px solid #c0c0c0;
+}
+table.datatable tr.datatable-header > td.datatable-header-title {
+	font-size:12px; color:#606060; text-shadow:1px 1px #efefef;
+	font-weight:bold;
+}
+table.datatable tr.datatable-header > td.datatable-header-action {
+	text-align:right;
+}
+table.data {
+	border-collapse: collapse;
+	width:100%; margin-bottom:20px;
+}
+table.data tr > td {
+	border:1px solid #e0e0e0;
+	border-left:0; border-right:0;
+	padding:2px 10px;
+}
+table.data tr > td.key {
+	padding-right:30px; width:200px;
+}
+table.data tr > td.description {
+	text-align:right; color:#808080;
+}
+</style>
+
+@pagetitle()
+<table class="datatable" cellpadding="0" cellspacing="0" width="100%">
+<tr class="datatable-header">
+	<td class="datatable-header-title">General Information</td>
+	<td class="datatable-header-action">&nbsp;</td>
+</tr>
+<tr>
+	<td class="datatable-data" colspan="2">
+		<table class="data" cellpadding="0" cellspacing="0">
+		<tr>
+			<td class="description" colspan="2">User information for this account</td>
+		</tr> 
+		<tr>
+			<td class="key">Username</td>
+			<td class="value">${data.user.username}</td>
+		</tr>
+		<tr>
+			<td class="key">Last Name</td>
+			<td class="value">${data.user.lastname? data.user.lastname: '&nbsp;'}</td>
+		</tr>
+		<tr>
+			<td class="key">First Name</td>
+			<td class="value">${data.user.firstname? data.user.firstname: '&nbsp;'}</td>
+		</tr>
+		<tr>
+			<td class="key">Middle Name</td>
+			<td class="value">${data.user.middlename? data.user.middlename: '&nbsp;'}</td>
+		</tr>
+		<tr>
+			<td class="key">Job Title</td>
+			<td class="value">${data.user.jobtitle? data.user.jobtitle: '&nbsp;'}</td>
+		</tr>
+		</table>
+	</td>
+</tr>
+<tr class="datatable-header">
+	<td class="datatable-header-title">Roles</td>
+	<td class="datatable-header-action">&nbsp;</td>
+</tr>
+<tr>
+	<td class="datatable-data" colspan="2">
+		<table class="data" cellpadding="0" cellspacing="0">
+		<tr>
+			<td class="key" valign="top" style="width:100%;">${data.roles? data.roles: '(None)'}</td>
+			<td class="description" valign="top" style="white-space:nowrap;">Access level for this account</td>
+		</tr>
+		</table>
+	</td>
+</tr>
+<tr class="datatable-header">
+	<td class="datatable-header-title">Access Settings</td>
+	<td class="datatable-header-action">&nbsp;</td>
+</tr>
+<tr>
+	<td class="datatable-data" colspan="2">
+		<table class="data" cellpadding="0" cellspacing="0">
+		<tr>
+			<td class="description" colspan="2">Access settings for this account</td>
+		</tr>		
+		<tr>
+			<td class="key">Client Type</td>
+			<td class="value">${data.clienttype? data.clienttype: '(Not Available)'}</td>
+		</tr>
+		<tr>
+			<td class="key">Time-In</td>
+			<td class="value">${data.timein? data.timein: '(Not Available)'}</td>
+		</tr>
+		<tr>
+			<td class="key">Access Time</td>
+			<td class="value">${data.accesstime? data.accesstime: '(Not Available)'}</td>
+		</tr> 
+		<tr>
+			<td class="key">Access Expiry</td>
+			<td class="value">${data.accessexpiry? data.accessexpiry: '(Not Available)'}</td>
+		</tr> 		
+		</table>
+	</td>
+</tr>
+<tr class="datatable-header">
+	<td class="datatable-header-title">Localization</td>
+	<td class="datatable-header-action">&nbsp;</td>
+</tr>
+<tr>
+	<td class="datatable-data" colspan="2">
+		<table class="data" cellpadding="0" cellspacing="0">
+		<tr>
+			<td class="key">English (Default)</td>
+			<td class="description">Language selection for this account</td>
+		</tr>
+		</table>
+	</td>
+</tr>
+</table> 

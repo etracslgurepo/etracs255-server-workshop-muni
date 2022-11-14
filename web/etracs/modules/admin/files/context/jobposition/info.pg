@@ -1,0 +1,9 @@
+{
+	title: 		'Job Position',
+	context:	'jobposition',
+	fragment: 	true,
+	sortorder:	4,
+	secured:	true,
+	hidden:		true,
+	options:	{width:460, height:200}
+}

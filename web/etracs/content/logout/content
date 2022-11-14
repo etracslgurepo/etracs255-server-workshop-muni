@@ -1,0 +1,31 @@
+<script>
+\$put("logout", new function(){
+	this.doOk = function() {
+		\$('#form-logout').submit(); 
+	}
+
+	this.doCancel = function() {
+		return '_close';
+	}
+}); 
+</script>
+
+<style>
+.logout-title {	font-size:12pt;font-weight:bold;color:#505050;padding-left:5px;margin:5px; }
+</style>
+
+<p class="logout-title">Logout</p>
+<table cellpadding="0" cellspacing="0" width="100%" border="0" style="white-space:nowrap;">
+<tr>
+	<td style="font-size:10pt;padding:10px;">
+		You are about to log off. &nbsp; Do you want to Continue? 
+	</td> 
+</tr>	
+<tr>
+	<td align="right" style="padding:20px;padding-top:40px;">
+		<input type="button" r:context="logout" r:name="doOk"     value="   Yes  "/>
+		<input type="button" r:context="logout" r:name="doCancel" value="   No   "/>
+	</td> 
+</tr>
+</table>
+<form id="form-logout" action="/actions/logout" method="post"></form>

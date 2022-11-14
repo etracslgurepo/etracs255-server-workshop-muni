@@ -1,0 +1,6 @@
+{
+	href:		'/context/jobposition/list',
+	sortorder:	4,
+	secured:	true,
+	fragment:	true
+}

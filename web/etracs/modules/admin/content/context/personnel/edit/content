@@ -1,0 +1,65 @@
+<% 
+   def UID = "PERSNL" + new java.rmi.server.UID(); 
+%> 
+ 
+<script src="/js/ext/datetime.js"></script>
+
+<script>
+	\$put( "${PAGE.context}", CRUDFactory.create( 
+		new function() { 
+			this.service = Service.lookup( "PersonnelService", "admin");
+			
+			this.oninit = function() { 
+				if (this.mode == 'create') 
+					this.entity =  { objid: '${UID}' }; 
+				else if (this.mode == 'read') 
+					this.read(); 
+			} 
+		} 
+	));
+</script>
+
+<style>
+#form { margin-left:20px; margin-top:20px; }
+#datetime > div > select.m { margin-left:0; }
+#gender { margin-left:0; }
+</style>
+
+<table id="form" class="dataform" cellpadding="0" cellspacing="2">
+<tr>
+	<th width="120">Staff No.:</th>
+	<td><input type="text" r:context="${PAGE.context}" r:name="entity.staffno" r:required="true" r:caption="Staff No." r:textcase="upper" style="width:150px;"/></td>
+</tr>
+<tr>
+	<th>Last Name:</th>
+	<td><input type="text" r:context="${PAGE.context}" r:name="entity.lastname" r:required="true" r:caption="Lastname" r:textcase="upper" style="width:300px;"/></td>
+</tr>
+<tr>
+	<th>First Name:</th>
+	<td><input type="text" r:context="${PAGE.context}" r:name="entity.firstname" r:required="true" r:caption="Firstname" r:textcase="upper" style="width:300px;"/></td>
+</tr>
+<tr>
+	<th>Middle Name:</th>
+	<td><input type="text" r:context="${PAGE.context}" r:name="entity.middlename" r:caption="Middlename" r:textcase="upper" style="width:300px;"/></td>
+</tr>
+<tr>
+	<th>Birthdate:</th>
+	<td><span id="datetime" r:type="datetime" r:context="${PAGE.context}" r:name="entity.birthdate" r:options="{mode:'date'}"></span></td>
+</tr>
+<tr>
+	<th>Gender:</th>
+	<td>
+		<input type="radio" r:context="${PAGE.context}" r:name="entity.gender" value="M" r:required="true" r:caption="Gender" id="gender"/>Male
+		&nbsp;
+		<input type="radio" r:context="${PAGE.context}" r:name="entity.gender" value="F"/>Female
+	</td>
+</tr>
+<tr>
+	<th>Email:</th>
+	<td><input type="text" r:context="${PAGE.context}" r:name="entity.email" r:caption="Email" style="width:300px;"/></td>
+</tr>
+<tr>
+	<th>Txn Code:</th>
+	<td><input type="text" r:context="${PAGE.context}" r:name="entity.txncode" r:textcase="upper" style="width:150px"/></td>
+</tr>
+</table>

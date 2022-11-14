@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<title> ${MODULE.title? MODULE.title: PROJECT.title} - ${PAGE.title} </title>	
+	<meta name="keywords" content="${PROJECT.keywords} ${MODULE.keywords? MODULE.keywords:''}"/>
+	<meta name="description" content="${PROJECT.description}"/>	
+
+	@stdlib()
+	@css('basic')
+	@page-imports()
+
+	<style>
+		.theme-background { background-image:none; }
+		body { background-color:#fff; }	
+	</style> 
+</head>
+
+<body class="theme-font theme-background">
+	<div class="theme-header-border theme-header-background master-header master-header-height">
+		<table class="master-tblheader" cellpadding="0" cellspacing="0" width="100%" height="100%" border="0">
+		<tr class="master-tblheader-section">
+			<td id="master-header-logo" class="logo"> @logo() </td>
+			<td id="master-header-logo-desc" class="logo-desc"> &nbsp; </td> 
+			<td id="master-header-center" style="width:100%"> &nbsp; </td> 
+		</tr>
+		</table>
+	</div>
+
+	<div class="master-body master-body-top">
+		<table class="master-content-panel" cellpadding="0" cellspacing="0" width="100%" height="100%" border="0">
+		<tr class="master-content-section">
+			<td class="master-content" valign="top">
+				${_content}
+			</td>
+		</tr>
+		<tr class="master-content-section"	>
+			<td class="theme-footer-border theme-footer-background master-footer" style="text-align:center;">
+				@copyright()
+			</td>
+		</tr>
+		<table>		
+	</div>
+</body>
+</html>
+

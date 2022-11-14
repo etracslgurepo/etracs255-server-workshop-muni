@@ -1,0 +1,68 @@
+<script>
+	\$put( "${PAGE.context}", new function() { 
+		var svc = Service.lookup( 'UserAccountService', 'admin' );
+		
+		this.useraccount;
+		this.saveHandler;
+
+		this.save = function() {
+			this.useraccount.name = this.useraccount.firstname;
+			svc.createLoginAccount( this.useraccount );
+			if(this.saveHandler) this.saveHandler();
+			
+			return "_close";
+		}
+		
+		this.cancel = function() {
+			if( confirm( "Discard changes?")) {
+				return "_close";
+			}
+		}
+	});
+</script>
+
+<style>
+#tbl { margin-left:20px; margin-top:20px; }
+</style> 
+
+<div r:dockto="pagefooter">
+	<input type="button" r:context="${PAGE.context}" r:name="save" value="Save"/>
+	<input type="button" r:context="${PAGE.context}" r:name="cancel" r:immediate="true" value="Cancel"/>
+</div> 
+
+<table id="tbl" class="dataform" cellpadding="0" cellspacing="2" border="0">
+<tr>
+	<th width="140">Name :</th>
+	<td>
+		<div class="textfield disabled" style="font-weight:bold;"> 
+			<label r:context="${PAGE.context}">
+				#{useraccount.lastname}, #{useraccount.firstname} 
+			</label>	
+		</div>	
+	</td>
+</tr>
+<tr>
+	<th>User Name : <font class="required">*</font></th>
+	<td>
+		<input type="text" r:context="${PAGE.context}" r:name="useraccount.uid" r:required="true" r:caption="User ID" style="width:300px;"/>
+	</td>
+</tr>
+<tr>
+	<th>Password : <font class="required">*</font></th>
+	<td>
+		<input type="password" r:context="${PAGE.context}" r:name="useraccount.pwd"  r:required="true" r:caption="Password" r:textcase="none" style="width:300px;"/>
+	</td>
+</tr>
+<tr>
+	<th style="width:140px;white-space:nowrap;">Confirm Password : <font class="required">*</font></th>
+	<td>
+		<input type="password" r:context="${PAGE.context}" r:name="useraccount.confirmpwd" r:required="true" r:caption="Confirm Password" r:textcase="none" style="width:300px;"/>
+	</td>
+</tr>
+<tr>
+	<th>Email :</th>
+	<td>
+		<input type="text" r:context="${PAGE.context}" r:name="useraccount.email" r:textcase="none" style="width:300px;"/>
+	</td>
+</tr>
+</table>

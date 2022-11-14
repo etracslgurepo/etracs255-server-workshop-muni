@@ -1,0 +1,8 @@
+{
+	title: 		'Org Unit',
+	context:	'orgunit',
+	fragment: 	true,
+	sortorder:	2,
+	secured:	true,
+	options:	{height:160, width:460}
+}

@@ -1,0 +1,11 @@
+{
+	secured		: true,
+	type		: 'admin.home.action',	
+	title		: 'User Groups',
+	description : 'Manage User Groups',
+		href	    : '/admin/usergroup/list', 	
+	icon		: '/res/admin/admin-usergroup.png',
+	domain 		: 'ADMIN',
+	role 		: 'SYSADMIN',
+	sortorder   : 3
+}

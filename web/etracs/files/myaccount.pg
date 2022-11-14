@@ -1,0 +1,6 @@
+{
+	title		: 'My Account',
+	secured		: true,
+	sortorder	: 999, 
+	type		: 'topmenu'
+}

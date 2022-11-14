@@ -1,0 +1,6 @@
+{
+	title:		'Reset Password',
+	context:	'account',
+	fragment: 	true,
+	options:	{width: 430, height: 200},
+}

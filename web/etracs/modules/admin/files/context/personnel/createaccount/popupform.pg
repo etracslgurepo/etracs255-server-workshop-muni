@@ -1,0 +1,6 @@
+{
+	title:		'Create User Account',
+	context:	'useraccount',
+	fragment: 	true,
+	options:	{width:500, height:230}
+}

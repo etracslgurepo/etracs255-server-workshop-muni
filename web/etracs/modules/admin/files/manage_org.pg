@@ -1,0 +1,11 @@
+{
+	secured		: true,
+	type		: 'admin.home.action',	
+	title		: 'Organization',
+	description : 'Manage Organizations',
+	href	    : '/admin/org/list', 		
+	icon		: '/res/admin/admin-org.png',
+	domain 		: 'ADMIN',
+	role 		: 'SYSADMIN',
+	sortorder   : 0
+}

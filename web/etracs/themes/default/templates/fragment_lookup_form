@@ -1,0 +1,14 @@
+
+<table id="fragment-lookup-form" class="rui-fragment rui-fragment-dialog" cellpadding="0" cellspacing="0" border="0">
+<tr>
+	<td id="pagecontent" valign="top"> ${_content} </td> 
+</tr>
+</table>
+
+<div style="position:absolute;left:0;bottom:0;right:0;">
+	<div class="actions-separator"></div> 
+	<div id="actions" class="pagefooter-actions">
+		<input type="button" r:context="$PAGE.context" r:name="select" r:immediate="true" value="  OK  "/>
+		<input type="button" r:context="$PAGE.context" r:name="_close" r:immediate="true" value="Cancel"/>
+	</div>	
+</div>

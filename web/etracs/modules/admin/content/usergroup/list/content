@@ -1,0 +1,40 @@
+<script>
+\$put('${PAGE.context}', new function(){ 
+	var svc = Service.lookup('UsergroupService', 'admin');
+	var self = this;	
+
+	this.selectedItem;
+
+	this.listModel = { 
+		rows: 15,
+		fetchList: function(o) { 
+			return svc.getList(o);	
+		}
+	}	
+
+	this.onclose = function() {
+		window.location.href = '/admin/console'; 
+	}
+});
+</script>
+
+<table class="datatable datatable-border" r:context="${PAGE.context}" r:model="${PAGE.listModel? PAGE.listModel: 'listModel'}" r:name="selectedItem" r:varName="item" cellpadding="0" cellspacing="0" width="100%"> 
+<thead>
+	<tr>
+		<td>User Name</td>
+		<td>Last Name</td>
+		<td>First Name</td>
+		<td>Org</td>
+		<td>Security Group</td>
+	</tr>
+</thead>
+<tbody>
+	<tr>
+		<td> #{item.user.username} </td>	
+		<td> #{item.user.lastname} </td>	
+		<td> #{item.user.firstname} </td> 
+		<td> #{org.name} </td> 
+		<td> #{securitygroup.name} </td> 
+	</tr>
+</tbody>
+</table>

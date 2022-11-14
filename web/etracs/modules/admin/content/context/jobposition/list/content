@@ -1,0 +1,185 @@
+<%
+	def getContextPath = { return MODULE.name? '/'+MODULE.name: ''; }
+
+	def JOBPOSITION = ANUBIS.getFile( getContextPath()+'/context/jobposition/info.pg' );
+	def JOBPERMISSION = ANUBIS.getFile( getContextPath()+'/context/jobposition/permissions.pg' );
+	def PERSONNEL_LOOKUP = ANUBIS.getFile( getContextPath()+'/context/personnel/lookupform.pg' );
+%>
+<script>
+	@register( JOBPOSITION.path )
+	@register( JOBPERMISSION.path )
+	@register( PERSONNEL_LOOKUP.path )
+	
+	\$put( "$PAGE.context", new function() {
+		var self = this;
+		var svc = Service.lookup( "OrgunitService", "admin" );
+		var jobpossvc = Service.lookup( "JobpositionService", "admin" );
+	
+		this.resultList;
+		this.selectedItem;
+		this.orgUnits;
+		this.orgUnit;
+		this.searchText;
+
+		this.onload = function() {
+			this.orgUnits = svc.getUserOrgunits({});
+		}	
+
+		this.listModel = {
+			rows: 13,
+			fetchList: function(o) {
+				o.orgunitid = null;
+				o.searchText = null;
+				if(self.orgUnit) o.orgunitid = self.orgUnit.objid;
+				if(self.searchText) o.searchText = self.searchText;
+				
+				self.resultList = jobpossvc.getList( o );
+				return self.resultList;
+			}
+		}
+
+		var refreshList = function() {
+			self.listModel.refresh(true);	
+		}
+
+
+		this.addNew = function() {
+			var j = {};
+			if ( this.orgUnit ) j = {orgunitid: this.orgUnit.objid, orgunitcode: this.orgUnit.code };	
+			return new PopupOpener( "${JOBPOSITION.name}", {saveHandler:refreshList, entity:j}, {title:"Job Position"} );
+		}
+
+		this.open = function() {
+			return new PopupOpener( "${JOBPOSITION.name}", {saveHandler:refreshList, entity:this.selectedItem, mode:'read'}, {title:"Job Position"} );
+		}
+		
+		this.removeItem = function() { 
+			try {
+				if (!this.resultList) 
+					throw new Error('No available selected item(s)'); 
+				
+				var selectedList = this.resultList.collect(function(o){ 
+					if (o.selected == true) { 
+						if (o.assigneeid) 
+							throw new Error('Position cannot be removed if there is an assignee. Please unassign first.');
+
+						return o; 
+					} 
+					else {
+						return null; 
+					} 
+				});
+				
+				if (selectedList.length == 0) 
+					throw new Error('No available selected item(s)'); 
+				
+				if (confirm("You are about to remove the selected items. Do you want to continue?") ) { 
+					jobpossvc.remove( selectedList );
+					refreshList(); 
+				} 
+			} 
+			catch(e) {
+				alert(e);
+			} 
+		}
+
+		this.propertyChangeListener = {
+			orgUnit : function(o) { self.listModel.load(); }
+		}
+
+		this.selectAssignee = function() {
+			var h = function(x) {
+				jobpossvc.assign( {objid: self.selectedItem.objid, assigneeid: x.objid } );
+				refreshList();
+			}
+			return new PopupOpener( "${PERSONNEL_LOOKUP.name}" , {selectHandler: h});
+		}
+
+		this.removeAssignee = function() {
+			if( confirm( "You are about to remove this assigned position. Continue?") ) {
+				jobpossvc.unassign( {objid: self.selectedItem.objid  } );
+				refreshList();
+			}
+		}
+		
+		this.doSearch = function() {
+			self.listModel.load();
+		}
+		
+		this.reset = function() {
+			this.searchText = null;	
+			self.listModel.load();
+		}
+		
+		this.viewPermissions = function() {
+			return new PopupOpener( "${JOBPERMISSION.name}" , {jobposition:this.selectedItem} );
+		}
+	});
+</script>
+
+<style>
+.pagelist {width:90%;}
+input[type=button] {width:70px;}
+</style>
+
+<table r:context="$PAGE.context" r:model="${PAGE.listModel? PAGE.listModel: 'listModel'}" r:name="selectedItem" r:varName="item" r:varStatus="stat" class="grid" cellpadding="0" cellspacing="0" width="100%"> 
+<thead>
+	<tr>
+		<th class="action">&nbsp;</th> 
+		<th width="100">Code</th>
+		<th>Description</th>
+		<th width="100">Org</th>		
+		<th width="200">Assignee</th>
+		<th>&nbsp;</th> 
+	</tr>
+</thead>
+<tbody>
+	<tr>
+		<td class="action">
+			<input type="checkbox" r:context="${PAGE.context}" r:name="resultList[#{stat.index}].selected"/> 
+		</td> 	
+		<td>
+			<a r:context="${PAGE.context}" r:name="open">#{item.code}</a> 
+		</td>
+		<td>#{item.title}</td>
+		<td>#{item.orgunitid}</td>		
+		<td>
+			<div r:context="${PAGE.context}" r:visibleWhen="#{item.assignee == null}">
+				<i>Vacant</i>
+				<a r:context="${PAGE.context}" r:name="selectAssignee"> [Assign] </a>
+			</div>
+			<div r:context="${PAGE.context}" r:visibleWhen="#{item.assignee != null}">
+				#{item.assignee}
+				<a r:context="${PAGE.context}" r:name="removeAssignee"> [Unassign]</a>
+			</div>
+		</td>
+		<td class="action">
+			<a r:context="${PAGE.context}" r:name="viewPermissions"><span class="rui-icon rui-icon-key" title="View permissions"/></a>
+		</td>				
+	</tr>
+</tbody>
+</table>
+
+<div r:dockto="actions">
+	<input type="button" class="green" r:context="${PAGE.context}" r:name="addNew" value="Add"/>
+	<input type="button" class="green" r:context="${PAGE.context}" r:name="removeItem" value="Remove"/>
+</div> 
+
+<div r:dockto="search" style="white-space:nowrap;padding-left:50px;">
+	<table cellpadding="0" cellspacing="0">
+	<tr>
+		<td style="padding-right:30px;">
+			<b> Org. Unit : </b>
+			<select r:context="jobpositionlist" r:items="orgUnits" r:name="orgUnit" r:itemLabel="title" r:allowNull="true" r:emptyText="- Select an org unit -"></select>
+		</td>
+		<td>
+			<b>Search</b>
+			<input type="text" r:context="jobpositionlist" r:name="searchText" style="width:250px"/>
+		</td>
+		<td style="padding-left:5px;">
+			<button r:context="jobpositionlist" r:name="doSearch">Go</button>
+			<button r:context="jobpositionlist" r:name="reset">Reset</button>
+		</td>		
+	</tr>
+	</table>
+</div>

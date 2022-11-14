@@ -1,0 +1,11 @@
+<app>
+<env>
+entity.app.host=${pub_app_server_ip}:18070
+entity.app.context=etracs25
+</env>
+<modules>
+  <module version="2.07" file="entity/rameses-enterprise-entity.jar" />
+  <module version="2.06" file="entity/rameses-enterprise-entity-tool.jar" />
+  <module version="2.06" file="entity/rameses-gov-etracs-entity.jar" />
+</modules>
+</app>

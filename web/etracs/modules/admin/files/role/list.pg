@@ -1,0 +1,6 @@
+{
+	secured		: true, 
+	context		: 'rolelist', 
+	title		: 'Roles', 
+	description : 'Manage User Roles'
+}

@@ -1,0 +1,6 @@
+{
+	context:	'personnellookup',
+	title:		'Search Personnel',	
+	fragment: 	true,
+	options:	{width:450, height:120} 
+}

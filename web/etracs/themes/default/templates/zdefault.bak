@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en-us">
+	<head>
+		<meta name="keywords" content="${PROJECT.keywords}"/>
+		<meta name="description" content="${PROJECT.description}" />
+		<meta name="author" content="${PROJECT.author}" />		
+		<title>${PROJECT.title} - ${PAGE.title}</title> 
+		
+		@css("default")
+		@stdlib()
+		@page-imports()		
+		
+		<style>
+			body { background: url(/res/login-header-shadow.png) 0 -35px repeat-x; } 
+			
+			.login { margin: 5% auto 0 auto; width: 400px; }
+			.login-content { 
+				background: #fff;
+				padding: 20px 20px 40px 20px;
+				border: solid 1px #ccc;
+				border-radius: 4px;
+				box-shadow: 0 2px 10px #bbb;
+			}
+			.login-title { color:#505050; margin-bottom:0px; } 
+			#login-box { padding-left:20px; } 
+			#login-box form table td { width:100px; white-space:nowrap; } 
+			#login-box form input[type="text"], #login-box form input[type="password"] { width:180px; } 
+		</style> 
+	</head>
+	
+	<body class="rui-theme-font">
+		<div class="login">
+			<div class="section">
+				<img src="/res/login-logo.png" height="60px"/>
+			</div>
+			<div class="login-content">
+				${_content}
+			</div>
+			<div class="section clearfix">
+				<div class="left">
+					&copy; 2012 
+					<a href="http://www.ramesesinc.com" target="_blank">
+						Rameses Systems Inc. 
+					</a>
+				</div>
+				<div class="right">
+					<a href="http://www.ramesesinc.com" target="_blank">
+						<img src="/res/rameses.png" height="25px"/>
+					</a>
+				</div>
+			</div>
+		</div>
+	</body>
+</html>
+

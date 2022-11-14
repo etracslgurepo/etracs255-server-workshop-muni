@@ -1,0 +1,44 @@
+@import url(../common.css);
+
+html { height:100%; }
+body  {
+	font-family: 'Open Sans', Times; font-size: 11pt; background-color: #ffffff;
+	margin: 0;	height: 100%; border-radius: 2px;
+}
+.master-layout { width:80%; height: 100%; }
+.master-header {
+	position:fixed; top:0; right:0; left:0; z-index:1000;
+	overflow:hidden; border-top:0; border-right:0; border-left:0;
+}
+.master-header .master-tblheader-section > td {
+	white-space:nowrap; padding-top:3px;
+}
+.master-header .master-tblheader-section > .logo { 
+	margin:0; padding:3px 7px 0px 30px; 
+}
+.master-header-height { height:50px; min-height:50px; max-height:50px; } 
+.master-content { height:100%; } 
+.master-footer { 
+	white-space:nowrap; height:30px; padding:5px; 
+	background-color:#7d7d7d; color:#fff; font-size:0.8em; 
+} 
+#master-body {
+	position:absolute; top:0; bottom:0;
+}
+
+.logo { border: none; }
+
+.navbar { font-size: 14px; }
+.navbar td { height: 12px; }
+.navbar td.selected, .navbar td.unselected {
+	padding: 0 15px; border-left: 1px dotted lightgrey;
+}
+.navbar .gap { width:0; padding: 0; border-right: none; }
+.navbar td:last-of-type { border-right: none; }
+.navbar a { text-decoration: none; color: #551a8b; }
+.navbar .selected a { color: #9fc700; color:orange; text-shadow:0px 1px #505050; }
+
+.page-title { font-size: 20pt; }
+.dropdown-login { text-decoration:none; font-size: 14px; }
+.copyright { font-size:11px; } 
+p { text-indent: 2em; }

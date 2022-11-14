@@ -1,0 +1,133 @@
+<%
+	def getContextPath = { return MODULE.name? '/'+MODULE.name: ''; }
+
+	def ROLE_LOOKUP = ANUBIS.getFile( getContextPath()+'/context/role/lookuplist.pg' );
+%>
+<script>	
+	@register( ROLE_LOOKUP.path )
+	
+	\$put( "${PAGE.context}", new function() {
+		var svc = Service.lookup("JobpositionService", "admin");
+		
+		var self = this;
+		this.selectedRole;
+
+		this.saveHandler;
+		this.jobposition;
+		
+		this.roles = [];
+		this.permissions = [];
+		
+		this.onload = function() {
+			this.roles = svc.getRoles( this.jobposition );
+		}
+		
+		this.addRole = function() {
+			var selector = function(x) {
+				var exist = self.roles.findAll( function(o) { return (o.sysrole == x.sysrole && o.domain == x.domain) } );
+				if( exist.length > 0 ) 
+					throw new Error('Role of the same type already exists');
+				self.roles.push( x );
+				self._controller.refresh();
+			}
+			return new PopupOpener( "${ROLE_LOOKUP.name}", {selectHandler: selector} );
+		}	
+		
+		this.removeRole = function() {
+			if (!this.selectedRole) return;
+			
+			var _selected = this.selectedRole;
+			this.roles.removeAll( function(x) { return (x.role == _selected.role && x.domain==_selected.domain); }  );
+			this.permissions = [];
+			this.selectedRole = null;
+		}
+		
+		this.propertyChangeListener = {
+			"selectedRole" : function(o) {
+				if( !self.selectedRole.permissions) {
+					var parms = {
+						role:o.role, 
+						domain: o.domain,
+						jobpositionid: self.jobposition.objid, 
+						disallowed: o.disallowed 
+					}
+					self.selectedRole.permissions = svc.getRolePermissions(parms); 
+				}
+				self.permissions = self.selectedRole.permissions;
+			}
+		}
+		
+		this.updatePermissions = function() {
+			var o = {
+				objid: this.jobposition.objid,
+				roles: this.roles
+			}
+			svc.updatePermissions(o);
+			return "_close";
+		}
+	});
+</script>
+
+<style>
+	table.tbl1, table.tbl2 {margin-top:20px; margin-left:20px;}
+	table.tbl2 td {padding:0;margin:0; } 
+	.roles .selected { background-color: yellow; }	
+	#permission-box { height:180px; } 
+</style>
+
+<table class="dataform tbl1" cellpadding="0" cellspacing="0" width="94%" border="0">
+	<tr>
+		<th width="100">Code:</th>
+		<td>
+			<div class="textfield"><label r:context="${PAGE.context}" r:name="jobposition.code"/>&nbsp;</div>
+		</td>
+	</tr>
+	<tr>
+		<th>Description:</th>
+		<td>
+			<div class="textfield"><label r:context="${PAGE.context}" r:name="jobposition.title"/>&nbsp;</div>
+		</td>
+	</tr>
+</table>
+
+<table class="dataform tbl2" cellpadding="0" cellspacing="0" border="0" width="94%">
+	<tr>
+		<th>Roles</th>
+		<th>Permissions</th>
+	</tr>
+	<tr>
+		<td width="220" style="padding:0;cursor:pointer;">
+			<div id="permission-box" class="scrollable"> 
+				<table class="compress-cells roles" r:context="${PAGE.context}" r:items="roles" r:name="selectedRole" r:varName="item" r:varStatus="stat">
+				<tr>
+					<td>#{item.domain}.#{item.role}</td>
+				</tr>
+				</table>
+			</div> 	
+		</td>
+		<td style="padding-left:5px;">
+			<div id="permission-box" class="scrollable"> 
+				<table class="compress-cells"  r:context="${PAGE.context}" r:items="permissions" r:depends="selectedRole" r:varName="item" r:varStatus="stat" style="white-space:nowrap;">
+				<tr>
+					<td width="10">
+						<input type="checkbox" r:context="${PAGE.context}" r:name="permissions[#{stat.index}].allowed"/>
+					</td>
+					<td>#{item.title}</td>
+				</tr>
+				</table>
+			</div> 	
+		</td>
+	</tr>
+	<tr>
+		<td colspan="2" style="font-size:5px;">&nbsp;</td>
+	</tr>
+	<tr>
+		<td style="white-space:nowrap;">
+			<button r:context="${PAGE.context}" r:name="addRole" icon="rui-icon rui-icon-add">Add</button>
+			<button r:context="${PAGE.context}" r:name="removeRole" r:visibleWhen="#{selectedRole}" r:depends="selectedRole" icon="rui-icon rui-icon-remove">Remove</button>
+		</td>
+		<td align="right">
+			<button r:context="${PAGE.context}" r:name="updatePermissions" icon="rui-icon rui-icon-apply">Apply</button>
+		</td>
+	</tr>
+</table>

@@ -1,0 +1,10 @@
+{
+	name:		'jobposition-permissions',
+	title: 		'Job Roles and Permission',
+	context:	'jobposition-permission',
+	fragment: 	true,
+	sortorder:	4,
+	secured:	true,
+	hidden:		true,
+	options:	{width:650, height:400}
+}

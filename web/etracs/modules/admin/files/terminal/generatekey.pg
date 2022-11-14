@@ -1,0 +1,7 @@
+{
+	secured		: true, 
+	context		: 'terminalgenkey', 
+	title		: 'Generate Keys',
+	hidden 		: true, 
+	options 	: {headless:true, width:430}
+}
