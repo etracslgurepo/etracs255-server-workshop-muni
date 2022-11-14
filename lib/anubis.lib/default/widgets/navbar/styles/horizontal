@@ -1,0 +1,34 @@
+<%
+   def xclass = OPTIONS.class ? OPTIONS.class : 'default';
+   def parentPath = OPTIONS.parentPath ? OPTIONS.parentPath : '';
+%>
+
+<table class="navbar ${xclass}-navbar" cellpadding="0" cellspacing="0">
+<tr class="navbar-row">
+<%  
+    def scripts = new StringBuffer();
+    int counter = 0;
+    for (o in DATA) { 
+        if (counter > 0) {
+            print '<td class="gap"> | </td>';
+        } 
+        if (o.target) { 
+            scripts.append('\$register({id:"'+o.hashid+'", page:"'+(o.href? o.href: o.path)+'", context:"'+o.context+'", title:"'+o.title+'", options:'+ com.rameses.anubis.JsonUtil.toString(o.options) +'}); '); 
+        } 
+%> 
+    <td class="navbar-col ${counter==0? 'navbar-col-first': ''} ${PAGE.path.startsWith( OPTIONS.buildMenuPath(o.path, o.folderid)  ) ? 'selected' : 'unselected'}"> 
+        <div>
+            <% if (o.target) {%>
+                <a class="navbar-action" href="#" onclick="javascript:Inv.showOpener(this)" r:target="${o.target}" r:hashid="${o.hashid}">${o.title}</a> 
+            <% } else { %> 
+                <a class="navbar-action" href="${parentPath}${o.href?o.href:o.path}">${o.title}</a> 
+            <% } %>
+        </div> 
+    </td>     
+<%  
+    counter++;
+    } 
+%> 
+</tr> 
+</table> 
+<script> ${scripts} </script>

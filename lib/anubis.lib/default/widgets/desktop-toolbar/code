@@ -1,0 +1,11 @@
+<%
+    def style = 'flow';
+    def type  = (OPTIONS.type? OPTIONS.type: 'home.action');
+    def folderid = OPTIONS.folderid ? OPTIONS.folderid : '/'; 
+    def allItems = ANUBIS.getFolder(folderid).allowedChildren;
+    def items = allItems - allItems.findAll{ it.hidden==true } 
+    items = items.findAll{ (type == it.type) }
+
+    def result = STYLE.render( style, items, OPTIONS );
+%>
+${result}

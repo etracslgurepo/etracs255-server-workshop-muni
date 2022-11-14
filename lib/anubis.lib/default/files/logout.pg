@@ -1,0 +1,5 @@
+{
+	hidden: true,
+	title: "Logout Page",
+        secured: false
+}

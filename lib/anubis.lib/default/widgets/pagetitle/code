@@ -1,0 +1,9 @@
+<%
+        def xclass = OPTIONS.class ? OPTIONS.class + "-page-title" : "page-title";
+	def title = OPTIONS.title;
+	if(!title) {
+		if( OPTIONS.id ) title = ANUBIS.getFile( OPTIONS.id )?.title;
+		if(!title) title = PAGE.title;
+	}	
+%>
+<div class="${xclass}">${title}</div>

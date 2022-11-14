@@ -1,0 +1,8 @@
+name:           sitemap
+
+description:    This widget displays all elements of a folder. The level 
+                is specified to know how deep it will search for elements.
+                    
+options:
+    
+

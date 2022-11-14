@@ -1,0 +1,48 @@
+@import url(../../fonts/opensans/stylesheet.css);
+
+html {
+	height:100%;
+}
+
+body  {
+	margin: 0;
+	font-family: 'Open Sans', Arial;
+	font-size: 11;
+	height: 100%;
+}
+.left {
+
+} 
+.master head {
+	height: 80px;
+	vertical-align: top;
+	border-bottom: 1px solid lightgrey;	
+}
+.master content center {
+    width: 750px;
+    border: 1px solid orange;
+}
+
+.master footer {
+	height: 100px;
+}
+.master content {
+	padding-top:5px;
+	vertical-align:top;
+}
+.navbar td {
+	padding-left:15px;
+}
+.navbar .gap {
+	padding:0;
+	width: 0;
+}
+.navbar a {
+	text-decoration: none;
+}
+.page-title {
+	font-size: 20pt;
+}
+.copyright {
+    font-size: 10px;
+}

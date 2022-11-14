@@ -1,0 +1,27 @@
+<%
+    def cols = OPTIONS.cols;
+	if(!cols) cols = 5;
+	def list = DATA;
+	def rows = ((int)(DATA.size() / cols)) + (((DATA.size() % cols)>0) ? 1 : 0 );
+	def width = (OPTIONS.width)? OPTIONS.width :  '180px';
+	
+	def handler = {o-> 
+		return  '<img src="' + o.path + '" width=' + width + ' />';
+	}
+	
+%>
+
+<table class="${OPTIONS.class}">
+<%for( int i=0; i<rows; i++ ) { %>
+	<tr>
+	<% int z=i*cols; %>
+	<%for(y = z; y<(z+cols); y++ ) { %>
+		<td align="center">
+			<%if(  y < DATA.size() ) {%>
+				${handler( DATA[y] )}
+			<%}%>
+		</td>
+	<%}%>
+	</tr>
+<%}%>
+</table>

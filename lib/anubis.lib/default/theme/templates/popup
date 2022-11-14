@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<table>
+   <tr>
+	   <td>${PAGE.title}</td>
+   </tr>
+   <tr>
+	  <td>${_content}</td>
+   </tr>
+   <tr>
+	  <td><button>OK</button></td>
+   </tr>
+</table>   
+	
+

@@ -1,0 +1,41 @@
+<style>
+	.breadcrumbs-gap { padding: 5px; }
+</style>
+<% 
+	def startpage = OPTIONS.startpage ? OPTIONS.startpage : "/";
+        def separator = OPTIONS.separator ? OPTIONS.separator : "&gt;";
+        def style = OPTIONS.style ? OPTIONS.style : null;
+
+	def path = PAGE.path;
+        def arr = path.split("/");
+        def list = [];
+        def str = "";
+        for(int i=1; i<arr.length; i++ ) {
+            str = str + (i > arr.length ?'':'/') + arr[i];
+
+            //test if file exists
+            def pgfile = null;
+            try {
+                pgfile = ANUBIS.getFile( str+".pg" );
+            }
+            catch(e) {;}
+            if( pgfile ) {
+                list.add( [ href: str, title: pgfile.title ] );
+            }
+            else {
+                list.add( [ title: arr[i] ] );
+            }
+        }
+
+        if(style==null) {
+            def flag_pass = false;
+            list.each { 
+                if(flag_pass) print '<span class="breadcrumbs-gap">'+separator+'</span>';
+                if( it.href )
+                    print '<a class="breadcrumbs" href="' + it.href + '">'+it.title+'</a>';
+                else    
+                    print it.title;
+                flag_pass = true;
+            }
+        }        
+%>

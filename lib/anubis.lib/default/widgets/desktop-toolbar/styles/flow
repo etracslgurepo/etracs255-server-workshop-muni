@@ -1,0 +1,65 @@
+<%
+    def xclass = OPTIONS.class ? OPTIONS.class+'-' : '';
+    def parentPath = OPTIONS.parentPath ? OPTIONS.parentPath : '';
+
+    int width   = OPTIONS.width? OPTIONS.width: 300;
+    int cols    = 3;    
+    int blocks  = (DATA.size() / cols).intValue();
+    if ((DATA.size() % cols) > 0) blocks += 1;
+
+    def iconheight_style = '';
+    def iconwidth_style  = ''
+    if (!OPTIONS.iconHeight) OPTIONS.iconHeight = 100;
+    if (OPTIONS.iconHeight) iconheight_style = 'height="'+OPTIONS.iconHeight+'"';
+    if (OPTIONS.iconWidth) iconwidth_style = 'width="'+OPTIONS.iconWidth+'"';
+
+    def showfooter_style = '';
+    if ("false".equals(OPTIONS.showFooter.toString())) {
+        showfooter_style = 'display:none;';
+    }
+
+    println '<table class="desktop-toolbar ${xclass}toolbar" cellpadding="0" cellspacing="0" border="0">'
+    for (int r=0; r<blocks; r++) {
+    	println '<tr class="desktop-toolbar-rows">'; 
+    	for (int c=0; c<cols; c++) {
+    		int idx = (r*cols)+c;
+    		if (idx >= DATA.size()) break;
+
+            def sid = 'action' + new java.rmi.server.UID().toString().hashCode();
+    		def o = DATA[idx];
+    		println """ 
+    			<td class="desktop-toolbar-col" valign="top">
+    				<table class="desktop-toolbar-block" cellpadding="0" cellspacing="0" border="0" style="min-width:${width}px;max-width:${width}px;width:${width}px;">
+    				<tr>
+    					<td class="desktop-toolbar-block-icon" valign="top" align="center" rowspan="2" style="width:1px;">
+    						<img src="${o.icon}" border="0" ${iconheight_style} ${iconwidth_style}/>
+    					</td>
+    					<td class="desktop-toolbar-block-content-filler desktop-toolbar-block-content" valign="top">
+                            <div class="desktop-toolbar-block-title">
+                                <a id="${sid}" href="${o.href? o.href: o.path}">${o.title}</a> 
+                            </div>
+                            <div class="desktop-toolbar-block-desc">${o.description? o.description: ''}</div>
+    					</td>
+    				</tr>
+                    <tr style="${showfooter_style};">
+                        <td class="desktop-toolbar-block-content-filler">
+                            <div class="desktop-toolbar-block-footer"> 
+                                <input type="button" value="View" onclick="desktop_toolbar_action_submit('${sid}');"/> 
+                            </div> 
+                        </td>
+                    </tr>
+    				</table>
+    			</td>
+    		""";
+    	}
+    	println '</tr>'; 
+    }
+
+    println '</table>';
+%>
+<script>
+function desktop_toolbar_action_submit(sid) {
+    var e = \$('#'+sid); 
+    window.location.href = e.attr('href'); 
+} 
+</script>

@@ -1,0 +1,6 @@
+<%if( SESSION.sessionid ) { %>
+<form method="post" action="/actions/logout" style="display:inline-block">
+    <input type="hidden" name="target" value="${OPTIONS.target?OPTIONS.target:'/'}"/>
+    <a href="#" onclick="this.parentNode.submit()">${OPTIONS.caption?OPTIONS.caption:'Logout'}</a>
+</form>
+<% } %>

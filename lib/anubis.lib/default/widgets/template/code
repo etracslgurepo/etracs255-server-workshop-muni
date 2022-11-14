@@ -1,0 +1,6 @@
+<%
+	def templateid = OPTIONS.style;
+	def data = OPTIONS.data;
+%>
+
+${ STYLE.render( templateid, data, [:] ) }

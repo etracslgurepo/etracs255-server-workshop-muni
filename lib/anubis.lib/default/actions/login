@@ -1,0 +1,16 @@
+String username = PARAMS.username;
+String password = PARAMS.password;
+String target = PARAMS.target;
+
+if(!target || target=='null') target = PROJECT.login_redirect;
+if(!target || target=='null') target = "/";
+
+if( PARAMS.password != "guest" ) {
+	target = java.net.URLEncoder.encode( target );
+	return "/retrylogin?target=${target}";
+}	
+else {
+	SESSION.createSession(null);
+        SESSION.username = username;
+	return target;
+}	

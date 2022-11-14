@@ -1,0 +1,21 @@
+<%
+	try 
+	{ 
+		def pginfo = ANUBIS.getFile(OPTIONS.value+'.pg'); 
+		if ( pginfo.href ) 
+		{
+			def f =  ANUBIS.getFile(pginfo.href+'.pg'); 	
+			if(f) pginfo = f;
+		} 
+		
+		print "{id:\"${pginfo.name}\", context:\"${pginfo.context}\", page:\"${pginfo.path}\"";
+		if (!pginfo.options) pginfo.options = [:]; 
+		if (!pginfo.options.title) pginfo.options.title = pginfo.title;
+			
+		print ", options:"+com.rameses.anubis.JsonUtil.toString(pginfo.options);
+		print "};"; 		
+	} 
+	catch(e) {
+		print "{}; /* ERROR: "+ e +" */";
+	} 	
+%>

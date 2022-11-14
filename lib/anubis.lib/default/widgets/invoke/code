@@ -1,0 +1,32 @@
+<%
+   def service = OPTIONS.service;
+   def templateid = OPTIONS.style;
+   def params = OPTIONS.params;
+   def varname = OPTIONS.var;
+   def method = OPTIONS.method;
+   
+   if( service == null )
+	  throw new Exception("service is required for @invoke widget"); 
+   
+   if( method == null )
+	  throw new Exception("method name is required for @invoke widget"); 
+     
+   
+   if( params !=null  ) {
+		if(! (params instanceof Object[]) ) params = [ params ] as Object[];
+   }  
+   def result = SERVICE.create( service ).invokeMethod( method, params );
+
+   if( varname ) {
+	   VARS[varname] = result;
+   }   
+   
+   if( templateid ) {
+	   print  STYLE.render( templateid,  result, [:] );
+   }  
+   else if(!varname){
+		print result;
+   }
+   	
+%>
+

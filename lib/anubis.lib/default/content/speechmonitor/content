@@ -1,0 +1,25 @@
+<style>
+body { 
+	background: #fff;
+}
+div.page-title {
+	font-size:14pt; 
+	font-weight: bold;
+	padding:5px; padding-left:10px;
+}
+.page-title-line {
+	padding:0; margin:0;
+}
+#voice-message > .voice-message-item {
+	padding: 5px; padding-left:10px; 
+	border-bottom:1px solid #c0c0c0;
+	width: 100%; 
+}
+</style>
+
+<div class="page-title"> ${PAGE.title} </div>
+<hr class="page-title-line"/> 
+
+<div id="voice-message" style="position:absolute; z-index:999; width:100%;"></div>
+
+${_script}

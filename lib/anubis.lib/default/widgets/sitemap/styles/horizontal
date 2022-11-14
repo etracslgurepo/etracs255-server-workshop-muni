@@ -1,0 +1,22 @@
+<%
+	def cols = OPTIONS.col ? OPTIONS.col : DATA.size();
+%>
+
+<table cellpadding="0" cellspacing="0">
+	<tr>
+		<%for( f in DATA ) {%>
+			<td style="font-weight:bolder;font-size:16px;padding-left:20px" valign="top">
+				${f.title}
+				<div>
+					<table>
+						<%for( i in ANUBIS.getFolder( f.path).children ) {%>
+							<tr>
+								<td valign="top" style="font-size:14px;font-weight:normal;">${i.title}</td>
+							</tr>
+						<%}%>
+					</table>
+				</div>
+			</td>
+		<%}%>
+	</tr>
+</table>

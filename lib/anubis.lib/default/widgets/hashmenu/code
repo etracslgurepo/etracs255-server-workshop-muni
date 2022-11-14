@@ -1,0 +1,46 @@
+<% 
+	def folderid = (OPTIONS.folderid) ? OPTIONS.folderid : '/ext' ;
+	if (!folderid.startsWith("/")) {
+		folderid = PAGE.path + "/" + folderid;
+	}
+	def allItems = ANUBIS.getFolder(folderid).allowedChildren.findAll{ it.fragment==true }  
+	def items = [];
+	allItems?.each { 
+        def info = [:];
+		if ( it.href ) {
+            def moduleName = it.module ? "/"+it.module : "";
+			def m =  ANUBIS.getFile(moduleName + it.href+'.pg'); 	
+			if (m) info.putAll(m);
+		} else {
+            info.putAll( it );
+        }    
+		if (!info.options) info.options = [:]; 
+		if (!info.options.title) info.options.title = info.title;
+		items.add( info );
+	} 
+
+    OPTIONS.buildMenuPath = { o ->
+        def z = o.substring(folderid.length());
+        if ( z.indexOf("/", 1) > 0 ) z = z.substring(0, z.indexOf("/",1));
+
+        return folderid + z;
+    }
+	
+	OPTIONS.hashmenuid = 'hashmenu' + new java.rmi.server.UID().toString().hashCode();
+
+	def style = OPTIONS.style ? OPTIONS.style : 'vertical';
+	def result = '';
+	if ( style != 'none' ) { 
+		def visibleItems = items.findAll{ it.hidden != true };
+		result = STYLE.render(style, visibleItems, OPTIONS);
+		if ( !result ) result = STYLE.render('vertical', visibleItems, OPTIONS);
+	} 
+%> 
+
+<script>
+<%items.each{ %>
+\$register( {id: '${it.hashid}', page: '${it.path}', context: '${it.context}', title:"${it.title}", options: ${ com.rameses.anubis.JsonUtil.toString(it.options)}});
+<%}%>
+</script>
+${result}
+<script><%if(items){%>Hash.init("${items[0].hashid? items[0].hashid : items[0].name}", "${OPTIONS.hashmenuid}");<%}%></script> 

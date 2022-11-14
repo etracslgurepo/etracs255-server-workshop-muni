@@ -1,0 +1,2 @@
+def sess = SESSION.request.getSession(true);
+sess.setAttribute( PARAMS.requestid, PARAMS.status );

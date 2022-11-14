@@ -1,0 +1,25 @@
+<%
+   def xclass = OPTIONS.class? OPTIONS.class+'-' : '';
+   def autocss = (OPTIONS.categorize==true)? 'rui-sidemenu-autoselect-off': '';  
+%>
+<table id="${OPTIONS.hashmenuid}" class="hashmenu ${xclass}hashmenu" cellpadding="0" cellspacing="0" border="0">
+<% 
+	def scripts = new StringBuffer();
+	for ( o in DATA ) {
+		if (o.target) scripts.append('\$register({id:"'+o.hashid+'", page:"'+o.path+'", context:"'+o.context+'", title:"'+o.title+'", options:'+ com.rameses.anubis.JsonUtil.toString(o.options) +'}); '); 
+%>
+	<tr>
+		<% if (o.group == true) { %>
+			<td class="menugroup">${o.title}</td>
+		<% } else { %> 
+			<td class="menuitem menuitem-unselected">
+				<% if (o.target) {%>
+	                <a href="#" onclick="javascript:Inv.showOpener(this)" r:target="${o.target}" r:hashid="${o.hashid}">${o.title}</a> 
+	            <% } else { %> 
+	                <a href="${o.fragment==true? '#'+ o.hashid: o.path}">${o.title}</a> 
+	            <% } %>	
+			</td>
+		<% } %> 
+	</tr>
+<% } %>
+</table>

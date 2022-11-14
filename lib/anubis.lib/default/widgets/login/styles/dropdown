@@ -1,0 +1,21 @@
+<script>
+	\$register( {id:"#dropdown_login", context:"dropdown_login"} )
+	\$put("dropdown_login",
+		new function() {
+			this.info = {}
+			this.showDropdown = function() {
+				return new DropdownOpener("#dropdown_login" );
+			}
+		}
+	);	
+</script>
+<a r:context="dropdown_login" r:name="showDropdown" class="dropdown-login">${OPTIONS.caption}</a> 
+
+<div id="dropdown_login" style="display:none;">
+	<form method="post" action="/actions/login">
+	   <input type="hidden" name="target" value="${OPTIONS.target}"/>
+	   <input type="text" name="username" r:context="dropdown_login" r:name="info.username" r:hint="Username"/><br>
+	   <input type="password" name="password" r:context="dropdown_login" r:name="info.password" r:hint="Password"/><br>
+	   <input type="submit" value="Login"/>
+	</form>
+</div>	

@@ -1,0 +1,35 @@
+<style>
+.rui-msgbox .ui-dialog-titlebar-close {display:none;}
+.rui-msgbox .rui-fragment-content {height:100%;padding:20px;padding-bottom:30px;} 
+</style>
+
+<table id="msgbox-confirm" class="rui-fragment" cellpadding="0" cellspacing="0" height="100%" width="100%">
+<tr>
+	<td class="rui-fragment-content">  
+		<span id="msgbox-label">Do you want to continue?</span>
+	</td> 
+</tr> 
+<tr>
+	<td style="height:1px;">
+		<div class="rui-fragment-footer-separator"></div> 
+	</td> 
+</tr>
+<tr> 
+	<td class="rui-fragment-footer"> 
+		<button class="rui-button" onclick="return MsgBox.approve(this);">
+			<span class="rui-button-content-wrapper">
+				<span class="rui-button-icon rui-icon rui-icon-apply"></span>
+				<span class="rui-button-icon-separator iconleftseparator"></span>
+				<span class="rui-button-content">  OK  </span>
+			</span> 		
+		</button> 
+		<button class="rui-button" onclick="return MsgBox.close(this);">
+			<span class="rui-button-content-wrapper">
+				<span class="rui-button-icon rui-icon rui-icon-cancel"></span>
+				<span class="rui-button-icon-separator iconleftseparator"></span>
+				<span class="rui-button-content">Cancel</span>
+			</span> 	
+		</button> 
+	</td> 
+</tr>
+</table>

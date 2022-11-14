@@ -1,0 +1,4 @@
+def target = PARAMS.target;
+if(!target) target = "/";
+SESSION.destroySession();
+return target;

@@ -1,0 +1,13 @@
+<script>
+	\$put("header_login",
+		new function() {
+			this.info = {}
+		}
+	);	
+</script>
+<form method="post" action="/actions/login">
+   <input type="hidden" name="target" value="${OPTIONS.target}"/>
+   <input type="text" name="username" r:context="header_login" r:name="info.username" r:hint="Username"/>
+   <input type="password" name="password" r:context="header_login" r:name="info.password" r:hint="Password"/>
+   <input type="submit" value="Login"/>
+</form>

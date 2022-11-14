@@ -1,0 +1,12 @@
+<%
+if( !SESSION.sessionid ) {
+   if( !OPTIONS.caption ) OPTIONS.caption = 'Login';
+   if( !OPTIONS.target ) OPTIONS.target = '/';
+   def style = OPTIONS.style ? OPTIONS.style : 'dropdown';
+   def result = STYLE.render(style, [:], OPTIONS );
+   if( !result ) {
+		result = STYLE.render('dropdown', [:],  OPTIONS );
+   }
+   print result;
+}
+%>

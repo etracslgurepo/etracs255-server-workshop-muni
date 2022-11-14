@@ -1,0 +1,9 @@
+<%
+        def folderid = OPTIONS.folderid ? OPTIONS.folderid : "/";
+	def style = OPTIONS.style ? OPTIONS.style : 'horizontal'
+	def cols = OPTIONS.cols ? OPTIONS.cols : 3;
+
+	def items = ANUBIS.getFolder( folderid ).allowedChildren;
+%>
+
+${ STYLE.render(  style, items, OPTIONS ) }

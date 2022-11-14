@@ -1,0 +1,13 @@
+<%
+   def width = OPTIONS.width ? OPTIONS.width : "100";
+   def height = OPTIONS.height ? OPTIONS.height : "100";
+%>
+<% for( o in DATA ) { %>
+	<div>
+		<img src="${o.path}" width="${width}" />
+		<br>
+		<i>${o.title}</i>
+	</div>
+<% } %>
+
+

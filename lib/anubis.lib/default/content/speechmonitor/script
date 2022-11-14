@@ -1,0 +1,68 @@
+<script> 
+var _PAGING_POLL_GROUPS_ = '${PARAMS.group}'.toLowerCase().split(','); 
+function _isValidPagingGroup( value ) { 
+	if ( value == null ) return false;
+
+	var key = value.toLowerCase(); 
+	var len = _PAGING_POLL_GROUPS_.length;
+	for (var i=0; i<len; i++) {
+		if (_PAGING_POLL_GROUPS_[i] == key) {
+			return true; 
+		} 
+	} 
+	return false; 
+}
+
+var qsock = Socket.create('paging_poll'); 
+qsock.handlers.h = function( o ) { 
+	if ( o==null || o.groupid==null ) return; 
+	if ( !_isValidPagingGroup( o.groupid)) return; 
+	if ( o.msg == null ) return;
+
+	var vm = \$('#voice-message');
+    var vmi = \$('<div class="voice-message-item" style="width:100%;"></div>'); 
+    vmi.html( o.msg ); 
+    vmi.appendTo( vm );  
+} 
+qsock.start(); 
+
+function PageNotifierTask() {
+
+	function speak() { 
+		if ( window.speechSynthesis ) { 
+			if ( window.speechSynthesis.speaking ) {
+				setTimeout( speak, 500 ); 
+			} else {
+				speakImpl(); 
+			} 			
+		} else {
+			setTimeout( speak, 500 ); 
+		}
+	} 
+	function speakImpl() { 
+		var vmi = \$('#voice-message > .speaking'); 
+		vmi.remove();
+
+		vmi = \$('#voice-message > .voice-message-item').eq(0); 
+		var str = vmi.html(); 
+		if ( str ) { 
+			var uttr = new SpeechSynthesisUtterance();
+			//uttr.voice = voices[0];
+			uttr.rate = 0.7; 
+			uttr.text = str; 
+			uttr.onstart = function(evt) { 
+				vmi.addClass('speaking');  
+			}; 
+			window.speechSynthesis.speak( uttr ); 
+			setTimeout( speak, 500 ); 
+		} else { 
+			setTimeout( speak, 100 ); 
+		} 
+	} 
+
+	this.run = function() {
+		setTimeout( speak, 1000 ); 
+	} 
+}
+new PageNotifierTask().run();
+</script>

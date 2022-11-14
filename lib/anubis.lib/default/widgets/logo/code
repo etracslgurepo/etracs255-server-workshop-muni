@@ -1,0 +1,11 @@
+<%if( PROJECT.logo ){%>
+	<a href="/${ (PROJECT.homepage) ?  (PROJECT.homepage) : '' }" style="border:none;text-decoration:none;">
+		<div class="logo"><img src="${PROJECT.logo}" style="border:none"/></div>
+	</a>
+<%}%>
+
+<%if( !PROJECT.logo ) {%>
+	<a href="/${ (PROJECT.homepage) ?  (PROJECT.homepage) : '' }" style="border:none;text-decoration:none;">
+		COMPANY LOGO
+	</a>
+<%}%>

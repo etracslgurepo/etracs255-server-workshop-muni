@@ -1,0 +1,5 @@
+{
+	hidden: true,
+	title: "Retry Login Page",
+        secured: false
+}

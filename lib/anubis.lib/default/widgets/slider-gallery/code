@@ -1,0 +1,55 @@
+<!--
+   parameters :
+    @id        required = this is the name of the context
+	@folderid  required = this is the name of the folder where files are located
+    @name      optional = if specified, we can use this for dependent actions
+	@width     optional = if specified determines the width of the slider
+	@height    optional = if specified determines the height of the slider
+-->
+
+<%
+    PAGE.addStyle( "/js/ext/slider/default.css" );
+    PAGE.addScript( "/js/ext/slider/default.js" );
+    def id = OPTIONS.id;
+    if( !id ) id = "slider";
+    def items = ANUBIS.getFolder( OPTIONS.folderid ).allowedChildren;
+
+    def name = (OPTIONS.name) ? OPTIONS.name : 'curImageData';
+    def width = (OPTIONS.width) ? OPTIONS.width : 800;
+    def height = (OPTIONS.height) ? OPTIONS.height : 500;
+    def transitionspeed = (OPTIONS.transitionspeed) ? OPTIONS.transitionspeed : 1000;
+    def autoplay = (OPTIONS.autoplay) ? OPTIONS.autoplay : 15000;
+%>
+
+<script type="text/javascript">
+	\$put("${id}",
+		new function() {
+			var self = this;
+			this.${name};
+			
+			this.sliderModel = {
+				options: {
+					imageCrop: true,
+					keepSource: true,
+					transition: "fadeslide",
+					transitionSpeed: ${transitionspeed},
+					height: ${height},
+					width: ${width}, 
+					autoplay: ${autoplay}
+				},
+				imageChange: function(data) {
+					self.${name} = data;
+				},
+				fetchList: function() {
+					return [
+						<%items.each{ %>
+							{image: "${it.path}", title: "${it.title}", description: "${(it.description) ? it.description : ''} "},	
+						<%}%>
+					];
+				}
+			};
+		}
+	);
+</script>
+
+<div r:context="${id}" r:type="slider" r:model="sliderModel" id="slider"></div>

@@ -1,0 +1,22 @@
+<%
+	def arr = [];
+	if( OPTIONS.value ) {
+		OPTIONS.value.split(",").each { arr << it.trim(); }
+	}	
+	if( PROJECT.fontlibs ) {
+		PROJECT.fontlibs.split(",").each { arr<<it.trim(); }
+	}
+	if( THEME.fontlibs ) {
+		THEME.fontlibs.split(",").each { arr<<it.trim(); }
+	}
+%>
+<%for(fontname in arr.unique() ) {%>
+
+<%if( fontname.startsWith(":")) {%>
+	<link href="/res/fonts/${fontname.substring(1)}/stylesheet.css" type="text/css" rel="stylesheet" />	
+<%} else {%>
+	<link href="/css/fonts/${fontname}/stylesheet.css" type="text/css" rel="stylesheet" />	
+<%}%>
+
+<% } %>
+

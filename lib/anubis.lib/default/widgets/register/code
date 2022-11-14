@@ -1,0 +1,28 @@
+<%
+def respath = OPTIONS.value? OPTIONS.value: OPTIONS.path;	
+def items = null; 
+try {
+	//test path if it's a file
+	def pginfo = ANUBIS.getFile(respath+'.pg'); 	
+	if (pginfo) items = [pginfo]; 			
+} catch(Throwable t) {;} 
+
+if (!items) {
+	//path maybe a folder  
+	items = ANUBIS.getFolder(respath, OPTIONS.module)?.children; 
+} 
+
+items?.each { 
+	def info = it;
+	if( it.href ) {
+		def m =  ANUBIS.getFile(it.href+'.pg'); 	
+		if(m) info = m;
+	}
+	print "\$register({id:\"${info.name}\", context:\"${info.context}\", page:\"${info.path}\"";
+	if (!info.options) info.options = [:]; 
+	if (!info.options.title) info.options.title = info.title;
+		
+	print ", options:"+com.rameses.anubis.JsonUtil.toString(info.options);
+	print "}); "; 
+} 
+%>

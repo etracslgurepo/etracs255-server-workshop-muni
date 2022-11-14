@@ -1,0 +1,10 @@
+<%
+	def context = OPTIONS.context;
+	def model   = (OPTIONS.model? OPTIONS.model: 'listModel');
+%>
+<div class="list-navbar"> 
+	<button r:context="${context}" r:name="${model}" icon="navfirst" iconsize="12" title="Go to first page">First</button>
+	<button r:context="${context}" r:name="${model}" icon="navprev" iconsize="12" title="Go to previous page">Previous</button>
+	<button r:context="${context}" r:name="${model}" icon="navnext" iconsize="12" title="Go to next page">Next</button>
+	<script> \$ctx("${context}").fragmentlist_refresh = function() { this.${model}.refresh(true); } </script> 	
+</div> 	

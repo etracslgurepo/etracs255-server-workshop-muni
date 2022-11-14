@@ -1,0 +1,40 @@
+<%
+    def context = OPTIONS.context;
+    def model   = (OPTIONS.model? OPTIONS.model: 'listModel');
+    def styleClass = (OPTIONS.class? OPTIONS.class: 'x')+'-datatable';
+    def autoBuildColumns = OPTIONS.buildColumns? (OPTIONS.buildColumns==true): true;    
+    def controller = (OPTIONS.controller? OPTIONS.controller: 'ListController');
+    def handler = (OPTIONS.handler? OPTIONS.handler: '{}');
+    def varname = ('handler'+ new Object().hashCode()).replace('-','0');
+    def svcname = ('svc'+ new Object().hashCode()).replace('-','0');
+    print '<script>';
+    print 'var '+varname+' = '+handler+'; ';
+    if (OPTIONS.service?.name) {
+        print 'var '+
+        print varname+'.service={';
+        print 
+        print '}; ';
+    }
+    print '\$put("'+context+'", new '+controller+'('+varname+')); ';
+    print '</script>';
+%>
+<!-- 
+<table class="${styleClass} datatable datatable-border" r:context="${context}" r:model="${model}" r:autoBuildColumns="${autoBuildColumns}" r:name="selectedItem" r:varName="item" cellpadding="0" cellspacing="0" width="100%"> 
+<thead>
+    <tr>
+        <td style="width:30px;">&nbsp;</td>
+        <td style="width:100px;">Date Filed</td>
+        <td>Message</td>
+    </tr>
+</thead>
+<tbody>
+    <tr>
+        <td style="white-space:nowrap;">
+            <a r:context="test" r:name="open">View</a> 
+        </td>
+        <td style="white-space:nowrap;"> #{item.dtfiled} </td>  
+        <td style="white-space:nowrap;"> #{item.message} </td>  
+    </tr>
+</tbody>
+</table>
+--> 

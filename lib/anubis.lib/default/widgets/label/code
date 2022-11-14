@@ -1,0 +1,16 @@
+<!-- this widget is used for translations -->
+<%
+   def key = OPTIONS.key;
+   def val = OPTIONS.value;
+   def lang = OPTIONS.lang;
+   def result = null;
+   def sclass = OPTIONS.class ? OPTIONS.class : key;
+   if( !lang ) {
+		result = ANUBIS.translate( key, val );
+   }
+   else {
+		result = ANUBIS.translate( key, val, lang );
+   }
+   if(result==null) result = val;
+%>
+<label class="${sclass}">${result}</label>

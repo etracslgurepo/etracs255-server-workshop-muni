@@ -1,0 +1,45 @@
+<%
+    def style = OPTIONS.style ? OPTIONS.style : 'horizontal';        
+    def pathid = OPTIONS.folderid ? OPTIONS.folderid : '/';  
+    def paths = [];
+    if (pathid instanceof List) {
+        paths = pathid;
+    } else {
+        paths = [pathid]; 
+    } 
+
+    def cloneItem = {o-> 
+        def map = [:];
+        if (o == null) return map;
+
+        o.each{k,v-> map[k]=v; }
+        return map; 
+    } 
+
+    def items = [];
+    paths.each {fid-> 
+        def folders = ANUBIS.getFolder(fid).allowedChildren;
+        folders = folders.findAll{ (it.hidden==true? false: true) } 
+        folders = folders.findAll{ 
+            if (OPTIONS.type != null && OPTIONS.type != it.type) return false; 
+
+            return true;
+        } 
+        folders.each{ 
+            def o = cloneItem(it);  
+            o.folderid = fid;
+            items.add(o); 
+        } 
+    } 
+
+    OPTIONS.buildMenuPath = {path, fid->
+        def z = path.substring(fid.length());
+        if ( z.indexOf("/", 1) > 0 ) z = z.substring(0, z.indexOf("/",1));
+
+        return fid + z; 
+    }
+
+    def result = STYLE.render( style, items, OPTIONS );
+    if ( !result ) result = STYLE.render('horizontal', items, OPTIONS);
+%>
+${result}

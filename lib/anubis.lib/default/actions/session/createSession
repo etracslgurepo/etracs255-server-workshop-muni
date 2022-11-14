@@ -1,0 +1,7 @@
+import com.rameses.anubis.web.*;
+import com.rameses.anubis.*;
+
+//PARAMS.USER
+def sessionid = PARAMS.USER.sessionid ? PARAMS.USER.sessionid : "SESS" + (new java.rmi.server.UID());
+CookieUtil.addCookie( "SESSIONID", sessionid, AnubisContext.currentContext.response );
+return [SESSIONID: sessionid];

@@ -1,0 +1,49 @@
+<%
+	def id = OPTIONS.id;
+	if(!id.startsWith("/")) id = "/"+id;
+	def allItems = ANUBIS.getFolder( id ).allowedChildren; 
+	def items = allItems - allItems.findAll{ it.hidden }
+	def xclass = (OPTIONS.class) ? OPTIONS.class : id;
+	def orientation = (OPTIONS.orientation) ? OPTIONS.orientation: 'vertical';
+%>
+
+<%if( !OPTIONS.style && orientation == 'vertical' ) {%>
+	<table class="${xclass}">
+		<%for(o in items) {%>
+			<%if( o.hidden != true ) {%>
+				<tr>
+					<td>
+						<td class="${PAGE.path.startsWith(o.path) ? 'selected' : 'unselected'}">
+							<a href="${o.path}">${o.title}</a>
+						</td>
+					</td>
+				</tr>
+			<%}%>
+		<% } %>
+	</table>
+<% } %>
+
+<%if( !OPTIONS.style && orientation != 'vertical' ) {%>
+	<table class="${xclass}">
+		<tr>
+			<%for(o in items) {%>
+				<%if( o.hidden != true ) {%>
+					<td>
+						<td class="${PAGE.path.startsWith(o.path) ? 'selected' : 'unselected'}">
+							<a href="${o.path}">${o.title}</a>
+						</td>
+					</td>
+				<%}%>
+			<% } %>
+		</tr>
+	</table>
+<% } %>
+
+
+<%if( OPTIONS.style && OPTIONS.varname) { %>
+	${STYLE.render(OPTIONS.style, items, OPTIONS )}
+<%}%>	
+		
+<%if( OPTIONS.style && !OPTIONS.varname) { %>
+	${STYLE.render(OPTIONS.style, items, OPTIONS )}
+<%}%>	

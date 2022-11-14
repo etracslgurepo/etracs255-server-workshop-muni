@@ -1,0 +1,24 @@
+
+<%if( !SESSION.sessionid ) { %>
+<form id="login-form" method="post" action="/actions/login">
+	<input type="hidden" name="target" value="${PARAMS.target}"/>
+	<table id="login-table">
+		<tr>
+			<td class="login-label">User Name</td>
+			<td class="login-editor"><input type="text" name="username"/></td>
+		</tr>
+		<tr>
+			<td class="login-label">Password</td>
+			<td class="login-editor"><input type="password" name="password"/></td>
+		</tr>
+		<tr>
+			<td class="login-actions">&nbsp;</td>
+			<td class="login-actions">
+				<input type="submit" value="Login"/>
+			</td>
+		</tr>
+   </table>
+</form>
+<% } %>
+
+

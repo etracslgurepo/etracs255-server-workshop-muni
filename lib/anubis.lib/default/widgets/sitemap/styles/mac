@@ -1,0 +1,28 @@
+<%
+	def cols = OPTIONS.col ? OPTIONS.col : DATA.size();
+%>
+
+<table width="900">
+	<%for( f in DATA ) {%>
+		<tr>
+			<td colspan="${cols}"  style="border-bottom:1px solid gray;font-weight:bolder;font-size:20px;" valign="top">${f.title}</td>
+		</tr>
+		<%if( f.haschildren) {%>
+			<tr>
+				<%for (i in ANUBIS.getFolder( f.path).children ) { %>
+					<td style="padding-bottom:20px;" valign="top">
+						<div  style="font-weight:bolder;font-size:15px">${i.title}</div>
+						<%if( i.haschildren ) {%>
+							<%for( j in ANUBIS.getFolder( i.path ).children ) {%>
+								<div style="padding-left:10px;font-size:12px">
+									<a href="${j.href}">${j.title}</a></div>	
+							<%}%>
+						<%}%>
+					</td>
+				<%}%>
+			</tr>
+			
+		<%}%>
+	<%}%>
+</table>
+

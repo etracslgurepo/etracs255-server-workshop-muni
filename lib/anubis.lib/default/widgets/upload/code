@@ -1,0 +1,4 @@
+<input type="file"
+       r:url="${OPTIONS.action}"
+	   r:caption="${OPTIONS.caption ? OPTIONS.caption : 'Select File'}"
+	   r:context="${OPTIONS.context}"/>

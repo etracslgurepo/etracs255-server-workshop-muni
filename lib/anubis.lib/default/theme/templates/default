@@ -1,0 +1,45 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" itemscope="" itemtype="http://schema.org/">
+<html>
+	<head>
+		<meta name="title" content="${PROJECT.title}" />
+		<meta itemprop="name" content="${PROJECT.title}" />
+		<meta property="og:title" content="${PROJECT.title}" />
+		<meta name="Description" content="${PROJECT.description}" />
+		<meta itemprop="description" content="${PROJECT.description}" />
+		<meta property="og:description" content="${PROJECT.description}" />
+		<meta name="keywords" content="${PROJECT.keywords}"/>
+		<meta name="copyright" content="${PROJECT.copyright}" />
+                @css("default")
+                @stdlib()
+		@page-imports()
+	</head>
+	
+	<body>
+            <table cellpadding="0" cellspacing="0" width="100%" height="100%" border="0">
+                    <tr>
+                        <td class="master head left">&nbsp;</td>
+                        <td class="master head center">
+                            <table width="100%" cellpadding="0" cellspacing="0">
+                                <tr>
+                                    <td class="logo">@logo()</td>
+                                    <td class="mainmenu">@navbar(style="horizontal")</td>
+                                </tr>
+                            </table>
+                        </td>
+                        <td class="master head right">&nbsp;</td>
+                    </tr>
+                    <tr>
+                            <td class="master content left">&nbsp;</td>
+                            <td class="master content center">${_content}</td>
+                            <td class="master content right">&nbsp;</td>
+                    </tr>	
+                    <tr>
+                            <td class="master footer left">&nbsp;</td>
+                            <td class="master footer center">@copyright()</td>
+                            <td class="master footer right">&nbsp;</td>
+                    </tr>
+            </table>
+	</body>
+</html>
+

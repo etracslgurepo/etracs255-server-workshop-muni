@@ -1,0 +1,14 @@
+def sess = SESSION.request.getSession(true);
+
+def status = [
+	percentCompleted: 0,
+	uploadRate: 0,
+	estimatedRuntime: 0
+];
+
+def sessStat = sess.getAttribute( PARAMS.requestid );
+if( sessStat != null ) {
+	status.putAll( sessStat );
+}
+
+return status;

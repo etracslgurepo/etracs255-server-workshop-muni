@@ -1,0 +1,2 @@
+<%def copyright = PROJECT.copyright ? PROJECT.copyright : '<place copyright here>'; %>
+<div class="copyright">&copy ${copyright}</div>

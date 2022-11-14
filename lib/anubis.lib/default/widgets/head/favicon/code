@@ -1,0 +1,3 @@
+<%if( PROJECT.favicon ) {%>
+<link rel="shortcut icon" href="${PROJECT.favicon}">
+<% } %>
