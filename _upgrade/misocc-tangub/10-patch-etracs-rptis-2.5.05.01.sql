@@ -1,4 +1,21 @@
 
+CREATE TABLE `cashreceipt_rpt_share_forposting_repost` (
+  `objid` varchar(100) NOT NULL,
+  `rptpaymentid` varchar(50) NOT NULL,
+  `receiptid` varchar(50) NOT NULL,
+  `receiptdate` date NOT NULL,
+  `rptledgerid` varchar(50) NOT NULL,
+  PRIMARY KEY (`objid`),
+  UNIQUE KEY `ux_receiptid_rptledgerid` (`receiptid`,`rptledgerid`),
+  KEY `fk_rptshare_repost_rptledgerid` (`rptledgerid`),
+  KEY `fk_rptshare_repost_cashreceiptid` (`receiptid`),
+  CONSTRAINT `fk_rptshare_repost_cashreceipt` FOREIGN KEY (`receiptid`) REFERENCES `cashreceipt` (`objid`),
+  CONSTRAINT `fk_rptshare_repost_rptledger` FOREIGN KEY (`rptledgerid`) REFERENCES `rptledger` (`objid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8
+;
+
+
+
 /*===================================================== 
 	IMPORTANT: BEFORE EXECUTING !!!!
 
@@ -2887,212 +2904,4 @@ CREATE TABLE `rptexpiry` (
 
 /* TXN INITIATED BY ASSESSOR */
 INSERT IGNORE INTO `sys_usergroup_permission` (`objid`, `usergroup_objid`, `object`, `permission`, `title`) VALUES ('RPT.RECEIVER_ADMIN:faas:createChangePin', 'RPT.RECEIVER_ADMIN', 'faas', 'createChangePin', 'FAAS Change PIN initiated by assessor');
-
-
-
-/*========================================
-** LGU ACCOUNT MAPPING 
-========================================*/
-
-
-set foreign_key_checks = 0
-;
-
-
-INSERT IGNORE INTO itemaccount(
-        objid, state, code, title, description, type, fund_objid, fund_code, 
-        fund_title, defaultvalue, valuetype, org_objid, org_name, parentid
-) 
-SELECT 'RPT_BASIC_ADVANCE_BRGY_SHARE', 'ACTIVE', '455-049', 'RPT BASIC ADVANCE BARANGAY SHARE', 'RPT BASIC ADVANCE BARANGAY SHARE', 'PAYABLE', 'GENERAL', '01', 'GENERAL', '0.00', 'ANY', NULL, NULL, NULL
-;
-
-INSERT IGNORE INTO itemaccount(
-        objid, state, code, title, description, type, fund_objid, fund_code, 
-        fund_title, defaultvalue, valuetype, org_objid, org_name, parentid
-) 
-SELECT 'RPT_BASIC_CURRENT_BRGY_SHARE', 'ACTIVE', '455-049', 'RPT BASIC CURRENT BARANGAY SHARE', 'RPT BASIC CURRENT BARANGAY SHARE', 'PAYABLE', 'GENERAL', '01', 'GENERAL', '0.00', 'ANY', NULL, NULL, NULL
-;
-
-INSERT IGNORE INTO itemaccount(
-        objid, state, code, title, description, type, fund_objid, fund_code, 
-        fund_title, defaultvalue, valuetype, org_objid, org_name, parentid
-) 
-SELECT 'RPT_BASICINT_CURRENT_BRGY_SHARE', 'ACTIVE', '455-049', 'RPT BASIC PENALTY CURRENT BARANGAY SHARE', 'RPT BASIC PENALTY CURRENT BARANGAY SHARE', 'PAYABLE', 'GENERAL', '01', 'GENERAL', '0.00', 'ANY', NULL, NULL, NULL
-;
-
-INSERT IGNORE INTO itemaccount(
-        objid, state, code, title, description, type, fund_objid, fund_code, 
-        fund_title, defaultvalue, valuetype, org_objid, org_name, parentid
-) 
-SELECT 'RPT_BASIC_PREVIOUS_BRGY_SHARE', 'ACTIVE', '455-049', 'RPT BASIC PREVIOUS BARANGAY SHARE', 'RPT BASIC PREVIOUS BARANGAY SHARE', 'PAYABLE', 'GENERAL', '01', 'GENERAL', '0.00', 'ANY', NULL, NULL, NULL
-;
-
-INSERT IGNORE INTO itemaccount(
-        objid, state, code, title, description, type, fund_objid, fund_code, 
-        fund_title, defaultvalue, valuetype, org_objid, org_name, parentid
-) 
-SELECT 'RPT_BASICINT_PREVIOUS_BRGY_SHARE', 'ACTIVE', '455-049', 'RPT BASIC PENALTY PREVIOUS BARANGAY SHARE', 'RPT BASIC PENALTY PREVIOUS BARANGAY SHARE', 'PAYABLE', 'GENERAL', '01', 'GENERAL', '0.00', 'ANY', NULL, NULL, NULL
-;
-
-INSERT IGNORE INTO itemaccount(
-        objid, state, code, title, description, type, fund_objid, fund_code, 
-        fund_title, defaultvalue, valuetype, org_objid, org_name, parentid
-) 
-SELECT 'RPT_BASIC_PRIOR_BRGY_SHARE', 'ACTIVE', '455-049', 'RPT BASIC PRIOR BARANGAY SHARE', 'RPT BASIC PRIOR BARANGAY SHARE', 'PAYABLE', 'GENERAL', '01', 'GENERAL', '0.00', 'ANY', NULL, NULL, NULL
-;
-
-INSERT IGNORE INTO itemaccount(
-        objid, state, code, title, description, type, fund_objid, fund_code, 
-        fund_title, defaultvalue, valuetype, org_objid, org_name, parentid
-) 
-SELECT 'RPT_BASICINT_PRIOR_BRGY_SHARE', 'ACTIVE', '455-049', 'RPT BASIC PENALTY PRIOR BARANGAY SHARE', 'RPT BASIC PENALTY PRIOR BARANGAY SHARE', 'PAYABLE', 'GENERAL', '01', 'GENERAL', '0.00', 'ANY', NULL, NULL, NULL
-;
-
-
-
-/* BARANGAY PAYABLE TAG */
-replace into itemaccount_tag (objid, acctid, tag)
-select  'RPT_BASIC_ADVANCE_BRGY_SHARE' as objid, 'RPT_BASIC_ADVANCE_BRGY_SHARE' as acctid, 'rpt_basic_advance' as tag
-;
-replace into itemaccount_tag (objid, acctid, tag)
-select  'RPT_BASIC_CURRENT_BRGY_SHARE' as objid, 'RPT_BASIC_CURRENT_BRGY_SHARE' as acctid, 'rpt_basic_current' as tag
-;
-replace into itemaccount_tag (objid, acctid, tag)
-select  'RPT_BASICINT_CURRENT_BRGY_SHARE' as objid, 'RPT_BASICINT_CURRENT_BRGY_SHARE' as acctid, 'rpt_basicint_current' as tag
-;
-replace into itemaccount_tag (objid, acctid, tag)
-select  'RPT_BASIC_PREVIOUS_BRGY_SHARE' as objid, 'RPT_BASIC_PREVIOUS_BRGY_SHARE' as acctid, 'rpt_basic_previous' as tag
-;
-replace into itemaccount_tag (objid, acctid, tag)
-select  'RPT_BASICINT_PREVIOUS_BRGY_SHARE' as objid, 'RPT_BASICINT_PREVIOUS_BRGY_SHARE' as acctid, 'rpt_basicint_previous' as tag
-;
-replace into itemaccount_tag (objid, acctid, tag)
-select  'RPT_BASIC_PRIOR_BRGY_SHARE' as objid, 'RPT_BASIC_PRIOR_BRGY_SHARE' as acctid, 'rpt_basic_prior' as tag
-;
-replace into itemaccount_tag (objid, acctid, tag)
-select  'RPT_BASICINT_PRIOR_BRGY_SHARE' as objid, 'RPT_BASICINT_PRIOR_BRGY_SHARE' as acctid, 'rpt_basicint_prior' as tag
-;
-
-
-/* BARANGAY ACCOUNT MAPPING */
-replace into itemaccount (
-	objid, state, code, title, description, 
-	type, fund_objid, fund_code, fund_title, 
-	defaultvalue, valuetype, org_objid, org_name, parentid 
-)
-select 
-	concat(ia.objid) as objid, 'ACTIVE' as state, '-' as code, 
-	ia.title, 
-	ia.description, ia.type, 
-	ia.fund_objid, ia.fund_code, ia.fund_title, ia.defaultvalue, ia.valuetype, 
-	l.objid as org_objid, l.name as org_name, 'RPT_BASIC_ADVANCE_BRGY_SHARE' as parentid 
-from brgy_taxaccount_mapping m, itemaccount ia, barangay l 
-where m.basicadvacct_objid = ia.objid
-and m.barangayid = l.objid
-;
-
-
-replace into itemaccount (
-	objid, state, code, title, description, 
-	type, fund_objid, fund_code, fund_title, 
-	defaultvalue, valuetype, org_objid, org_name, parentid 
-)
-select 
-	concat(ia.objid) as objid, 'ACTIVE' as state, '-' as code, 
-	ia.title, 
-	ia.description, ia.type, 
-	ia.fund_objid, ia.fund_code, ia.fund_title, ia.defaultvalue, ia.valuetype, 
-	l.objid as org_objid, l.name as org_name, 'RPT_BASIC_PRIOR_BRGY_SHARE' as parentid 
-from brgy_taxaccount_mapping m, itemaccount ia, barangay l 
-where m.basicprioracct_objid = ia.objid
-and m.barangayid = l.objid
-;
-
-replace into itemaccount (
-	objid, state, code, title, description, 
-	type, fund_objid, fund_code, fund_title, 
-	defaultvalue, valuetype, org_objid, org_name, parentid 
-)
-select 
-	concat(ia.objid) as objid, 'ACTIVE' as state, '-' as code, 
-	ia.title, 
-	ia.description, ia.type, 
-	ia.fund_objid, ia.fund_code, ia.fund_title, ia.defaultvalue, ia.valuetype, 
-	l.objid as org_objid, l.name as org_name, 'RPT_BASICINT_PRIOR_BRGY_SHARE' as parentid 
-from brgy_taxaccount_mapping m, itemaccount ia, barangay l 
-where m.basicpriorintacct_objid = ia.objid
-and m.barangayid = l.objid
-;
-
-
-replace into itemaccount (
-	objid, state, code, title, description, 
-	type, fund_objid, fund_code, fund_title, 
-	defaultvalue, valuetype, org_objid, org_name, parentid 
-)
-select 
-	concat(ia.objid) as objid, 'ACTIVE' as state, '-' as code, 
-	ia.title, 
-	ia.description, ia.type, 
-	ia.fund_objid, ia.fund_code, ia.fund_title, ia.defaultvalue, ia.valuetype, 
-	l.objid as org_objid, l.name as org_name, 'RPT_BASIC_PREVIOUS_BRGY_SHARE' as parentid 
-from brgy_taxaccount_mapping m, itemaccount ia, barangay l 
-where m.basicprevacct_objid = ia.objid
-and m.barangayid = l.objid
-;
-
-replace into itemaccount (
-	objid, state, code, title, description, 
-	type, fund_objid, fund_code, fund_title, 
-	defaultvalue, valuetype, org_objid, org_name, parentid 
-)
-select 
-	concat(ia.objid) as objid, 'ACTIVE' as state, '-' as code, 
-	ia.title, 
-	ia.description, ia.type, 
-	ia.fund_objid, ia.fund_code, ia.fund_title, ia.defaultvalue, ia.valuetype, 
-	l.objid as org_objid, l.name as org_name, 'RPT_BASICINT_PREVIOUS_BRGY_SHARE' as parentid 
-from brgy_taxaccount_mapping m, itemaccount ia, barangay l 
-where m.basicprevintacct_objid = ia.objid
-and m.barangayid = l.objid
-;
-
-replace into itemaccount (
-	objid, state, code, title, description, 
-	type, fund_objid, fund_code, fund_title, 
-	defaultvalue, valuetype, org_objid, org_name, parentid 
-)
-select 
-	concat(ia.objid) as objid, 'ACTIVE' as state, '-' as code, 
-	ia.title, 
-	ia.description, ia.type, 
-	ia.fund_objid, ia.fund_code, ia.fund_title, ia.defaultvalue, ia.valuetype, 
-	l.objid as org_objid, l.name as org_name, 'RPT_BASIC_CURRENT_BRGY_SHARE' as parentid 
-from brgy_taxaccount_mapping m, itemaccount ia, barangay l 
-where m.basiccurracct_objid = ia.objid
-and m.barangayid = l.objid
-;
-
-replace into itemaccount (
-	objid, state, code, title, description, 
-	type, fund_objid, fund_code, fund_title, 
-	defaultvalue, valuetype, org_objid, org_name, parentid 
-)
-select 
-	concat(ia.objid) as objid, 'ACTIVE' as state, '-' as code, 
-	ia.title, 
-	ia.description, ia.type, 
-	ia.fund_objid, ia.fund_code, ia.fund_title, ia.defaultvalue, ia.valuetype, 
-	l.objid as org_objid, l.name as org_name, 'RPT_BASICINT_CURRENT_BRGY_SHARE' as parentid 
-from brgy_taxaccount_mapping m, itemaccount ia, barangay l 
-where m.basiccurrintacct_objid = ia.objid
-and m.barangayid = l.objid
-;
-
-
-
-set foreign_key_checks = 1
-;
-
-
 
