@@ -1,17 +1,147 @@
-set @dbname := 'etracs255_loay';
+
+set @dbname := 'etracs255_baclayon';
+
+
+
+
+/*==================================
+** V2.5.04.027
+==================================*/
+update planttreeassesslevel set code = 'AA' where code = 'AA (PLANTS)';
+
+
+update rptledger rl, faas f, rpu r  set 
+	rl.txntype_objid = f.txntype_objid,
+	rl.classification_objid = r.classification_objid
+where rl.faasid = f.objid 
+and f.rpuid = r.objid 
+and (rl.txntype_objid is null or rl.classification_objid is null);
+
+
+create table faas_txntype_attribute_type(
+	attribute varchar(50) not null,
+	primary key(attribute)
+);
+
+
+create table faas_txntype_attribute(
+	txntype_objid varchar(50) not null, 
+	attribute varchar(50) not null,
+	idx int not null, 
+	primary key (txntype_objid, attribute)
+);
+
+alter table faas_txntype_attribute 
+add constraint FK_faas_txntype_attribute foreign key (txntype_objid)
+references faas_txntype (objid);
+
+
+alter table faas_txntype_attribute 
+add constraint FK_faas_txntype_attribute_type foreign key (attribute)
+references faas_txntype_attribute_type (attribute);
+
+
+
+create table rpt_redflag
+(
+	objid varchar(50) not null,
+	refid varchar(50) not null,
+	caseno varchar(25) not null,
+	message text not null,
+	dtfiled datetime not null,
+	filedby_objid varchar(50) not null,
+	filedby_name varchar(150) not null,
+	resolved int not null,
+	action varchar(50) not null,
+	opener varchar(50) not null,
+	resolvedby_objid varchar(50) not null,
+	resolvedby_name varchar(150) not null,
+	dtresolved datetime,
+	primary key (objid)
+);
+
+alter table rpt_redflag add constraint ux_rptredflag_caseno unique(caseno);
+
+create index ix_rptredflag_refid on rpt_redflag(refid);
+
+	
+
+
+alter table faas add originlguid varchar(50);
+
+update faas set originlguid = lguid;	
+
+	
+
+alter table subdivision add originlguid varchar(50);
+
+update subdivision set originlguid = lguid;	
+
+
+	
+
+alter table consolidation add originlguid varchar(50);
+
+update consolidation set originlguid = lguid;		
+
+
+/*==================================
+** V2.5.04.028
+==================================*/
+
+alter table bldgadditionalitem add addareatobldgtotalarea int;
+
+update bldgadditionalitem set addareatobldgtotalarea = 0 where addareatobldgtotalarea is null;
+
+alter table faasannotation modify column txnno varchar(15) not null;
+
+
+/*==================================
+** V2.5.04.029
+==================================*/
+DROP  TABLE `rpt_redflag`;
+
+CREATE TABLE `rpt_redflag` (
+  `objid` varchar(50) NOT NULL,
+  `parentid` varchar(50) NOT NULL,
+  `state` varchar(30) NOT NULL,
+  `refid` varchar(50) NOT NULL,
+  `refno` varchar(15) NOT NULL,
+  `caseno` varchar(25) NOT NULL,
+  `message` text NOT NULL,
+  `filedby_date` datetime NOT NULL,
+  `filedby_objid` varchar(50) NOT NULL,
+  `filedby_name` varchar(150) NOT NULL,
+  `action` varchar(50) NOT NULL,
+  `resolvedby_objid` varchar(50) default NULL,
+  `resolvedby_name` varchar(150) default NULL,
+  `resolvedby_date` datetime default NULL,
+  `lguid` varchar(15) NOT NULL,
+  `dtclosed` datetime default NULL,
+  `remarks` text,
+  PRIMARY KEY  (`objid`),
+  UNIQUE KEY `ux_rptredflag_caseno` (`caseno`),
+  KEY `ix_rptredflag_refid` (`refid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+
+alter table rpt_sms modify column traceid varchar(50) null;
+
+INSERT INTO `sys_var` (`name`, `value`, `description`, `datatype`, `category`) 
+VALUES ('show_interim_watermark', '0', 'Display an INTERIM wartermark for FAAS and TD', 'checkbox', 'ASSESSOR');
 
 
 
 /*==================================
 ** V2.5.04.030
 ==================================*/
-INSERT INTO sys_rulegroup (name, ruleset, title, sortorder) VALUES ('AFTER-SUMMARY', 'landassessment', 'After Summary Computation', '105');
-INSERT INTO sys_rulegroup (name, ruleset, title, sortorder) VALUES ('AFTER-SUMMARY', 'bldgassessment', 'After Summary Computation', '105');
-INSERT INTO sys_rulegroup (name, ruleset, title, sortorder) VALUES ('AFTER-SUMMARY', 'machassessment', 'After Summary Computation', '105');
-INSERT INTO sys_rulegroup (name, ruleset, title, sortorder) VALUES ('AFTER-SUMMARY', 'miscassessment', 'After Summary Computation', '105');
-INSERT INTO sys_rulegroup (name, ruleset, title, sortorder) VALUES ('AFTER-SUMMARY', 'planttreeassessment', 'After Summary Computation', '105');
-INSERT INTO sys_rulegroup (name, ruleset, title, sortorder) VALUES ('MUASSESSLEVEL', 'machassessment', 'Actual Use Assess Level Computation', '50');
-INSERT INTO sys_rulegroup (name, ruleset, title, sortorder) VALUES ('MUASSESSEDVALUE', 'machassessment', 'Actual Use Assessed Value Computation', '55');
+INSERT IGNORE INTO sys_rulegroup (name, ruleset, title, sortorder) VALUES ('AFTER-SUMMARY', 'landassessment', 'After Summary Computation', '105');
+INSERT IGNORE INTO sys_rulegroup (name, ruleset, title, sortorder) VALUES ('AFTER-SUMMARY', 'bldgassessment', 'After Summary Computation', '105');
+INSERT IGNORE INTO sys_rulegroup (name, ruleset, title, sortorder) VALUES ('AFTER-SUMMARY', 'machassessment', 'After Summary Computation', '105');
+INSERT IGNORE INTO sys_rulegroup (name, ruleset, title, sortorder) VALUES ('AFTER-SUMMARY', 'miscassessment', 'After Summary Computation', '105');
+INSERT IGNORE INTO sys_rulegroup (name, ruleset, title, sortorder) VALUES ('AFTER-SUMMARY', 'planttreeassessment', 'After Summary Computation', '105');
+INSERT IGNORE INTO sys_rulegroup (name, ruleset, title, sortorder) VALUES ('MUASSESSLEVEL', 'machassessment', 'Actual Use Assess Level Computation', '50');
+INSERT IGNORE INTO sys_rulegroup (name, ruleset, title, sortorder) VALUES ('MUASSESSEDVALUE', 'machassessment', 'Actual Use Assessed Value Computation', '55');
 
 UPDATE sys_rulegroup SET name='INITIAL', ruleset='machassessment', title='Initial Computation', sortorder='0' WHERE (name='INITIAL') AND (ruleset='machassessment');
 UPDATE sys_rulegroup SET name='BASEMARKETVALUE', ruleset='machassessment', title='Machine Base Market Value Computation', sortorder='5' WHERE (name='BASEMARKETVALUE') AND (ruleset='machassessment');
@@ -944,31 +1074,6 @@ VALUES ('LANDTAX.REPORT.restricted-property.generate', 'LANDTAX.REPORT', 'restri
 * correct PRODUCTION Database Name
 *=======================================*/
 
-set @dbname := 'etracs255_loay';
-
-/*=======================================*/
-
-
-drop procedure if exists alter_sys_rule_actiondef;
-
-delimiter $$
-create procedure alter_sys_rule_actiondef(in _dbname varchar(100))
-begin
-    declare _count int;
-    set _count = (  select count(*) 
-                    from information_schema.columns
-                    where  table_schema = _dbname and 
-                           table_name = 'sys_rule_actiondef' and 
-                           column_name = 'actionclass');
-
-    if _count = 0 then
-        alter table sys_rule_actiondef
-            add column actionclass varchar(100);
-    end if;
-end $$
-delimiter ;
-
-call alter_sys_rule_actiondef(@dbname);
 
 drop procedure if exists alter_sys_rule_actiondef;
 
@@ -2650,6 +2755,16 @@ alter table assessmentnotice modify column dtdelivered date null
 alter table assessmentnotice add deliverytype_objid varchar(50)
 ;
 update assessmentnotice set state = 'DELIVERED' where state = 'RECEIVED'
+;
+
+
+drop view if exists assessmentnoticeitem;
+drop view if exists assessmentnotice;
+
+
+alter table assessmentnotice add administrator_name varchar(150)
+;
+alter table assessmentnotice add administrator_address varchar(150)
 ;
 
 
@@ -9766,7 +9881,11 @@ alter table miscrpuitem add taxable int
 ;
 update miscrpuitem set taxable = 1 where taxable is null 
 ;
+
+
 /* ADMIN PERMISSIONS */
+INSERT INTO `sys_usergroup` (`objid`, `title`, `domain`, `userclass`, `orgclass`, `role`) VALUES ('RPT.ADMIN', 'ADMIN', 'RPT', NULL, NULL, 'ADMIN');
+
 INSERT INTO `sys_usergroup_permission` (`objid`, `usergroup_objid`, `object`, `permission`, `title`) VALUES ('USRGRPPERMS38a4ea88:1830c0b3fec:-189d', 'RPT.ADMIN', 'faas', 'view_issued_clearances', 'View issued clearances');
 INSERT INTO `sys_usergroup_permission` (`objid`, `usergroup_objid`, `object`, `permission`, `title`) VALUES ('USRGRPPERMS38a4ea88:1830c0b3fec:-334b', 'RPT.ADMIN', 'faas', 'update_ledger_mapping', 'Update FAAS and Ledger mapping');
 INSERT INTO `sys_usergroup_permission` (`objid`, `usergroup_objid`, `object`, `permission`, `title`) VALUES ('USRGRPPERMS38a4ea88:1830c0b3fec:-4a01', 'RPT.ADMIN', 'faas', 'resend_to_province', 'Resend to province');
@@ -10085,12 +10204,903 @@ INSERT IGNORE INTO `sys_usergroup_permission` (`objid`, `usergroup_objid`, `obje
 
 
 alter table bldgrpu add occpermitno varchar(50);
-alter table rpt_redflag add parentid varchar(50);
-alter table rpt_redflag add state varchar(25);
-alter table rpt_redflag add filedby_date date;
-alter table rpt_redflag add resolvedby_date date;
-alter table rpt_redflag add lguid varchar(50);
-alter table rpt_redflag add dtclosed date;
-alter table rpt_redflag add remarks varchar(1000);
+
 alter table rpu add isonline int default 0;
+
+
+
+
+
+/*========================================
+** LGU ACCOUNT MAPPING 
+========================================*/
+
+
+set foreign_key_checks = 0
+;
+
+
+INSERT IGNORE INTO itemaccount (objid, state, code, title, description, type, fund_objid, fund_code, fund_title, defaultvalue, valuetype, org_objid, org_name, parentid)
+SELECT 'RPT_BASIC_ADVANCE', 'ACTIVE', '588-007', 'RPT BASIC ADVANCE', 'RPT BASIC ADVANCE', 'REVENUE', 'GENERAL', '01', 'GENERAL', '0.00', 'ANY', NULL, NULL, NULL
+;
+INSERT IGNORE INTO itemaccount (objid, state, code, title, description, type, fund_objid, fund_code, fund_title, defaultvalue, valuetype, org_objid, org_name, parentid)
+SELECT 'RPT_BASIC_CURRENT', 'ACTIVE', '588-001', 'RPT BASIC CURRENT', 'RPT BASIC CURRENT', 'REVENUE', 'GENERAL', '01', 'GENERAL', '0.00', 'ANY', NULL, NULL, NULL
+;
+INSERT IGNORE INTO itemaccount (objid, state, code, title, description, type, fund_objid, fund_code, fund_title, defaultvalue, valuetype, org_objid, org_name, parentid)
+SELECT 'RPT_BASICINT_CURRENT', 'ACTIVE', '588-004', 'RPT BASIC PENALTY CURRENT', 'RPT BASIC PENALTY CURRENT', 'REVENUE', 'GENERAL', '01', 'GENERAL', '0.00', 'ANY', NULL, NULL, NULL
+;
+INSERT IGNORE INTO itemaccount (objid, state, code, title, description, type, fund_objid, fund_code, fund_title, defaultvalue, valuetype, org_objid, org_name, parentid)
+SELECT 'RPT_BASIC_PREVIOUS', 'ACTIVE', '588-002', 'RPT BASIC PREVIOUS', 'RPT BASIC PREVIOUS', 'REVENUE', 'GENERAL', '01', 'GENERAL', '0.00', 'ANY', NULL, NULL, NULL
+;
+INSERT IGNORE INTO itemaccount (objid, state, code, title, description, type, fund_objid, fund_code, fund_title, defaultvalue, valuetype, org_objid, org_name, parentid)
+SELECT 'RPT_BASICINT_PREVIOUS', 'ACTIVE', '588-005', 'RPT BASIC PENALTY PREVIOUS', 'RPT BASIC PENALTY PREVIOUS', 'REVENUE', 'GENERAL', '01', 'GENERAL', '0.00', 'ANY', NULL, NULL, NULL
+;
+INSERT IGNORE INTO itemaccount (objid, state, code, title, description, type, fund_objid, fund_code, fund_title, defaultvalue, valuetype, org_objid, org_name, parentid)
+SELECT 'RPT_BASIC_PRIOR', 'ACTIVE', '588-003', 'RPT BASIC PRIOR', 'RPT BASIC PRIOR', 'REVENUE', 'GENERAL', '01', 'GENERAL', '0.00', 'ANY', NULL, NULL, NULL
+;
+INSERT IGNORE INTO itemaccount (objid, state, code, title, description, type, fund_objid, fund_code, fund_title, defaultvalue, valuetype, org_objid, org_name, parentid)
+SELECT 'RPT_BASICINT_PRIOR', 'ACTIVE', '588-006', 'RPT BASIC PENALTY PRIOR', 'RPT BASIC PENALTY PRIOR', 'REVENUE', 'GENERAL', '01', 'GENERAL', '0.00', 'ANY', NULL, NULL, NULL
+;
+INSERT IGNORE INTO itemaccount (objid, state, code, title, description, type, fund_objid, fund_code, fund_title, defaultvalue, valuetype, org_objid, org_name, parentid)
+SELECT 'RPT_SEF_ADVANCE', 'ACTIVE', '455-050', 'RPT SEF ADVANCE', 'RPT SEF ADVANCE', 'REVENUE', 'SEF', '02', 'SEF', '0.00', 'ANY', NULL, NULL, NULL
+;
+INSERT IGNORE INTO itemaccount (objid, state, code, title, description, type, fund_objid, fund_code, fund_title, defaultvalue, valuetype, org_objid, org_name, parentid)
+SELECT 'RPT_SEF_CURRENT', 'ACTIVE', '455-050', 'RPT SEF CURRENT', 'RPT SEF CURRENT', 'REVENUE', 'SEF', '02', 'SEF', '0.00', 'ANY', NULL, NULL, NULL
+;
+INSERT IGNORE INTO itemaccount (objid, state, code, title, description, type, fund_objid, fund_code, fund_title, defaultvalue, valuetype, org_objid, org_name, parentid)
+SELECT 'RPT_SEFINT_CURRENT', 'ACTIVE', '455-050', 'RPT SEF PENALTY CURRENT', 'RPT SEF PENALTY CURRENT', 'REVENUE', 'SEF', '02', 'SEF', '0.00', 'ANY', NULL, NULL, NULL
+;
+INSERT IGNORE INTO itemaccount (objid, state, code, title, description, type, fund_objid, fund_code, fund_title, defaultvalue, valuetype, org_objid, org_name, parentid)
+SELECT 'RPT_SEF_PREVIOUS', 'ACTIVE', '455-050', 'RPT SEF PREVIOUS', 'RPT SEF PREVIOUS', 'REVENUE', 'SEF', '02', 'SEF', '0.00', 'ANY', NULL, NULL, NULL
+;
+INSERT IGNORE INTO itemaccount (objid, state, code, title, description, type, fund_objid, fund_code, fund_title, defaultvalue, valuetype, org_objid, org_name, parentid)
+SELECT 'RPT_SEFINT_PREVIOUS', 'ACTIVE', '455-050', 'RPT SEF PENALTY PREVIOUS', 'RPT SEF PENALTY PREVIOUS', 'REVENUE', 'SEF', '02', 'SEF', '0.00', 'ANY', NULL, NULL, NULL
+;
+INSERT IGNORE INTO itemaccount (objid, state, code, title, description, type, fund_objid, fund_code, fund_title, defaultvalue, valuetype, org_objid, org_name, parentid)
+SELECT 'RPT_SEF_PRIOR', 'ACTIVE', '455-050', 'RPT SEF PRIOR', 'RPT SEF PRIOR', 'REVENUE', 'SEF', '02', 'SEF', '0.00', 'ANY', NULL, NULL, NULL
+;
+INSERT IGNORE INTO itemaccount (objid, state, code, title, description, type, fund_objid, fund_code, fund_title, defaultvalue, valuetype, org_objid, org_name, parentid)
+SELECT 'RPT_SEFINT_PRIOR', 'ACTIVE', '455-050', 'RPT SEF PENALTY PRIOR', 'RPT SEF PENALTY PRIOR', 'REVENUE', 'SEF', '02', 'SEF', '0.00', 'ANY', NULL, NULL, NULL
+;
+
+
+INSERT IGNORE INTO itemaccount (
+        objid, state, code, title, description, type, fund_objid, fund_code, fund_title, 
+        defaultvalue, valuetype, org_objid, org_name, parentid
+) 
+SELECT 'RPT_BASIC_ADVANCE_PROVINCE_SHARE', 'ACTIVE', '455-049', 'RPT BASIC ADVANCE PROVINCE SHARE', 'RPT BASIC ADVANCE PROVINCE SHARE', 'PAYABLE', 'GENERAL', '01', 'GENERAL', '0.00', 'ANY', NULL, NULL, NULL
+;
+INSERT IGNORE INTO itemaccount (
+        objid, state, code, title, description, type, fund_objid, fund_code, fund_title, 
+        defaultvalue, valuetype, org_objid, org_name, parentid
+) 
+SELECT 'RPT_BASIC_CURRENT_PROVINCE_SHARE', 'ACTIVE', '455-049', 'RPT BASIC CURRENT PROVINCE SHARE', 'RPT BASIC CURRENT PROVINCE SHARE', 'PAYABLE', 'GENERAL', '01', 'GENERAL', '0.00', 'ANY', NULL, NULL, NULL
+;
+INSERT IGNORE INTO itemaccount (
+        objid, state, code, title, description, type, fund_objid, fund_code, fund_title, 
+        defaultvalue, valuetype, org_objid, org_name, parentid
+) 
+SELECT 'RPT_BASICINT_CURRENT_PROVINCE_SHARE', 'ACTIVE', '455-049', 'RPT BASIC CURRENT PENALTY PROVINCE SHARE', 'RPT BASIC CURRENT PENALTY PROVINCE SHARE', 'PAYABLE', 'GENERAL', '01', 'GENERAL', '0.00', 'ANY', NULL, NULL, NULL
+;
+INSERT IGNORE INTO itemaccount (
+        objid, state, code, title, description, type, fund_objid, fund_code, fund_title, 
+        defaultvalue, valuetype, org_objid, org_name, parentid
+) 
+SELECT 'RPT_BASIC_PREVIOUS_PROVINCE_SHARE', 'ACTIVE', '455-049', 'RPT BASIC PREVIOUS PROVINCE SHARE', 'RPT BASIC PREVIOUS PROVINCE SHARE', 'PAYABLE', 'GENERAL', '01', 'GENERAL', '0.00', 'ANY', NULL, NULL, NULL
+;
+INSERT IGNORE INTO itemaccount (
+        objid, state, code, title, description, type, fund_objid, fund_code, fund_title, 
+        defaultvalue, valuetype, org_objid, org_name, parentid
+) 
+SELECT 'RPT_BASICINT_PREVIOUS_PROVINCE_SHARE', 'ACTIVE', '455-049', 'RPT BASIC PREVIOUS PENALTY PROVINCE SHARE', 'RPT BASIC PREVIOUS PENALTY PROVINCE SHARE', 'PAYABLE', 'GENERAL', '01', 'GENERAL', '0.00', 'ANY', NULL, NULL, NULL
+;
+INSERT IGNORE INTO itemaccount (
+        objid, state, code, title, description, type, fund_objid, fund_code, fund_title, 
+        defaultvalue, valuetype, org_objid, org_name, parentid
+) 
+SELECT 'RPT_BASIC_PRIOR_PROVINCE_SHARE', 'ACTIVE', '455-049', 'RPT BASIC PRIOR PROVINCE SHARE', 'RPT BASIC PRIOR PROVINCE SHARE', 'PAYABLE', 'GENERAL', '01', 'GENERAL', '0.00', 'ANY', NULL, NULL, NULL
+;
+INSERT IGNORE INTO itemaccount (
+        objid, state, code, title, description, type, fund_objid, fund_code, fund_title, 
+        defaultvalue, valuetype, org_objid, org_name, parentid
+) 
+SELECT 'RPT_BASICINT_PRIOR_PROVINCE_SHARE', 'ACTIVE', '455-049', 'RPT BASIC PRIOR PENALTY PROVINCE SHARE', 'RPT BASIC PRIOR PENALTY PROVINCE SHARE', 'PAYABLE', 'GENERAL', '01', 'GENERAL', '0.00', 'ANY', NULL, NULL, NULL
+;
+INSERT IGNORE INTO itemaccount (
+        objid, state, code, title, description, type, fund_objid, fund_code, fund_title, 
+        defaultvalue, valuetype, org_objid, org_name, parentid
+) 
+SELECT 'RPT_SEF_ADVANCE_PROVINCE_SHARE', 'ACTIVE', '455-050', 'RPT SEF ADVANCE PROVINCE SHARE', 'RPT SEF ADVANCE PROVINCE SHARE', 'PAYABLE', 'SEF', '02', 'SEF', '0.00', 'ANY', NULL, NULL, NULL
+;
+INSERT IGNORE INTO itemaccount (
+        objid, state, code, title, description, type, fund_objid, fund_code, fund_title, 
+        defaultvalue, valuetype, org_objid, org_name, parentid
+) 
+SELECT 'RPT_SEF_CURRENT_PROVINCE_SHARE', 'ACTIVE', '455-050', 'RPT SEF CURRENT PROVINCE SHARE', 'RPT SEF CURRENT PROVINCE SHARE', 'PAYABLE', 'SEF', '02', 'SEF', '0.00', 'ANY', NULL, NULL, NULL
+;
+INSERT IGNORE INTO itemaccount (
+        objid, state, code, title, description, type, fund_objid, fund_code, fund_title, 
+        defaultvalue, valuetype, org_objid, org_name, parentid
+) 
+SELECT 'RPT_SEFINT_CURRENT_PROVINCE_SHARE', 'ACTIVE', '455-050', 'RPT SEF CURRENT PENALTY PROVINCE SHARE', 'RPT SEF CURRENT PENALTY PROVINCE SHARE', 'PAYABLE', 'SEF', '02', 'SEF', '0.00', 'ANY', NULL, NULL, NULL
+;
+INSERT IGNORE INTO itemaccount (
+        objid, state, code, title, description, type, fund_objid, fund_code, fund_title, 
+        defaultvalue, valuetype, org_objid, org_name, parentid
+) 
+SELECT 'RPT_SEF_PREVIOUS_PROVINCE_SHARE', 'ACTIVE', '455-050', 'RPT SEF PREVIOUS PROVINCE SHARE', 'RPT SEF PREVIOUS PROVINCE SHARE', 'PAYABLE', 'SEF', '02', 'SEF', '0.00', 'ANY', NULL, NULL, NULL
+;
+INSERT IGNORE INTO itemaccount (
+        objid, state, code, title, description, type, fund_objid, fund_code, fund_title, 
+        defaultvalue, valuetype, org_objid, org_name, parentid
+) 
+SELECT 'RPT_SEFINT_PREVIOUS_PROVINCE_SHARE', 'ACTIVE', '455-050', 'RPT SEF PREVIOUS PENALTY PROVINCE SHARE', 'RPT SEF PREVIOUS PENALTY PROVINCE SHARE', 'PAYABLE', 'SEF', '02', 'SEF', '0.00', 'ANY', NULL, NULL, NULL
+;
+INSERT IGNORE INTO itemaccount (
+        objid, state, code, title, description, type, fund_objid, fund_code, fund_title, 
+        defaultvalue, valuetype, org_objid, org_name, parentid
+) 
+SELECT 'RPT_SEF_PRIOR_PROVINCE_SHARE', 'ACTIVE', '455-050', 'RPT SEF PRIOR PROVINCE SHARE', 'RPT SEF PRIOR PROVINCE SHARE', 'PAYABLE', 'SEF', '02', 'SEF', '0.00', 'ANY', NULL, NULL, NULL
+;
+INSERT IGNORE INTO itemaccount (
+        objid, state, code, title, description, type, fund_objid, fund_code, fund_title, 
+        defaultvalue, valuetype, org_objid, org_name, parentid
+) 
+SELECT 'RPT_SEFINT_PRIOR_PROVINCE_SHARE', 'ACTIVE', '455-050', 'RPT SEF PRIOR PENALTY PROVINCE SHARE', 'RPT SEF PRIOR PENALTY PROVINCE SHARE', 'PAYABLE', 'SEF', '02', 'SEF', '0.00', 'ANY', NULL, NULL, NULL
+;
+
+INSERT IGNORE INTO itemaccount(
+        objid, state, code, title, description, type, fund_objid, fund_code, 
+        fund_title, defaultvalue, valuetype, org_objid, org_name, parentid
+) 
+SELECT 'RPT_BASIC_ADVANCE_BRGY_SHARE', 'ACTIVE', '455-049', 'RPT BASIC ADVANCE BARANGAY SHARE', 'RPT BASIC ADVANCE BARANGAY SHARE', 'PAYABLE', 'GENERAL', '01', 'GENERAL', '0.00', 'ANY', NULL, NULL, NULL
+;
+
+INSERT IGNORE INTO itemaccount(
+        objid, state, code, title, description, type, fund_objid, fund_code, 
+        fund_title, defaultvalue, valuetype, org_objid, org_name, parentid
+) 
+SELECT 'RPT_BASIC_CURRENT_BRGY_SHARE', 'ACTIVE', '455-049', 'RPT BASIC CURRENT BARANGAY SHARE', 'RPT BASIC CURRENT BARANGAY SHARE', 'PAYABLE', 'GENERAL', '01', 'GENERAL', '0.00', 'ANY', NULL, NULL, NULL
+;
+
+INSERT IGNORE INTO itemaccount(
+        objid, state, code, title, description, type, fund_objid, fund_code, 
+        fund_title, defaultvalue, valuetype, org_objid, org_name, parentid
+) 
+SELECT 'RPT_BASICINT_CURRENT_BRGY_SHARE', 'ACTIVE', '455-049', 'RPT BASIC PENALTY CURRENT BARANGAY SHARE', 'RPT BASIC PENALTY CURRENT BARANGAY SHARE', 'PAYABLE', 'GENERAL', '01', 'GENERAL', '0.00', 'ANY', NULL, NULL, NULL
+;
+
+INSERT IGNORE INTO itemaccount(
+        objid, state, code, title, description, type, fund_objid, fund_code, 
+        fund_title, defaultvalue, valuetype, org_objid, org_name, parentid
+) 
+SELECT 'RPT_BASIC_PREVIOUS_BRGY_SHARE', 'ACTIVE', '455-049', 'RPT BASIC PREVIOUS BARANGAY SHARE', 'RPT BASIC PREVIOUS BARANGAY SHARE', 'PAYABLE', 'GENERAL', '01', 'GENERAL', '0.00', 'ANY', NULL, NULL, NULL
+;
+
+INSERT IGNORE INTO itemaccount(
+        objid, state, code, title, description, type, fund_objid, fund_code, 
+        fund_title, defaultvalue, valuetype, org_objid, org_name, parentid
+) 
+SELECT 'RPT_BASICINT_PREVIOUS_BRGY_SHARE', 'ACTIVE', '455-049', 'RPT BASIC PENALTY PREVIOUS BARANGAY SHARE', 'RPT BASIC PENALTY PREVIOUS BARANGAY SHARE', 'PAYABLE', 'GENERAL', '01', 'GENERAL', '0.00', 'ANY', NULL, NULL, NULL
+;
+
+INSERT IGNORE INTO itemaccount(
+        objid, state, code, title, description, type, fund_objid, fund_code, 
+        fund_title, defaultvalue, valuetype, org_objid, org_name, parentid
+) 
+SELECT 'RPT_BASIC_PRIOR_BRGY_SHARE', 'ACTIVE', '455-049', 'RPT BASIC PRIOR BARANGAY SHARE', 'RPT BASIC PRIOR BARANGAY SHARE', 'PAYABLE', 'GENERAL', '01', 'GENERAL', '0.00', 'ANY', NULL, NULL, NULL
+;
+
+INSERT IGNORE INTO itemaccount(
+        objid, state, code, title, description, type, fund_objid, fund_code, 
+        fund_title, defaultvalue, valuetype, org_objid, org_name, parentid
+) 
+SELECT 'RPT_BASICINT_PRIOR_BRGY_SHARE', 'ACTIVE', '455-049', 'RPT BASIC PENALTY PRIOR BARANGAY SHARE', 'RPT BASIC PENALTY PRIOR BARANGAY SHARE', 'PAYABLE', 'GENERAL', '01', 'GENERAL', '0.00', 'ANY', NULL, NULL, NULL
+;
+
+
+
+/* REVENUE TAG */
+replace into itemaccount_tag (objid, acctid, tag)
+select  'RPT_BASIC_ADVANCE' as objid, 'RPT_BASIC_ADVANCE' as acctid, 'rpt_basic_advance' as tag
+;
+replace into itemaccount_tag (objid, acctid, tag)
+select  'RPT_BASIC_CURRENT' as objid, 'RPT_BASIC_CURRENT' as acctid, 'rpt_basic_current' as tag
+;
+replace into itemaccount_tag (objid, acctid, tag)
+select  'RPT_BASICINT_CURRENT' as objid, 'RPT_BASICINT_CURRENT' as acctid, 'rpt_basicint_current' as tag
+;
+replace into itemaccount_tag (objid, acctid, tag)
+select  'RPT_BASIC_PREVIOUS' as objid, 'RPT_BASIC_PREVIOUS' as acctid, 'rpt_basic_previous' as tag
+;
+replace into itemaccount_tag (objid, acctid, tag)
+select  'RPT_BASICINT_PREVIOUS' as objid, 'RPT_BASICINT_PREVIOUS' as acctid, 'rpt_basicint_previous' as tag
+;
+replace into itemaccount_tag (objid, acctid, tag)
+select  'RPT_BASIC_PRIOR' as objid, 'RPT_BASIC_PRIOR' as acctid, 'rpt_basic_prior' as tag
+;
+replace into itemaccount_tag (objid, acctid, tag)
+select  'RPT_BASICINT_PRIOR' as objid, 'RPT_BASICINT_PRIOR' as acctid, 'rpt_basicint_prior' as tag
+;
+replace into itemaccount_tag (objid, acctid, tag)
+select  'RPT_SEF_ADVANCE' as objid, 'RPT_SEF_ADVANCE' as acctid, 'rpt_sef_advance' as tag
+;
+replace into itemaccount_tag (objid, acctid, tag)
+select  'RPT_SEF_CURRENT' as objid, 'RPT_SEF_CURRENT' as acctid, 'rpt_sef_current' as tag
+;
+replace into itemaccount_tag (objid, acctid, tag)
+select  'RPT_SEFINT_CURRENT' as objid, 'RPT_SEFINT_CURRENT' as acctid, 'rpt_sefint_current' as tag
+;
+replace into itemaccount_tag (objid, acctid, tag)
+select  'RPT_SEF_PREVIOUS' as objid, 'RPT_SEF_PREVIOUS' as acctid, 'rpt_sef_previous' as tag
+;
+replace into itemaccount_tag (objid, acctid, tag)
+select  'RPT_SEFINT_PREVIOUS' as objid, 'RPT_SEFINT_PREVIOUS' as acctid, 'rpt_sefint_previous' as tag
+;
+replace into itemaccount_tag (objid, acctid, tag)
+select  'RPT_SEF_PRIOR' as objid, 'RPT_SEF_PRIOR' as acctid, 'rpt_sef_prior' as tag
+;
+replace into itemaccount_tag (objid, acctid, tag)
+select  'RPT_SEFINT_PRIOR' as objid, 'RPT_SEFINT_PRIOR' as acctid, 'rpt_sefint_prior' as tag
+;
+
+
+/* PROVINCE PAYABLE TAG */
+replace into itemaccount_tag (objid, acctid, tag)
+select  'RPT_BASIC_ADVANCE_PROVINCE_SHARE' as objid, 'RPT_BASIC_ADVANCE_PROVINCE_SHARE' as acctid, 'rpt_basic_advance' as tag
+;
+replace into itemaccount_tag (objid, acctid, tag)
+select  'RPT_BASIC_CURRENT_PROVINCE_SHARE' as objid, 'RPT_BASIC_CURRENT_PROVINCE_SHARE' as acctid, 'rpt_basic_current' as tag
+;
+replace into itemaccount_tag (objid, acctid, tag)
+select  'RPT_BASICINT_CURRENT_PROVINCE_SHARE' as objid, 'RPT_BASICINT_CURRENT_PROVINCE_SHARE' as acctid, 'rpt_basicint_current' as tag
+;
+replace into itemaccount_tag (objid, acctid, tag)
+select  'RPT_BASIC_PREVIOUS_PROVINCE_SHARE' as objid, 'RPT_BASIC_PREVIOUS_PROVINCE_SHARE' as acctid, 'rpt_basic_previous' as tag
+;
+replace into itemaccount_tag (objid, acctid, tag)
+select  'RPT_BASICINT_PREVIOUS_PROVINCE_SHARE' as objid, 'RPT_BASICINT_PREVIOUS_PROVINCE_SHARE' as acctid, 'rpt_basicint_previous' as tag
+;
+replace into itemaccount_tag (objid, acctid, tag)
+select  'RPT_BASIC_PRIOR_PROVINCE_SHARE' as objid, 'RPT_BASIC_PRIOR_PROVINCE_SHARE' as acctid, 'rpt_basic_prior' as tag
+;
+replace into itemaccount_tag (objid, acctid, tag)
+select  'RPT_BASICINT_PRIOR_PROVINCE_SHARE' as objid, 'RPT_BASICINT_PRIOR_PROVINCE_SHARE' as acctid, 'rpt_basicint_prior' as tag
+;
+replace into itemaccount_tag (objid, acctid, tag)
+select  'RPT_SEF_ADVANCE_PROVINCE_SHARE' as objid, 'RPT_SEF_ADVANCE_PROVINCE_SHARE' as acctid, 'rpt_sef_advance' as tag
+;
+replace into itemaccount_tag (objid, acctid, tag)
+select  'RPT_SEF_CURRENT_PROVINCE_SHARE' as objid, 'RPT_SEF_CURRENT_PROVINCE_SHARE' as acctid, 'rpt_sef_current' as tag
+;
+replace into itemaccount_tag (objid, acctid, tag)
+select  'RPT_SEFINT_CURRENT_PROVINCE_SHARE' as objid, 'RPT_SEFINT_CURRENT_PROVINCE_SHARE' as acctid, 'rpt_sefint_current' as tag
+;
+replace into itemaccount_tag (objid, acctid, tag)
+select  'RPT_SEF_PREVIOUS_PROVINCE_SHARE' as objid, 'RPT_SEF_PREVIOUS_PROVINCE_SHARE' as acctid, 'rpt_sef_previous' as tag
+;
+replace into itemaccount_tag (objid, acctid, tag)
+select  'RPT_SEFINT_PREVIOUS_PROVINCE_SHARE' as objid, 'RPT_SEFINT_PREVIOUS_PROVINCE_SHARE' as acctid, 'rpt_sefint_previous' as tag
+;
+replace into itemaccount_tag (objid, acctid, tag)
+select  'RPT_SEF_PRIOR_PROVINCE_SHARE' as objid, 'RPT_SEF_PRIOR_PROVINCE_SHARE' as acctid, 'rpt_sef_prior' as tag
+;
+replace into itemaccount_tag (objid, acctid, tag)
+select  'RPT_SEFINT_PRIOR_PROVINCE_SHARE' as objid, 'RPT_SEFINT_PRIOR_PROVINCE_SHARE' as acctid, 'rpt_sefint_prior' as tag
+;
+
+/* BARANGAY PAYABLE TAG */
+replace into itemaccount_tag (objid, acctid, tag)
+select  'RPT_BASIC_ADVANCE_BRGY_SHARE' as objid, 'RPT_BASIC_ADVANCE_BRGY_SHARE' as acctid, 'rpt_basic_advance' as tag
+;
+replace into itemaccount_tag (objid, acctid, tag)
+select  'RPT_BASIC_CURRENT_BRGY_SHARE' as objid, 'RPT_BASIC_CURRENT_BRGY_SHARE' as acctid, 'rpt_basic_current' as tag
+;
+replace into itemaccount_tag (objid, acctid, tag)
+select  'RPT_BASICINT_CURRENT_BRGY_SHARE' as objid, 'RPT_BASICINT_CURRENT_BRGY_SHARE' as acctid, 'rpt_basicint_current' as tag
+;
+replace into itemaccount_tag (objid, acctid, tag)
+select  'RPT_BASIC_PREVIOUS_BRGY_SHARE' as objid, 'RPT_BASIC_PREVIOUS_BRGY_SHARE' as acctid, 'rpt_basic_previous' as tag
+;
+replace into itemaccount_tag (objid, acctid, tag)
+select  'RPT_BASICINT_PREVIOUS_BRGY_SHARE' as objid, 'RPT_BASICINT_PREVIOUS_BRGY_SHARE' as acctid, 'rpt_basicint_previous' as tag
+;
+replace into itemaccount_tag (objid, acctid, tag)
+select  'RPT_BASIC_PRIOR_BRGY_SHARE' as objid, 'RPT_BASIC_PRIOR_BRGY_SHARE' as acctid, 'rpt_basic_prior' as tag
+;
+replace into itemaccount_tag (objid, acctid, tag)
+select  'RPT_BASICINT_PRIOR_BRGY_SHARE' as objid, 'RPT_BASICINT_PRIOR_BRGY_SHARE' as acctid, 'rpt_basicint_prior' as tag
+;
+
+
+
+/* MUNICIPALITY ACCOUNT MAPPING */
+replace into itemaccount (
+	objid, state, code, title, description, 
+	type, fund_objid, fund_code, fund_title, 
+	defaultvalue, valuetype, org_objid, org_name, parentid 
+)
+select 
+	concat(ia.objid,':',m.lguid) as objid, 'ACTIVE' as state, '-' as code, 
+	ia.title, 
+	ia.description, ia.type, 
+	ia.fund_objid, ia.fund_code, ia.fund_title, ia.defaultvalue, ia.valuetype, 
+	l.objid as org_objid, l.name as org_name, 'RPT_BASIC_ADVANCE' as parentid 
+from municipality_taxaccount_mapping m, itemaccount ia, municipality l 
+where m.basicadvacct_objid = ia.objid
+and m.lguid = l.objid
+;
+
+
+replace into itemaccount (
+	objid, state, code, title, description, 
+	type, fund_objid, fund_code, fund_title, 
+	defaultvalue, valuetype, org_objid, org_name, parentid 
+)
+select 
+	concat(ia.objid,':',m.lguid) as objid, 'ACTIVE' as state, '-' as code, 
+	ia.title, 
+	ia.description, ia.type, 
+	ia.fund_objid, ia.fund_code, ia.fund_title, ia.defaultvalue, ia.valuetype, 
+	l.objid as org_objid, l.name as org_name, 'RPT_BASIC_PRIOR' as parentid 
+from municipality_taxaccount_mapping m, itemaccount ia, municipality l 
+where m.basicprioracct_objid = ia.objid
+and m.lguid = l.objid
+;
+
+replace into itemaccount (
+	objid, state, code, title, description, 
+	type, fund_objid, fund_code, fund_title, 
+	defaultvalue, valuetype, org_objid, org_name, parentid 
+)
+select 
+	concat(ia.objid,':',m.lguid) as objid, 'ACTIVE' as state, '-' as code, 
+	ia.title, 
+	ia.description, ia.type, 
+	ia.fund_objid, ia.fund_code, ia.fund_title, ia.defaultvalue, ia.valuetype, 
+	l.objid as org_objid, l.name as org_name, 'RPT_BASICINT_PRIOR' as parentid 
+from municipality_taxaccount_mapping m, itemaccount ia, municipality l 
+where m.basicpriorintacct_objid = ia.objid
+and m.lguid = l.objid
+;
+
+
+replace into itemaccount (
+	objid, state, code, title, description, 
+	type, fund_objid, fund_code, fund_title, 
+	defaultvalue, valuetype, org_objid, org_name, parentid 
+)
+select 
+	concat(ia.objid,':',m.lguid) as objid, 'ACTIVE' as state, '-' as code, 
+	ia.title, 
+	ia.description, ia.type, 
+	ia.fund_objid, ia.fund_code, ia.fund_title, ia.defaultvalue, ia.valuetype, 
+	l.objid as org_objid, l.name as org_name, 'RPT_BASIC_PREVIOUS' as parentid 
+from municipality_taxaccount_mapping m, itemaccount ia, municipality l 
+where m.basicprevacct_objid = ia.objid
+and m.lguid = l.objid
+;
+
+replace into itemaccount (
+	objid, state, code, title, description, 
+	type, fund_objid, fund_code, fund_title, 
+	defaultvalue, valuetype, org_objid, org_name, parentid 
+)
+select 
+	concat(ia.objid,':',m.lguid) as objid, 'ACTIVE' as state, '-' as code, 
+	ia.title, 
+	ia.description, ia.type, 
+	ia.fund_objid, ia.fund_code, ia.fund_title, ia.defaultvalue, ia.valuetype, 
+	l.objid as org_objid, l.name as org_name, 'RPT_BASICINT_PREVIOUS' as parentid 
+from municipality_taxaccount_mapping m, itemaccount ia, municipality l 
+where m.basicprevintacct_objid = ia.objid
+and m.lguid = l.objid
+;
+
+replace into itemaccount (
+	objid, state, code, title, description, 
+	type, fund_objid, fund_code, fund_title, 
+	defaultvalue, valuetype, org_objid, org_name, parentid 
+)
+select 
+	concat(ia.objid,':',m.lguid) as objid, 'ACTIVE' as state, '-' as code, 
+	ia.title, 
+	ia.description, ia.type, 
+	ia.fund_objid, ia.fund_code, ia.fund_title, ia.defaultvalue, ia.valuetype, 
+	l.objid as org_objid, l.name as org_name, 'RPT_BASIC_CURRENT' as parentid 
+from municipality_taxaccount_mapping m, itemaccount ia, municipality l 
+where m.basiccurracct_objid = ia.objid
+and m.lguid = l.objid
+;
+
+replace into itemaccount (
+	objid, state, code, title, description, 
+	type, fund_objid, fund_code, fund_title, 
+	defaultvalue, valuetype, org_objid, org_name, parentid 
+)
+select 
+	concat(ia.objid,':',m.lguid) as objid, 'ACTIVE' as state, '-' as code, 
+	ia.title, 
+	ia.description, ia.type, 
+	ia.fund_objid, ia.fund_code, ia.fund_title, ia.defaultvalue, ia.valuetype, 
+	l.objid as org_objid, l.name as org_name, 'RPT_BASICINT_CURRENT' as parentid 
+from municipality_taxaccount_mapping m, itemaccount ia, municipality l 
+where m.basiccurrintacct_objid = ia.objid
+and m.lguid = l.objid
+;
+
+replace into itemaccount (
+	objid, state, code, title, description, 
+	type, fund_objid, fund_code, fund_title, 
+	defaultvalue, valuetype, org_objid, org_name, parentid 
+)
+select 
+	concat(ia.objid,':',m.lguid) as objid, 'ACTIVE' as state, '-' as code, 
+	ia.title, 
+	ia.description, ia.type, 
+	ia.fund_objid, ia.fund_code, ia.fund_title, ia.defaultvalue, ia.valuetype, 
+	l.objid as org_objid, l.name as org_name, 'RPT_SEF_ADVANCE' as parentid 
+from municipality_taxaccount_mapping m, itemaccount ia, municipality l 
+where m.sefadvacct_objid = ia.objid
+and m.lguid = l.objid
+;
+
+
+replace into itemaccount (
+	objid, state, code, title, description, 
+	type, fund_objid, fund_code, fund_title, 
+	defaultvalue, valuetype, org_objid, org_name, parentid 
+)
+select 
+	concat(ia.objid,':',m.lguid) as objid, 'ACTIVE' as state, '-' as code, 
+	ia.title, 
+	ia.description, ia.type, 
+	ia.fund_objid, ia.fund_code, ia.fund_title, ia.defaultvalue, ia.valuetype, 
+	l.objid as org_objid, l.name as org_name, 'RPT_SEF_PRIOR' as parentid 
+from municipality_taxaccount_mapping m, itemaccount ia, municipality l 
+where m.sefprioracct_objid = ia.objid
+and m.lguid = l.objid
+;
+
+
+replace into itemaccount (
+	objid, state, code, title, description, 
+	type, fund_objid, fund_code, fund_title, 
+	defaultvalue, valuetype, org_objid, org_name, parentid 
+)
+select 
+	concat(ia.objid,':',m.lguid) as objid, 'ACTIVE' as state, '-' as code, 
+	ia.title, 
+	ia.description, ia.type, 
+	ia.fund_objid, ia.fund_code, ia.fund_title, ia.defaultvalue, ia.valuetype, 
+	l.objid as org_objid, l.name as org_name, 'RPT_SEFINT_PRIOR' as parentid 
+from municipality_taxaccount_mapping m, itemaccount ia, municipality l 
+where m.sefpriorintacct_objid = ia.objid
+and m.lguid = l.objid
+;
+
+
+replace into itemaccount (
+	objid, state, code, title, description, 
+	type, fund_objid, fund_code, fund_title, 
+	defaultvalue, valuetype, org_objid, org_name, parentid 
+)
+select 
+	concat(ia.objid,':',m.lguid) as objid, 'ACTIVE' as state, '-' as code, 
+	ia.title, 
+	ia.description, ia.type, 
+	ia.fund_objid, ia.fund_code, ia.fund_title, ia.defaultvalue, ia.valuetype, 
+	l.objid as org_objid, l.name as org_name, 'RPT_SEF_PREVIOUS' as parentid 
+from municipality_taxaccount_mapping m, itemaccount ia, municipality l 
+where m.sefprevacct_objid  = ia.objid
+and m.lguid = l.objid
+;
+
+replace into itemaccount (
+	objid, state, code, title, description, 
+	type, fund_objid, fund_code, fund_title, 
+	defaultvalue, valuetype, org_objid, org_name, parentid 
+)
+select 
+	concat(ia.objid,':',m.lguid) as objid, 'ACTIVE' as state, '-' as code, 
+	ia.title, 
+	ia.description, ia.type, 
+	ia.fund_objid, ia.fund_code, ia.fund_title, ia.defaultvalue, ia.valuetype, 
+	l.objid as org_objid, l.name as org_name, 'RPT_SEFINT_PREVIOUS' as parentid 
+from municipality_taxaccount_mapping m, itemaccount ia, municipality l 
+where m.sefprevintacct_objid = ia.objid
+and m.lguid = l.objid
+;
+
+replace into itemaccount (
+	objid, state, code, title, description, 
+	type, fund_objid, fund_code, fund_title, 
+	defaultvalue, valuetype, org_objid, org_name, parentid 
+)
+select 
+	concat(ia.objid,':',m.lguid) as objid, 'ACTIVE' as state, '-' as code, 
+	ia.title, 
+	ia.description, ia.type, 
+	ia.fund_objid, ia.fund_code, ia.fund_title, ia.defaultvalue, ia.valuetype, 
+	l.objid as org_objid, l.name as org_name, 'RPT_SEF_CURRENT' as parentid 
+from municipality_taxaccount_mapping m, itemaccount ia, municipality l 
+where m.sefcurracct_objid = ia.objid
+and m.lguid = l.objid
+;
+
+
+replace into itemaccount (
+	objid, state, code, title, description, 
+	type, fund_objid, fund_code, fund_title, 
+	defaultvalue, valuetype, org_objid, org_name, parentid 
+)
+select 
+	concat(ia.objid,':',m.lguid) as objid, 'ACTIVE' as state, '-' as code, 
+	ia.title, 
+	ia.description, ia.type, 
+	ia.fund_objid, ia.fund_code, ia.fund_title, ia.defaultvalue, ia.valuetype, 
+	l.objid as org_objid, l.name as org_name, 'RPT_SEFINT_CURRENT' as parentid 
+from municipality_taxaccount_mapping m, itemaccount ia, municipality l 
+where m.sefcurrintacct_objid= ia.objid
+and m.lguid = l.objid
+;
+
+
+
+
+
+/* PROVINCE SHARE ACCOUNT MAPPING */
+replace into itemaccount (
+	objid, state, code, title, description, 
+	type, fund_objid, fund_code, fund_title, 
+	defaultvalue, valuetype, org_objid, org_name, parentid 
+)
+select 
+	concat(ia.objid,':',l.objid) as objid, 'ACTIVE' as state, '-' as code, 
+	ia.title, 
+	ia.description, ia.type, 
+	ia.fund_objid, ia.fund_code, ia.fund_title, ia.defaultvalue, ia.valuetype, 
+	l.objid as org_objid, l.name as org_name, 'RPT_BASIC_ADVANCE_PROVINCE_SHARE' as parentid 
+from province_taxaccount_mapping m, itemaccount ia, province l 
+where m.basicadvacct_objid = ia.objid
+and l.objid = '047'
+;
+
+
+replace into itemaccount (
+	objid, state, code, title, description, 
+	type, fund_objid, fund_code, fund_title, 
+	defaultvalue, valuetype, org_objid, org_name, parentid 
+)
+select 
+	concat(ia.objid,':',l.objid) as objid, 'ACTIVE' as state, '-' as code, 
+	ia.title, 
+	ia.description, ia.type, 
+	ia.fund_objid, ia.fund_code, ia.fund_title, ia.defaultvalue, ia.valuetype, 
+	l.objid as org_objid, l.name as org_name, 'RPT_BASIC_PRIOR_PROVINCE_SHARE' as parentid 
+from province_taxaccount_mapping m, itemaccount ia, province l 
+where m.basicprioracct_objid = ia.objid
+and l.objid = '047'
+;
+
+replace into itemaccount (
+	objid, state, code, title, description, 
+	type, fund_objid, fund_code, fund_title, 
+	defaultvalue, valuetype, org_objid, org_name, parentid 
+)
+select 
+	concat(ia.objid,':',l.objid) as objid, 'ACTIVE' as state, '-' as code, 
+	ia.title, 
+	ia.description, ia.type, 
+	ia.fund_objid, ia.fund_code, ia.fund_title, ia.defaultvalue, ia.valuetype, 
+	l.objid as org_objid, l.name as org_name, 'RPT_BASICINT_PRIOR_PROVINCE_SHARE' as parentid 
+from province_taxaccount_mapping m, itemaccount ia, province l 
+where m.basicpriorintacct_objid = ia.objid
+and l.objid = '047'
+;
+
+replace into itemaccount (
+	objid, state, code, title, description, 
+	type, fund_objid, fund_code, fund_title, 
+	defaultvalue, valuetype, org_objid, org_name, parentid 
+)
+select 
+	concat(ia.objid,':',l.objid) as objid, 'ACTIVE' as state, '-' as code, 
+	ia.title, 
+	ia.description, ia.type, 
+	ia.fund_objid, ia.fund_code, ia.fund_title, ia.defaultvalue, ia.valuetype, 
+	l.objid as org_objid, l.name as org_name, 'RPT_BASIC_PREVIOUS_PROVINCE_SHARE' as parentid 
+from province_taxaccount_mapping m, itemaccount ia, province l 
+where m.basicprevacct_objid = ia.objid
+and l.objid = '047'
+;
+
+replace into itemaccount (
+	objid, state, code, title, description, 
+	type, fund_objid, fund_code, fund_title, 
+	defaultvalue, valuetype, org_objid, org_name, parentid 
+)
+select 
+	concat(ia.objid,':',l.objid) as objid, 'ACTIVE' as state, '-' as code, 
+	ia.title, 
+	ia.description, ia.type, 
+	ia.fund_objid, ia.fund_code, ia.fund_title, ia.defaultvalue, ia.valuetype, 
+	l.objid as org_objid, l.name as org_name, 'RPT_BASICINT_PREVIOUS_PROVINCE_SHARE' as parentid 
+from province_taxaccount_mapping m, itemaccount ia, province l 
+where m.basicprevintacct_objid = ia.objid
+and l.objid = '047'
+;
+
+replace into itemaccount (
+	objid, state, code, title, description, 
+	type, fund_objid, fund_code, fund_title, 
+	defaultvalue, valuetype, org_objid, org_name, parentid 
+)
+select 
+	concat(ia.objid,':',l.objid) as objid, 'ACTIVE' as state, '-' as code, 
+	ia.title, 
+	ia.description, ia.type, 
+	ia.fund_objid, ia.fund_code, ia.fund_title, ia.defaultvalue, ia.valuetype, 
+	l.objid as org_objid, l.name as org_name, 'RPT_BASIC_CURRENT_PROVINCE_SHARE' as parentid 
+from province_taxaccount_mapping m, itemaccount ia, province l 
+where m.basiccurracct_objid = ia.objid
+and l.objid = '047'
+;
+
+replace into itemaccount (
+	objid, state, code, title, description, 
+	type, fund_objid, fund_code, fund_title, 
+	defaultvalue, valuetype, org_objid, org_name, parentid 
+)
+select 
+	concat(ia.objid,':',l.objid) as objid, 'ACTIVE' as state, '-' as code, 
+	ia.title, 
+	ia.description, ia.type, 
+	ia.fund_objid, ia.fund_code, ia.fund_title, ia.defaultvalue, ia.valuetype, 
+	l.objid as org_objid, l.name as org_name, 'RPT_BASICINT_CURRENT_PROVINCE_SHARE' as parentid 
+from province_taxaccount_mapping m, itemaccount ia, province l 
+where m.basiccurrintacct_objid = ia.objid
+and l.objid = '047'
+;
+
+replace into itemaccount (
+	objid, state, code, title, description, 
+	type, fund_objid, fund_code, fund_title, 
+	defaultvalue, valuetype, org_objid, org_name, parentid 
+)
+select 
+	concat(ia.objid,':',l.objid) as objid, 'ACTIVE' as state, '-' as code, 
+	ia.title, 
+	ia.description, ia.type, 
+	ia.fund_objid, ia.fund_code, ia.fund_title, ia.defaultvalue, ia.valuetype, 
+	l.objid as org_objid, l.name as org_name, 'RPT_SEF_ADVANCE_PROVINCE_SHARE' as parentid 
+from province_taxaccount_mapping m, itemaccount ia, province l 
+where m.sefadvacct_objid = ia.objid
+and l.objid = '047'
+;
+
+
+replace into itemaccount (
+	objid, state, code, title, description, 
+	type, fund_objid, fund_code, fund_title, 
+	defaultvalue, valuetype, org_objid, org_name, parentid 
+)
+select 
+	concat(ia.objid,':',l.objid) as objid, 'ACTIVE' as state, '-' as code, 
+	ia.title, 
+	ia.description, ia.type, 
+	ia.fund_objid, ia.fund_code, ia.fund_title, ia.defaultvalue, ia.valuetype, 
+	l.objid as org_objid, l.name as org_name, 'RPT_SEF_PRIOR_PROVINCE_SHARE' as parentid 
+from province_taxaccount_mapping m, itemaccount ia, province l 
+where m.sefprioracct_objid = ia.objid
+and l.objid = '047'
+;
+
+
+replace into itemaccount (
+	objid, state, code, title, description, 
+	type, fund_objid, fund_code, fund_title, 
+	defaultvalue, valuetype, org_objid, org_name, parentid 
+)
+select 
+	concat(ia.objid,':',l.objid) as objid, 'ACTIVE' as state, '-' as code, 
+	ia.title, 
+	ia.description, ia.type, 
+	ia.fund_objid, ia.fund_code, ia.fund_title, ia.defaultvalue, ia.valuetype, 
+	l.objid as org_objid, l.name as org_name, 'RPT_SEFINT_PRIOR_PROVINCE_SHARE' as parentid 
+from province_taxaccount_mapping m, itemaccount ia, province l 
+where m.sefpriorintacct_objid = ia.objid
+and l.objid = '047'
+;
+
+
+
+replace into itemaccount (
+	objid, state, code, title, description, 
+	type, fund_objid, fund_code, fund_title, 
+	defaultvalue, valuetype, org_objid, org_name, parentid 
+)
+select 
+	concat(ia.objid,':',l.objid) as objid, 'ACTIVE' as state, '-' as code, 
+	ia.title, 
+	ia.description, ia.type, 
+	ia.fund_objid, ia.fund_code, ia.fund_title, ia.defaultvalue, ia.valuetype, 
+	l.objid as org_objid, l.name as org_name, 'RPT_SEF_PREVIOUS_PROVINCE_SHARE' as parentid 
+from province_taxaccount_mapping m, itemaccount ia, province l 
+where m.sefprevacct_objid  = ia.objid
+and l.objid = '047'
+;
+
+replace into itemaccount (
+	objid, state, code, title, description, 
+	type, fund_objid, fund_code, fund_title, 
+	defaultvalue, valuetype, org_objid, org_name, parentid 
+)
+select 
+	concat(ia.objid,':',l.objid) as objid, 'ACTIVE' as state, '-' as code, 
+	ia.title, 
+	ia.description, ia.type, 
+	ia.fund_objid, ia.fund_code, ia.fund_title, ia.defaultvalue, ia.valuetype, 
+	l.objid as org_objid, l.name as org_name, 'RPT_SEFINT_PREVIOUS_PROVINCE_SHARE' as parentid 
+from province_taxaccount_mapping m, itemaccount ia, province l 
+where m.sefprevintacct_objid = ia.objid
+and l.objid = '047'
+;
+
+replace into itemaccount (
+	objid, state, code, title, description, 
+	type, fund_objid, fund_code, fund_title, 
+	defaultvalue, valuetype, org_objid, org_name, parentid 
+)
+select 
+	concat(ia.objid,':',l.objid) as objid, 'ACTIVE' as state, '-' as code, 
+	ia.title, 
+	ia.description, ia.type, 
+	ia.fund_objid, ia.fund_code, ia.fund_title, ia.defaultvalue, ia.valuetype, 
+	l.objid as org_objid, l.name as org_name, 'RPT_SEF_CURRENT_PROVINCE_SHARE' as parentid 
+from province_taxaccount_mapping m, itemaccount ia, province l 
+where m.sefcurracct_objid = ia.objid
+and l.objid = '047'
+;
+
+
+replace into itemaccount (
+	objid, state, code, title, description, 
+	type, fund_objid, fund_code, fund_title, 
+	defaultvalue, valuetype, org_objid, org_name, parentid 
+)
+select 
+	concat(ia.objid,':',l.objid) as objid, 'ACTIVE' as state, '-' as code, 
+	ia.title, 
+	ia.description, ia.type, 
+	ia.fund_objid, ia.fund_code, ia.fund_title, ia.defaultvalue, ia.valuetype, 
+	l.objid as org_objid, l.name as org_name, 'RPT_SEFINT_CURRENT_PROVINCE_SHARE' as parentid 
+from province_taxaccount_mapping m, itemaccount ia, province l 
+where m.sefcurrintacct_objid= ia.objid
+and l.objid = '047'
+;
+
+
+
+/* BARANGAY ACCOUNT MAPPING */
+replace into itemaccount (
+	objid, state, code, title, description, 
+	type, fund_objid, fund_code, fund_title, 
+	defaultvalue, valuetype, org_objid, org_name, parentid 
+)
+select 
+	concat(ia.objid) as objid, 'ACTIVE' as state, '-' as code, 
+	ia.title, 
+	ia.description, ia.type, 
+	ia.fund_objid, ia.fund_code, ia.fund_title, ia.defaultvalue, ia.valuetype, 
+	l.objid as org_objid, l.name as org_name, 'RPT_BASIC_ADVANCE_BRGY_SHARE' as parentid 
+from brgy_taxaccount_mapping m, itemaccount ia, barangay l 
+where m.basicadvacct_objid = ia.objid
+and m.barangayid = l.objid
+;
+
+
+replace into itemaccount (
+	objid, state, code, title, description, 
+	type, fund_objid, fund_code, fund_title, 
+	defaultvalue, valuetype, org_objid, org_name, parentid 
+)
+select 
+	concat(ia.objid) as objid, 'ACTIVE' as state, '-' as code, 
+	ia.title, 
+	ia.description, ia.type, 
+	ia.fund_objid, ia.fund_code, ia.fund_title, ia.defaultvalue, ia.valuetype, 
+	l.objid as org_objid, l.name as org_name, 'RPT_BASIC_PRIOR_BRGY_SHARE' as parentid 
+from brgy_taxaccount_mapping m, itemaccount ia, barangay l 
+where m.basicprioracct_objid = ia.objid
+and m.barangayid = l.objid
+;
+
+replace into itemaccount (
+	objid, state, code, title, description, 
+	type, fund_objid, fund_code, fund_title, 
+	defaultvalue, valuetype, org_objid, org_name, parentid 
+)
+select 
+	concat(ia.objid) as objid, 'ACTIVE' as state, '-' as code, 
+	ia.title, 
+	ia.description, ia.type, 
+	ia.fund_objid, ia.fund_code, ia.fund_title, ia.defaultvalue, ia.valuetype, 
+	l.objid as org_objid, l.name as org_name, 'RPT_BASICINT_PRIOR_BRGY_SHARE' as parentid 
+from brgy_taxaccount_mapping m, itemaccount ia, barangay l 
+where m.basicpriorintacct_objid = ia.objid
+and m.barangayid = l.objid
+;
+
+
+replace into itemaccount (
+	objid, state, code, title, description, 
+	type, fund_objid, fund_code, fund_title, 
+	defaultvalue, valuetype, org_objid, org_name, parentid 
+)
+select 
+	concat(ia.objid) as objid, 'ACTIVE' as state, '-' as code, 
+	ia.title, 
+	ia.description, ia.type, 
+	ia.fund_objid, ia.fund_code, ia.fund_title, ia.defaultvalue, ia.valuetype, 
+	l.objid as org_objid, l.name as org_name, 'RPT_BASIC_PREVIOUS_BRGY_SHARE' as parentid 
+from brgy_taxaccount_mapping m, itemaccount ia, barangay l 
+where m.basicprevacct_objid = ia.objid
+and m.barangayid = l.objid
+;
+
+replace into itemaccount (
+	objid, state, code, title, description, 
+	type, fund_objid, fund_code, fund_title, 
+	defaultvalue, valuetype, org_objid, org_name, parentid 
+)
+select 
+	concat(ia.objid) as objid, 'ACTIVE' as state, '-' as code, 
+	ia.title, 
+	ia.description, ia.type, 
+	ia.fund_objid, ia.fund_code, ia.fund_title, ia.defaultvalue, ia.valuetype, 
+	l.objid as org_objid, l.name as org_name, 'RPT_BASICINT_PREVIOUS_BRGY_SHARE' as parentid 
+from brgy_taxaccount_mapping m, itemaccount ia, barangay l 
+where m.basicprevintacct_objid = ia.objid
+and m.barangayid = l.objid
+;
+
+replace into itemaccount (
+	objid, state, code, title, description, 
+	type, fund_objid, fund_code, fund_title, 
+	defaultvalue, valuetype, org_objid, org_name, parentid 
+)
+select 
+	concat(ia.objid) as objid, 'ACTIVE' as state, '-' as code, 
+	ia.title, 
+	ia.description, ia.type, 
+	ia.fund_objid, ia.fund_code, ia.fund_title, ia.defaultvalue, ia.valuetype, 
+	l.objid as org_objid, l.name as org_name, 'RPT_BASIC_CURRENT_BRGY_SHARE' as parentid 
+from brgy_taxaccount_mapping m, itemaccount ia, barangay l 
+where m.basiccurracct_objid = ia.objid
+and m.barangayid = l.objid
+;
+
+replace into itemaccount (
+	objid, state, code, title, description, 
+	type, fund_objid, fund_code, fund_title, 
+	defaultvalue, valuetype, org_objid, org_name, parentid 
+)
+select 
+	concat(ia.objid) as objid, 'ACTIVE' as state, '-' as code, 
+	ia.title, 
+	ia.description, ia.type, 
+	ia.fund_objid, ia.fund_code, ia.fund_title, ia.defaultvalue, ia.valuetype, 
+	l.objid as org_objid, l.name as org_name, 'RPT_BASICINT_CURRENT_BRGY_SHARE' as parentid 
+from brgy_taxaccount_mapping m, itemaccount ia, barangay l 
+where m.basiccurrintacct_objid = ia.objid
+and m.barangayid = l.objid
+;
+
+
+
+set foreign_key_checks = 1
+;
+
+
 
