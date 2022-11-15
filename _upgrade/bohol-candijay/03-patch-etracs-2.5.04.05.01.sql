@@ -2856,6 +2856,9 @@ INSERT INTO psic_subclass (code, description, details, classid) VALUES ('99019',
 INSERT INTO psic_subclass (code, description, details, classid) VALUES ('99090', 'Activities of Other International Organizations\n', '\nThis class includes activities of other international organizations mostly located and funded in the Philippines such as: Asia Pacific Economic Cooperation Center (APEC-Center), Southeast Asian Ministers of Education Organization (SEAMEO), SEAMEO Regional Center for Educational Innovation Technology and Regional Center for Graduate Study and Research in Agriculture (SEARCA).', '9909');
 
 
+alter table lob drop foreign key fk_lob_psic_objid
+;
+
 alter table lob change psic _psic varchar(255) null 
 ;
 alter table lob change psic_objid _psic_objid varchar(50) null 
@@ -2863,8 +2866,7 @@ alter table lob change psic_objid _psic_objid varchar(50) null
 alter table lob add psicid varchar(50) NULL
 ;
 
-alter table lob drop foreign key fk_lob_psic_objid
-;
+
 DROP TABLE psic
 ;
 
