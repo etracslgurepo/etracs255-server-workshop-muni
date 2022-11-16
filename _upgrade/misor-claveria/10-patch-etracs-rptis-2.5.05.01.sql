@@ -2889,7 +2889,7 @@ DROP TABLE IF EXISTS `rptexpiry`
 CREATE TABLE `rptexpiry` (
 	`iyear` int(11) NOT NULL,
   `iqtr` int(11) NOT NULL,
-  `imonth` int(11) DEFAULT NULL,
+  `imonth` int(11) NOT NULL,
   `expirytype` varchar(50) NOT NULL,
   `expirydate` date DEFAULT NULL,
 	`validuntil` date DEFAULT NULL,
