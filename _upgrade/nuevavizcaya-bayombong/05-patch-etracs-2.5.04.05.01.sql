@@ -2866,25 +2866,25 @@ INSERT INTO psic_subclass (code, description, details, classid) VALUES ('99019',
 INSERT INTO psic_subclass (code, description, details, classid) VALUES ('99090', 'Activities of Other International Organizations\n', '\nThis class includes activities of other international organizations mostly located and funded in the Philippines such as: Asia Pacific Economic Cooperation Center (APEC-Center), Southeast Asian Ministers of Education Organization (SEAMEO), SEAMEO Regional Center for Educational Innovation Technology and Regional Center for Graduate Study and Research in Agriculture (SEARCA).', '9909');
 
 
-alter table lob change psic _psic varchar(255) null 
-;
-alter table lob change psic_objid _psic_objid varchar(50) null 
-;
+EXEC sp_rename N'[dbo].[lob].[psic]', N'_psic', 'COLUMN'
+go 
+EXEC sp_rename N'[dbo].[lob].[psic_objid]', N'_psic_objid', 'COLUMN'
+go 
 alter table lob add psicid varchar(50) NULL
-;
+go
 DROP TABLE psic
-;
+go
 
 
-update 
+update aa set 
+  aa.psicid = bb.psicid 
+from 
   lob aa, 
   ( 
     select lob.objid, s.code as psicid 
     from lob 
       inner join psic_subclass s on s.code = lob._psic_objid 
   )bb 
-set 
-  aa.psicid = bb.psicid 
 where 
   aa.objid = bb.objid 
 ;
