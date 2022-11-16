@@ -3607,7 +3607,7 @@ create index ix_rptledgerfaas_tdno on rptledgerfaas(tdno);
 
   
 alter table rptledger modify column owner_name varchar(1500) not null;
-create index ix_rptledger_owner_name on rptledger(owner_name);
+create index ix_rptledger_owner_name on rptledger(owner_name(150));
 
 /* SUBLEDGER : add beneficiary info */
 
@@ -7728,7 +7728,7 @@ create index ix_rputype on report_rptcollection_annual_bypayer(rputype)
 ;
 create index ix_year on report_rptcollection_annual_bypayer(year)
 ;
-create index ix_payer on report_rptcollection_annual_bypayer(payer_name)
+create index ix_payer on report_rptcollection_annual_bypayer(payer_name(150))
 ;
 
 
@@ -8081,7 +8081,7 @@ DROP TABLE IF EXISTS `rptexpiry`
 CREATE TABLE `rptexpiry` (
 	`iyear` int(11) NOT NULL,
   `iqtr` int(11) NOT NULL,
-  `imonth` int(11) DEFAULT NULL,
+  `imonth` int(11) NOT NULL,
   `expirytype` varchar(50) NOT NULL,
   `expirydate` date DEFAULT NULL,
 	`validuntil` date DEFAULT NULL,
