@@ -2902,3 +2902,6 @@ alter table cancelledfaas_task add returnedby varchar(100)
 
 
 update itemaccount set state = 'ACTIVE' where state = 'APPROVED';
+
+delete from subdivision_assist_item;
+delete from subdivision_assist;
