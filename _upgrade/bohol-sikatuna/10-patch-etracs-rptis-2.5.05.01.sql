@@ -177,7 +177,7 @@ alter table rptledgeritem
 
 
 
-  
+
 create table rptledgeritem_qtrly (
   objid varchar(50) not null,
   parentid varchar(50) not null,
@@ -935,42 +935,6 @@ create index ix_faas_stewardship_stewardrpumasterid on faas_stewardship(stewardr
 *=========================================================*/
 INSERT INTO `sys_usergroup_permission` (`objid`, `usergroup_objid`, `object`, `permission`, `title`) 
 VALUES ('LANDTAX.REPORT.restricted-property.generate', 'LANDTAX.REPORT', 'restricted-property', 'generate', 'Generate List of Restricted Properties');
-
-
-/* v2.5.04.032-03008 */
-/*========================================
-*
-* REPLACE etracs254_lguname with the 
-* correct PRODUCTION Database Name
-*=======================================*/
-
-set @dbname := 'etracs255_loay';
-
-/*=======================================*/
-
-
-drop procedure if exists alter_sys_rule_actiondef;
-
-delimiter $$
-create procedure alter_sys_rule_actiondef(in _dbname varchar(100))
-begin
-    declare _count int;
-    set _count = (  select count(*) 
-                    from information_schema.columns
-                    where  table_schema = _dbname and 
-                           table_name = 'sys_rule_actiondef' and 
-                           column_name = 'actionclass');
-
-    if _count = 0 then
-        alter table sys_rule_actiondef
-            add column actionclass varchar(100);
-    end if;
-end $$
-delimiter ;
-
-call alter_sys_rule_actiondef(@dbname);
-
-drop procedure if exists alter_sys_rule_actiondef;
 
 
 create table faas_restriction_type
