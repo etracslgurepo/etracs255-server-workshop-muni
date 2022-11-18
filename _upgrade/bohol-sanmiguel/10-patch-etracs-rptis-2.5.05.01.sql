@@ -1,6 +1,3 @@
-set @dbname := 'etracs255_dimiao';
-
-
 
 /*==================================
 ** V2.5.04.030
@@ -632,7 +629,7 @@ create table faas_list(
 	taskstate varchar(50),
 	assignee_objid varchar(50),
 	trackingno varchar(20)
-) engine=innodb  DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 
 create index ix_faaslist_state on faas_list(state);
@@ -1260,7 +1257,7 @@ create table memoranda_template
 	objid varchar(50) primary key,
 	code varchar(25) not null,
 	template varchar(500) not null
-) engine=innodb  DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 
 alter table rpu_assessment modify column classification_objid varchar(50)  null;
@@ -1371,7 +1368,33 @@ create table faas_previous
 	index FK_faas_previous_faas(faasid),
 	index ix_faas_previous_tdno(prevtdno),
 	index ix_faas_previous_pin(prevpin)
-) engine=innodb  DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+drop table if exists faas_previous
+;
+
+CREATE TABLE `faas_previous` (
+  `objid` varchar(50) NOT NULL,
+  `faasid` varchar(50) NOT NULL,
+  `prevfaasid` varchar(50) DEFAULT NULL,
+  `prevrpuid` varchar(50) DEFAULT NULL,
+  `prevtdno` varchar(800) DEFAULT NULL,
+  `prevpin` varchar(800) DEFAULT NULL,
+  `prevowner` text,
+  `prevadministrator` text,
+  `prevav` varchar(500) DEFAULT NULL,
+  `prevmv` varchar(500) DEFAULT NULL,
+  `prevareasqm` varchar(500) DEFAULT NULL,
+  `prevareaha` varchar(500) DEFAULT NULL,
+  `preveffectivity` varchar(10) DEFAULT NULL,
+  PRIMARY KEY (`objid`),
+  KEY `FK_faas_previous_faas` (`faasid`),
+  KEY `ix_faas_previous_tdno` (`prevtdno`(767)),
+  KEY `ix_faas_previous_pin` (`prevpin`(767))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8
+;
+
+
 
 alter table faas_previous 
 	add constraint FK_faas_previous_faas 
@@ -1506,7 +1529,7 @@ CREATE TABLE `batchgr_error` (
   `newry` int(11) NOT NULL,
   `msg` longtext,
   PRIMARY KEY (`objid`)
- ) engine=innodb  DEFAULT CHARSET=utf8;
+ ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 
 
@@ -1516,7 +1539,7 @@ CREATE TABLE `payment_partner` (
   `code` varchar(50) DEFAULT NULL,
   `info` text DEFAULT NULL,
   PRIMARY KEY (`objid`)
-) engine=innodb  DEFAULT CHARSET=utf8; 
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 CREATE TABLE `cashreceiptpayment_eor` (
   `objid` varchar(50) NOT NULL,
@@ -1535,7 +1558,7 @@ CREATE TABLE `cashreceiptpayment_eor` (
   KEY `ix_account_objid` (`partner_objid`),
   KEY `ix_refno` (`refno`),
   KEY `ix_refdate` (`refdate`)
-) engine=innodb  DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 alter table cashreceiptpayment_eor 
 	add CONSTRAINT `fk_payment_partner_eor` 
@@ -1576,7 +1599,7 @@ CREATE TABLE `paymentorder` (
   `info` text,
   PRIMARY KEY (`txnid`),
   KEY `ix_controlno` (`controlno`)
- ) engine=innodb  DEFAULT CHARSET=utf8;
+ ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 CREATE TABLE `eor_paymentorder` (
   `objid` varchar(50) NOT NULL,
@@ -1605,7 +1628,7 @@ CREATE TABLE `eor_paymentorder` (
   KEY `ix_paymentorder_refid` (`paymentorder_refid`),
   KEY `ix_paymentorder_refno` (`paymentorder_refno`),
   KEY `ix_paymentorder_txntypeid` (`paymentorder_txntypeid`)
-) engine=innodb  DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 -- 254032-03014a
 
 CREATE TABLE `rptledgeritem_qtrly_partial` (
@@ -1625,7 +1648,9 @@ CREATE TABLE `rptledgeritem_qtrly_partial` (
   `firecodepaid` decimal(16,2) NOT NULL,
   PRIMARY KEY (`objid`),
   KEY `FK_rptledgeritemqtrlypartial_rptledger` (`rptledgerid`)
-) engine=innodb  DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+
 
 alter table rptledgeritem_qtrly_partial 
 add  CONSTRAINT `FK_rptledgeritemqtrlypartial_rptledger` 
@@ -1655,7 +1680,7 @@ CREATE TABLE `faas_restriction` (
   `createdby_name` varchar(150) DEFAULT NULL,
   `dtcreated` datetime DEFAULT NULL,
   PRIMARY KEY (`objid`)
-) engine=innodb  DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 alter table faas_restriction 
 add  CONSTRAINT `FK_faas_restriction_faas` 
@@ -1772,7 +1797,7 @@ inner join sys_org o on f.lguid = o.objid;
 CREATE TABLE `rptledger_forprocess` (
   `objid` varchar(255) NOT NULL,
   PRIMARY KEY (`objid`)
-) engine=innodb  DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 
 
@@ -6670,7 +6695,7 @@ create table syncdata_offline_org (
 	orgid varchar(50) not null,
 	expirydate datetime not null,
 	primary key(orgid)
-) engine=innodb  DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 
 
@@ -10063,6 +10088,11 @@ alter table sys_rule add _ukey varchar(50)
 alter table `sys_rule_action_param` add rangeoption int 
 ;
 
+alter table rpt_redflag add refno varchar(25)
+;
+
+update rptledger set lguid = '04738'
+;
 
 
 

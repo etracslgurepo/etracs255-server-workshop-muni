@@ -21,7 +21,7 @@ and (rl.txntype_objid is null or rl.classification_objid is null);
 create table faas_txntype_attribute_type(
 	attribute varchar(50) not null,
 	primary key(attribute)
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 
 create table faas_txntype_attribute(
@@ -29,7 +29,7 @@ create table faas_txntype_attribute(
 	attribute varchar(50) not null,
 	idx int not null, 
 	primary key (txntype_objid, attribute)
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 alter table faas_txntype_attribute 
 add constraint FK_faas_txntype_attribute foreign key (txntype_objid)
@@ -58,7 +58,7 @@ create table rpt_redflag
 	resolvedby_name varchar(150) not null,
 	dtresolved datetime,
 	primary key (objid)
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 alter table rpt_redflag add constraint ux_rptredflag_caseno unique(caseno);
 
@@ -762,7 +762,7 @@ create table faas_list(
 	taskstate varchar(50),
 	assignee_objid varchar(50),
 	trackingno varchar(20)
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 
 create index ix_faaslist_state on faas_list(state);
@@ -1401,7 +1401,7 @@ create table memoranda_template
 	objid varchar(50) primary key,
 	code varchar(25) not null,
 	template varchar(500) not null
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 
 alter table rpu_assessment modify column classification_objid varchar(50)  null;
@@ -1512,7 +1512,7 @@ create table faas_previous
 	index FK_faas_previous_faas(faasid),
 	index ix_faas_previous_tdno(prevtdno),
 	index ix_faas_previous_pin(prevpin)
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 alter table faas_previous 
 	add constraint FK_faas_previous_faas 
@@ -1647,7 +1647,7 @@ CREATE TABLE `batchgr_error` (
   `newry` int(11) NOT NULL,
   `msg` longtext,
   PRIMARY KEY (`objid`)
- );
+ ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 
 
@@ -1657,7 +1657,7 @@ CREATE TABLE `payment_partner` (
   `code` varchar(50) DEFAULT NULL,
   `info` text DEFAULT NULL,
   PRIMARY KEY (`objid`)
-); 
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 CREATE TABLE `cashreceiptpayment_eor` (
   `objid` varchar(50) NOT NULL,
@@ -1676,7 +1676,7 @@ CREATE TABLE `cashreceiptpayment_eor` (
   KEY `ix_account_objid` (`partner_objid`),
   KEY `ix_refno` (`refno`),
   KEY `ix_refdate` (`refdate`)
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 alter table cashreceiptpayment_eor 
 	add CONSTRAINT `fk_payment_partner_eor` 
@@ -1717,7 +1717,7 @@ CREATE TABLE `paymentorder` (
   `info` text,
   PRIMARY KEY (`txnid`),
   KEY `ix_controlno` (`controlno`)
- );
+ ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 CREATE TABLE `eor_paymentorder` (
   `objid` varchar(50) NOT NULL,
@@ -1746,7 +1746,7 @@ CREATE TABLE `eor_paymentorder` (
   KEY `ix_paymentorder_refid` (`paymentorder_refid`),
   KEY `ix_paymentorder_refno` (`paymentorder_refno`),
   KEY `ix_paymentorder_txntypeid` (`paymentorder_txntypeid`)
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 -- 254032-03014a
 
 CREATE TABLE `rptledgeritem_qtrly_partial` (
@@ -1766,7 +1766,7 @@ CREATE TABLE `rptledgeritem_qtrly_partial` (
   `firecodepaid` decimal(16,2) NOT NULL,
   PRIMARY KEY (`objid`),
   KEY `FK_rptledgeritemqtrlypartial_rptledger` (`rptledgerid`)
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 alter table rptledgeritem_qtrly_partial 
 add  CONSTRAINT `FK_rptledgeritemqtrlypartial_rptledger` 
@@ -1796,7 +1796,7 @@ CREATE TABLE `faas_restriction` (
   `createdby_name` varchar(150) DEFAULT NULL,
   `dtcreated` datetime DEFAULT NULL,
   PRIMARY KEY (`objid`)
-);  
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;  
 
 alter table faas_restriction 
 add  CONSTRAINT `FK_faas_restriction_faas` 
@@ -1913,7 +1913,7 @@ inner join sys_org o on f.lguid = o.objid;
 CREATE TABLE `rptledger_forprocess` (
   `objid` varchar(255) NOT NULL,
   PRIMARY KEY (`objid`)
-) ;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 
 
@@ -6821,8 +6821,7 @@ create table syncdata_offline_org (
 	orgid varchar(50) not null,
 	expirydate datetime not null,
 	primary key(orgid)
-)
-;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 
 
