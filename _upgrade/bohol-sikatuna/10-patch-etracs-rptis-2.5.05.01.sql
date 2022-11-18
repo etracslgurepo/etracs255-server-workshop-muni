@@ -1,4 +1,4 @@
-set @dbname := 'etracs255_loay';
+set @dbname := 'etracs255_sikatuna';
 
 
 
@@ -5560,7 +5560,7 @@ create index ix_rptledgerfaas_tdno on rptledgerfaas(tdno);
 
   
 alter table rptledger modify column owner_name varchar(1500) not null;
-create index ix_rptledger_owner_name on rptledger(owner_name);
+create index ix_rptledger_owner_name on rptledger(owner_name(200));
 
 /* SUBLEDGER : add beneficiary info */
 
